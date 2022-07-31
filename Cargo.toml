@@ -1,0 +1,35 @@
+[package]
+name = "tpsecore"
+version = "0.1.0"
+edition = "2021"
+authors = ["UniQMG"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["console_error_panic_hook"]
+
+[dependencies]
+wasm-bindgen = { version = "0.2.63", features = ["serde-serialize"] }
+console_error_panic_hook = { version = "0.1.6", optional = true }
+#wee_alloc = { version = "0.4.5", optional = true }
+base64 = "0.13.0"
+lazy_static = "1.4.0"
+regex = "1.6.0"
+serde = "1.0.122"
+serde_json = "1.0.45"
+serde_with = "1.14.0"
+data-url = "0.1.1"
+thiserror = "1.0.31"
+image = "0.24.3"
+console_log = "0.2.0"
+log = "0.4.17"
+simple_logger = "2.2.0"
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3.13"
+
+[profile.release]
+# Tell `rustc` to optimize for small code size.
+opt-level = "s"
