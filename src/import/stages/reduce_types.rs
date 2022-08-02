@@ -2,11 +2,11 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
 use std::path::Path;
-use crate::import::{ImportError, ImportResult, SkinType, SpecificImportType};
+use crate::import::{ImportErrorType, ImportResult, SkinType, SpecificImportType};
 use crate::import::import_task::ImportTask;
 
 /// Collates multiple import results into a list of import tasks
-pub fn reduce_types<'a>(results: &'a [ImportResult]) -> Result<Vec<ImportTask<'a>>, ImportError> {
+pub fn reduce_types<'a>(results: &'a [ImportResult]) -> Result<Vec<ImportTask<'a>>, ImportErrorType> {
   let mut map: HashMap<SpecificImportType, Vec<ImportResult>> = HashMap::new();
   for res in results {
     map.entry(res.specific_import_type).or_default().push(*res);
@@ -103,10 +103,10 @@ pub fn reduce_types<'a>(results: &'a [ImportResult]) -> Result<Vec<ImportTask<'a
     import_tasks.push(ImportTask::SoundEffects(sound_effects));
   }
   if ambiguous_mino_skin_errors.len() > 0 {
-    return Err(ImportError::AmbiguousAnimatedSkinResults(Cow::from("mino"), ambiguous_mino_skin_errors));
+    return Err(ImportErrorType::AmbiguousAnimatedSkinResults(Cow::from("mino"), ambiguous_mino_skin_errors));
   }
   if ambiguous_ghost_skin_errors.len() > 0 {
-    return Err(ImportError::AmbiguousAnimatedSkinResults(Cow::from("ghost"), ambiguous_mino_skin_errors));
+    return Err(ImportErrorType::AmbiguousAnimatedSkinResults(Cow::from("ghost"), ambiguous_mino_skin_errors));
   }
   if animated_minos.as_ref().map(|(t,_)| *t) != animated_ghost.as_ref().map(|(t,_)| *t) {
     if let Some((ghost_type, results)) = animated_ghost {
@@ -116,5 +116,6 @@ pub fn reduce_types<'a>(results: &'a [ImportResult]) -> Result<Vec<ImportTask<'a
   if let Some((mino_type, results)) = animated_minos {
     import_tasks.push(ImportTask::AnimatedSkinFrames(mino_type, results.iter().map(|res| res.bytes).collect()))
   }
-  todo!()
+
+  Ok(import_tasks)
 }

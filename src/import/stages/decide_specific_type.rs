@@ -1,13 +1,17 @@
-use crate::import::{ImportError, ImportResult, ImportType, SkinType, FileType, SpecificImportType as SIT, parse_filekey};
-use crate::import::import_types::ImportOptions;
-use crate::ImportOptions;
+use std::io::Cursor;
+use image::io::Reader;
+use crate::import::{
+  ImportErrorType, ImportResult, ImportType, SkinType, FileType, SpecificImportType as SIT,
+  parse_filekey, ImportOptions
+};
+use crate::import::skin_splicer::SkinSplicer;
 
 /// Prepares a single file for import.
 pub fn decide_specific_type<'a, 'b>
   (import_type: ImportType, filename: &'a str, bytes: &'b [u8], options: ImportOptions)
-  -> Result<ImportResult<'a, 'b>, ImportError>
+  -> Result<ImportResult<'a, 'b>, ImportErrorType>
 {
-  if options.depth_limit == 0 { return Err(ImportError::TooMuchNesting) }
+  if options.depth_limit == 0 { return Err(ImportErrorType::TooMuchNesting) }
   Ok(ImportResult::new(filename, bytes, options, match import_type {
     ImportType::Automatic => {
       if let Some(guess) = parse_filekey(filename) {
@@ -18,18 +22,20 @@ pub fn decide_specific_type<'a, 'b>
           //import_zip_file(bytes, options.minus_one_depth()),
           FileType::TPSE => SIT::TPSE,
           FileType::Image => {
-            return if let Some(format) = SkinType::guess_format(filename, 0, 0) {
+            let image = Reader::new(Cursor::new(bytes)).with_guessed_format().unwrap().decode()?;
+
+            return if let Some(format) = SkinType::guess_format(filename, image.width(), image.height()) {
               let format = ImportType::Skin { subtype: format };
               decide_specific_type(format, filename, bytes, options.minus_one_depth())
             } else {
-              Err(ImportError::UnknownFileType)
+              Err(ImportErrorType::UnknownFileType)
             }
           },
           FileType::Video => todo!(),
           FileType::Audio => todo!()
         }
       } else {
-        return Err(ImportError::UnknownFileType);
+        return Err(ImportErrorType::UnknownFileType);
       }
     },
     ImportType::Skin { subtype } => SIT::Skin(subtype),

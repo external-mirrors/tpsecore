@@ -69,7 +69,7 @@ impl SkinSplicer {
     self.images.iter().map(move |(skin_type, image)| {
       let slices = lookup_skin(*skin_type, piece)
         .and_then(|skin_slice| skin_slice.slices(connection, image.width(), image.height()))
-        .map(|iter| iter.map(|(x, y, w, h)| image.view(x, y, w, h)));
+        .map(|iter| iter.map(|(x, y, w, h)| better_view(image, x, y, w, h)));
       (*skin_type,  slices)
     })
   }
@@ -110,6 +110,15 @@ impl SkinSplicer {
   }
 }
 
+fn better_view(image: &DynamicImage, x: u32, y: u32, w: u32, h: u32) -> SubImage<&DynamicImage> {
+  log::debug!("Creating view of {}x{} image: {} {} {} {}", image.width(), image.height(), x, y, w, h);
+  image.view(x, y, w, h)
+}
+fn better_view_mut(image: &mut DynamicImage, x: u32, y: u32, w: u32, h: u32) -> SubImage<&mut DynamicImage> {
+  log::debug!("Creating mutable view of {}x{} image: {} {} {} {}", image.width(), image.height(), x, y, w, h);
+  image.sub_image(x, y, w, h)
+}
+
 /// exists because lifetime limitations, need lending iterators :/
 struct SliceLookup<T, IT> {
   pub skin_type: SkinType,
@@ -119,12 +128,12 @@ struct SliceLookup<T, IT> {
 impl<T, IT> SliceLookup<T, IT> where T: Deref<Target = DynamicImage>, IT: Iterator<Item = (u32, u32, u32, u32)> {
   fn next(&mut self) -> Option<SubImage<&DynamicImage>> {
     let (x, y, w, h) = self.iter.as_mut()?.next()?;
-    Some(self.image.view(x, y, w, h))
+    Some(better_view(&self.image, x, y, w, h))
   }
 }
 impl<T, IT> SliceLookup<T, IT> where T: DerefMut<Target = DynamicImage>, IT: Iterator<Item = (u32, u32, u32, u32)> {
   fn next_mut(&mut self) -> Option<SubImage<&mut DynamicImage>> {
     let (x, y, w, h) = self.iter.as_mut()?.next()?;
-    Some(self.image.sub_image(x, y, w, h))
+    Some(better_view_mut(&mut self.image, x, y, w, h))
   }
 }

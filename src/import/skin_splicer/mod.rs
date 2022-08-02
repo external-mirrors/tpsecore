@@ -17,4 +17,3 @@ pub enum LoadError {
   #[error("failed to load image: {0}")]
   ImageError(#[from] image::ImageError)
 }
-

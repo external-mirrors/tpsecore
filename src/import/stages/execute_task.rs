@@ -1,11 +1,11 @@
 use image::DynamicImage;
 use crate::import::import_task::ImportTask;
-use crate::import::{ImportError, SkinType, SpecificImportType};
+use crate::import::{ImportErrorType, SkinType, SpecificImportType};
 use crate::import::skin_splicer::SkinSplicer;
 use crate::tpse::TPSE;
 
 /// Executes an import task
-pub fn execute_task(task: ImportTask) -> Result<TPSE, ImportError> {
+pub fn execute_task(task: ImportTask) -> Result<TPSE, ImportErrorType> {
   let mut tpse = TPSE::default();
   match task {
     ImportTask::AnimatedSkinFrames(skin_type, frames) => todo!(),
@@ -15,7 +15,7 @@ pub fn execute_task(task: ImportTask) -> Result<TPSE, ImportError> {
         SpecificImportType::Zip => todo!(),
         SpecificImportType::TPSE => {
           tpse.merge(serde_json::from_slice(file).map_err(|err| {
-            ImportError::InvalidTPSE(err.to_string())
+            ImportErrorType::InvalidTPSE(err.to_string())
           })?);
         },
         SpecificImportType::Skin(skin_type) => {
@@ -34,7 +34,7 @@ pub fn execute_task(task: ImportTask) -> Result<TPSE, ImportError> {
 }
 
 fn splice_to_t61(skin_type: SkinType, bytes: &[u8])
-  -> Result<(Option<DynamicImage>, Option<DynamicImage>), ImportError>
+  -> Result<(Option<DynamicImage>, Option<DynamicImage>), ImportErrorType>
 {
   let target_resolution = 96;
   let mut source = SkinSplicer::default();

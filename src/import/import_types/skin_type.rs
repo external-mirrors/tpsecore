@@ -37,6 +37,7 @@ impl SkinType {
     use SkinType::*;
     let likely_animated = ext.as_ref() == "gif" || opts.has_fields();
     let ratio = |target: f64| (width as f64 / height as f64).sub(target).abs() < 0.1;
+    log::info!("Guessing format for ext: {} w: {} h: {} anim: {}", ext, width, height, likely_animated);
     match (ext.as_ref(), width, height, likely_animated) {
       (    _, 256, 256, true) => Some(Tetrio61ConnectedAnimated { opts }),
       (    _, 256, 256,    _) => Some(Tetrio61Connected),

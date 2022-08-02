@@ -2,6 +2,7 @@ use lazy_static::lazy_static;
 use crate::import::skin_splicer::Piece;
 use std::collections::HashMap;
 use image::codecs::png::CompressionType::Default;
+use num_traits::cast::ToPrimitive;
 
 /// A skin slice stores fractional resolution-independent coordinates denoting
 /// a slice corresponding to a specific piece. The skin slice then also has a
@@ -25,12 +26,24 @@ impl SkinSlice {
     // The parts of the image storing the given connections
     // Note that multiple connections can be required, as some skins use multiple layers
     // to construct each individual block. (right now just the jstris connected skin).
-    Some(self.connections.get(connection)?.iter().cloned().map(move |(conn_x, conn_y)| {
+    Some(self.connections.get(connection)?.iter().cloned().map(move |(conn_pos_x, conn_pos_y)| {
+      // the resolution of each individual connection piece
       let conn_w = piece_w as f64 / self.connections.max_x as f64;
       let conn_h = piece_h as f64 / self.connections.max_y as f64;
-      let conn_x = piece_x as f64 + conn_x as f64 * conn_w;
-      let conn_y = piece_y as f64 + conn_x as f64 * conn_h;
-      (conn_w as u32, conn_h as u32, conn_x as u32, conn_y as u32)
+      // and the location they're located at
+      let conn_x = piece_x as f64 + conn_pos_x as f64 * conn_w;
+      let conn_y = piece_y as f64 + conn_pos_y as f64 * conn_h;
+      log::trace!(
+        "Skin slice {} {} {} {} is slicing a {}x{} image for conn {:b}.\
+        Piece location: {} {} {} {}. \
+        Slice result: {} {} {} {}. \
+        (using slice {} {} of max slice map size {} {})",
+        self.x, self.y, self.w, self.h, width, height, connection,
+        piece_x, piece_y, piece_w, piece_h,
+        conn_x, conn_y, conn_w, conn_h,
+        conn_pos_x, conn_pos_y, self.connections.max_x, self.connections.max_y
+      );
+      (conn_x.to_u32().unwrap(), conn_y.to_u32().unwrap(), conn_w.to_u32().unwrap(), conn_h.to_u32().unwrap())
     }))
   }
 }
@@ -146,8 +159,8 @@ impl ConnectionSubmap {
   pub fn insert(&mut self, connection: u8, location: &'static [(u8, u8)]) {
     assert!(location.len() > 0, "Expected at least one location");
     self.connections.insert(connection, location);
-    self.max_x = self.max_x.max(*location.iter().map(|(x,_)| x).max().unwrap());
-    self.max_y = self.max_y.max(*location.iter().map(|(_,y)| y).max().unwrap());
+    self.max_x = self.max_x.max(*location.iter().map(|(x,_)| x).max().unwrap() + 1);
+    self.max_y = self.max_y.max(*location.iter().map(|(_,y)| y).max().unwrap() + 1);
   }
 
   pub fn get(&self, connection: u8) -> Option<&'static [(u8, u8)]> {

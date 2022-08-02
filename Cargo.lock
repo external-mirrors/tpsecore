@@ -798,6 +798,7 @@ dependencies = [
  "image",
  "lazy_static",
  "log",
+ "num-traits",
  "regex",
  "serde",
  "serde_json",

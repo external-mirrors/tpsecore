@@ -1,5 +1,4 @@
-use crate::import::SpecificImportType;
-use crate::ImportOptions;
+use crate::import::{ImportOptions, SpecificImportType};
 
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub struct ImportResult<'a, 'b> {
@@ -10,7 +9,12 @@ pub struct ImportResult<'a, 'b> {
 }
 
 impl<'a, 'b> ImportResult<'a, 'b> {
-  pub fn new(filename: &'a str, bytes: &'b [u8], options: ImportOptions, specific_import_type: SpecificImportType) -> Self {
+  pub fn new(
+    filename: &'a str,
+    bytes: &'b [u8],
+    options: ImportOptions,
+    specific_import_type: SpecificImportType
+  ) -> Self {
     Self { filename, bytes, options, specific_import_type }
   }
 }
