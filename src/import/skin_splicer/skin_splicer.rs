@@ -86,6 +86,28 @@ impl SkinSplicer {
       SliceLookup { skin_type, image, iter }
     })
   }
+
+  /// Creates a skin of the given output type, returning None if no blocks were
+  /// available to draw to it.
+  pub fn convert(&self, target_type: SkinType, block_size_override: Option<u32>)
+    -> Option<DynamicImage>
+  {
+    let mut target = SkinSplicer::default();
+    target.create_empty(target_type, block_size_override);
+    let mut valid = false;
+
+    for piece in Piece::values() {
+      for conn in tetrio_connections_submap.connections.keys() {
+        if let Some(texture) = self.get(*piece, *conn, block_size_override) {
+          if let Some(()) = target.set(*piece, *conn, &DynamicImage::from(texture)) {
+            valid = true;
+          }
+        }
+      }
+    }
+
+    if valid { Some(target.images.remove(0).1) } else { None }
+  }
 }
 
 /// exists because lifetime limitations, need lending iterators :/

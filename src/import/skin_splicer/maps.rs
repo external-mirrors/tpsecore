@@ -122,7 +122,7 @@ pub fn jstris_conn_map(piece: Piece) -> Option<SkinSlice> {
 pub struct ConnectionSubmap {
   /// Each connection has a unique index. The overall size of these indexes is based on the
   /// maximum index, which will be used to divide the available space.
-  connections: HashMap<u8, &'static [(u8, u8)]>,
+  pub connections: HashMap<u8, &'static [(u8, u8)]>,
   /// The default connection that's guaranteed to be present in the map
   pub default: u8,
   /// The maximum x coordinate inserted into `connections`

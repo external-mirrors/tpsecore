@@ -1,7 +1,8 @@
 use std::fmt::{Debug, Display, Formatter};
+use std::io::{BufWriter, Cursor};
 use std::str::FromStr;
 use data_url::{DataUrl, DataUrlError, forgiving_base64};
-
+use image::DynamicImage;
 
 
 /// A parsed data url stored inside a tpse
@@ -11,6 +12,16 @@ pub struct File {
   pub binary: Vec<u8>,
   /// The MIME type of the file
   pub mime: String
+}
+
+impl From<DynamicImage> for File {
+  fn from(img: DynamicImage) -> Self {
+    // allocate 25% of the uncompressed size upfront for performance
+    // this value was chosen randomly and could use some empirical testing
+    let mut binary = Vec::with_capacity(img.as_bytes().len() / 4);
+    img.write_to(&mut Cursor::new(&mut binary), image::ImageOutputFormat::Png).unwrap();
+    File { binary, mime: "image/png".to_string() }
+  }
 }
 
 impl Debug for File {
