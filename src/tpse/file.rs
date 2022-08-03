@@ -1,5 +1,5 @@
 use std::fmt::{Debug, Display, Formatter};
-use std::io::{BufWriter, Cursor};
+use std::io::{Cursor};
 use std::str::FromStr;
 use data_url::{DataUrl, DataUrlError, forgiving_base64};
 use image::DynamicImage;

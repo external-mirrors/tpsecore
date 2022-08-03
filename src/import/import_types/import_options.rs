@@ -1,5 +1,5 @@
-use std::sync::Arc;
-use crate::import::asset_provider::{AssetProvider, DefaultAssetProvider};
+
+use crate::import::asset_provider::{AssetProvider};
 
 #[derive(Copy, Clone)]
 pub struct ImportOptions<'a> {

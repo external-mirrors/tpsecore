@@ -1,4 +1,4 @@
-use crate::import::{OtherSkinType, SkinType};
+use crate::import::{BackgroundType, OtherSkinType, SkinType};
 
 /// A distilled copy of an import type that's been rendered
 /// to a more specific form than the public API.
@@ -9,6 +9,6 @@ pub enum SpecificImportType {
   Skin(SkinType),
   OtherSkin(OtherSkinType),
   SoundEffects,
-  Background,
+  Background(BackgroundType),
   Music
 }

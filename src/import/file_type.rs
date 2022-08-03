@@ -11,7 +11,7 @@ pub enum FileType {
 }
 
 impl FileType {
-  pub fn from_mime(string: &str) -> Option<FileType> {
+  pub fn from_mime(_string: &str) -> Option<FileType> {
     todo!()
   }
 

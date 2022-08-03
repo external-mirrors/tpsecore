@@ -1,10 +1,7 @@
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
 use std::sync::Arc;
-use wasm_bindgen::{JsCast, JsValue};
-use web_sys::{XmlHttpRequest, XmlHttpRequestResponseType};
-use ImportErrorType::AssetFetchFailed;
-use crate::import::import_error::ImportError;
+
 use crate::import::ImportErrorType;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, serde::Deserialize)]

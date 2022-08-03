@@ -4,7 +4,7 @@ use std::sync::Mutex;
 use lazy_static::lazy_static;
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::*;
-use crate::import::{DefaultAssetProvider, import, ImportOptions, ImportType};
+use crate::import::{DefaultAssetProvider, import, ImportOptions};
 use crate::tpse::TPSE;
 
 #[derive(Default)]
@@ -29,7 +29,7 @@ lazy_static! {
 
 fn with_tpse<T>(tpse: u32, handler: impl FnOnce(&mut TPSE, &mut DefaultAssetProvider) -> T) -> Result<T, JsValue> {
   let mut state = GLOBAL_STATE.lock().unwrap();
-  let mut state = state.deref_mut();
+  let state = state.deref_mut();
   match &mut state.active_tpse_files.get_mut(&tpse) {
     None => Err(JsValue::from("invalid TPSE handle")),
     Some(tpse) => Ok((handler)(tpse, &mut state.provider))

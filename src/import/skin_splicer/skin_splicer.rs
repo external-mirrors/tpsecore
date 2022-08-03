@@ -3,9 +3,9 @@ use std::ops::{Deref, DerefMut};
 use image::{DynamicImage, GenericImage, GenericImageView, ImageBuffer, Rgba, SubImage};
 use image::imageops::FilterType;
 use image::io::Reader;
-use crate::import::skin_splicer::{LoadError, lookup_skin, Piece};
+use crate::import::skin_splicer::{lookup_skin, Piece};
 use crate::import::skin_splicer::maps::*;
-use crate::import::SkinType;
+use crate::import::{LoadError, SkinType};
 
 #[derive(Default)]
 pub struct SkinSplicer {

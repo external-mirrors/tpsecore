@@ -112,7 +112,7 @@ pub struct TPSE {
   #[serde(rename = "ghostAnimMeta")]
   pub ghost_anim_meta: Option<AnimMeta>,
   #[serde(rename = "customSoundAtlas")]
-  pub custom_sound_atlas: Option<HashMap<String, (f64, f64)>>,
+  pub custom_sound_atlas: Option<CustomSoundAtlas>,
   pub backgrounds: Option<Vec<Background>>,
   #[serde(rename = "animatedBackground")]
   pub animated_background: Option<AnimatedBackground>,
@@ -127,6 +127,8 @@ pub struct TPSE {
   #[serde(flatten)]
   pub other: HashMap<String, MiscTPSEValue>
 }
+
+pub type CustomSoundAtlas = HashMap<String, (f64, f64)>;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Song {

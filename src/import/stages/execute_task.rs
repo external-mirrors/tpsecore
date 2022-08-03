@@ -8,8 +8,8 @@ use crate::tpse::TPSE;
 pub fn execute_task(task: ImportTask) -> Result<TPSE, ImportErrorType> {
   let mut tpse = TPSE::default();
   match task {
-    ImportTask::AnimatedSkinFrames(skin_type, frames) => todo!(),
-    ImportTask::SoundEffects(sound_effects) => todo!(),
+    ImportTask::AnimatedSkinFrames(_skin_type, _frames) => todo!(),
+    ImportTask::SoundEffects(_sound_effects) => todo!(),
     ImportTask::Basic(specific_type, file) => {
       match specific_type {
         SpecificImportType::Zip => todo!(),
@@ -23,9 +23,9 @@ pub fn execute_task(task: ImportTask) -> Result<TPSE, ImportErrorType> {
           if let Some(minos) = minos { tpse.skin = Some(minos.into()); }
           if let Some(ghost) = ghost { tpse.ghost = Some(ghost.into()); }
         },
-        SpecificImportType::OtherSkin(skin_type) => todo!(),
+        SpecificImportType::OtherSkin(_skin_type) => todo!(),
         SpecificImportType::SoundEffects => todo!(),
-        SpecificImportType::Background => todo!(),
+        SpecificImportType::Background(_bg_type) => todo!(),
         SpecificImportType::Music => todo!(),
       }
     }

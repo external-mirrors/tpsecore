@@ -1,4 +1,4 @@
-use crate::import::{OtherSkinType, SkinType};
+use crate::import::{BackgroundType, OtherSkinType, SkinType};
 
 /// An ImportType is metadata describing how a single file should be imported
 #[derive(Debug, Hash, Eq, PartialEq, Copy, Clone, serde::Serialize, serde::Deserialize)]
@@ -16,6 +16,9 @@ pub enum ImportType {
     subtype: OtherSkinType
   },
   SoundEffects,
-  Background,
+  Background {
+    #[serde(flatten)]
+    subtype: BackgroundType
+  },
   Music
 }

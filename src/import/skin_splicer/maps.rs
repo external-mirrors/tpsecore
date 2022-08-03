@@ -1,7 +1,7 @@
 use lazy_static::lazy_static;
 use crate::import::skin_splicer::Piece;
 use std::collections::HashMap;
-use image::codecs::png::CompressionType::Default;
+
 use num_traits::cast::ToPrimitive;
 
 /// A skin slice stores fractional resolution-independent coordinates denoting

@@ -1,9 +1,8 @@
 use std::borrow::Cow;
 use std::collections::HashSet;
 use image::ImageError;
-use wasm_bindgen::JsValue;
+
 use crate::import::asset_provider::Asset;
-use crate::import::skin_splicer::LoadError;
 use crate::import::SkinType;
 
 pub struct ImportError {
@@ -33,8 +32,27 @@ pub enum ImportErrorType {
   #[error("failed to fetch asset for {0:?}: {1:?}")]
   AssetFetchFailed(Asset, String),
   #[error("the {0} asset was not preloaded and the given AssetProvider cannot fetch it")]
-  AssetNotPreloaded(Asset)
+  AssetNotPreloaded(Asset),
+  #[error("asset parse failure: {0}")]
+  AssetParseFailure(#[from] AssetParseFailure)
 }
+
+#[derive(Debug, thiserror::Error)]
+pub enum AssetParseFailure {
+  #[error("Tried to parse non-UTF8 data as UTF8")]
+  UTF8Error,
+  #[error("failed to extract sound effects regex")]
+  SoundEffectsAtlasRegex,
+  #[error("failed to parse sound effects atlas")]
+  SoundEffectsAtlasParse,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum LoadError {
+  #[error("failed to load image: {0}")]
+  ImageError(#[from] image::ImageError)
+}
+
 impl From<ImageError> for ImportErrorType {
   fn from(err: ImageError) -> Self {
     Self::LoadError(LoadError::ImageError(err))

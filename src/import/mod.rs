@@ -8,11 +8,12 @@ mod file_type;
 mod import_result;
 mod import;
 mod asset_provider;
+pub mod tetriojs;
 
 pub use import_types::*;
 pub use file_type::FileType;
 pub use specific_import_type::SpecificImportType;
-pub use import_error::ImportErrorType;
+pub use import_error::*;
 pub use import_result::ImportResult;
 pub use import::import;
 pub use asset_provider::*;

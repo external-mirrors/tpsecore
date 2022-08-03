@@ -86,9 +86,9 @@ pub fn reduce_types<'a>(results: &'a [ImportResult]) -> Result<Vec<ImportTask<'a
           (name.to_string_lossy().to_string(), file.bytes)
         }));
       }
-      SpecificImportType::Background => {
+      SpecificImportType::Background(bg_type) => {
         import_tasks.extend(files.into_iter().map(|file| {
-          ImportTask::Basic(SIT::Background, file.bytes)
+          ImportTask::Basic(SIT::Background(bg_type), file.bytes)
         }));
       }
       SpecificImportType::Music => {
