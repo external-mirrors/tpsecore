@@ -1,16 +1,17 @@
-#[derive(Copy, Clone, Eq, PartialEq)]
-pub struct ImportOptions {
-  pub depth_limit: u8
+use std::sync::Arc;
+use crate::import::asset_provider::{AssetProvider, DefaultAssetProvider};
+
+#[derive(Copy, Clone)]
+pub struct ImportOptions<'a> {
+  pub depth_limit: u8,
+  pub asset_source: &'a dyn AssetProvider
 }
 
-impl Default for ImportOptions {
-  fn default() -> Self {
-    Self { depth_limit: 5 }
-  }
-}
-
-impl ImportOptions {
-  pub fn minus_one_depth(self) -> Self {
-    ImportOptions { depth_limit: self.depth_limit - 1 }
+impl ImportOptions<'_> {
+  pub fn minus_one_depth(&self) -> Self {
+    ImportOptions {
+      depth_limit: self.depth_limit - 1,
+      asset_source: self.asset_source
+    }
   }
 }

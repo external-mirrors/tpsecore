@@ -9,10 +9,10 @@ use crate::import::import_task::ImportTask;
 pub fn reduce_types<'a>(results: &'a [ImportResult]) -> Result<Vec<ImportTask<'a>>, ImportErrorType> {
   let mut map: HashMap<SpecificImportType, Vec<ImportResult>> = HashMap::new();
   for res in results {
-    map.entry(res.specific_import_type).or_default().push(*res);
+    map.entry(res.specific_import_type).or_default().push(res.clone());
   }
 
-  // The import tasks that must be performed
+  // The import tasks to be performed
   let mut import_tasks = vec![];
   // Sound effects are collated so that they can be assembled all at once
   // Duplicate order is undefined

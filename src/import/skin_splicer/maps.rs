@@ -34,10 +34,10 @@ impl SkinSlice {
       let conn_x = piece_x as f64 + conn_pos_x as f64 * conn_w;
       let conn_y = piece_y as f64 + conn_pos_y as f64 * conn_h;
       log::trace!(
-        "Skin slice {} {} {} {} is slicing a {}x{} image for conn {:b}.\
-        Piece location: {} {} {} {}. \
-        Slice result: {} {} {} {}. \
-        (using slice {} {} of max slice map size {} {})",
+        "Skin slice {} {} {} {} is slicing a {}x{} image for conn {:b}. \
+        Piece location: {} {} {} {} -> \
+        Slice result: {} {} {} {} \
+        (using slice {} {} of max slice map size {} {}).",
         self.x, self.y, self.w, self.h, width, height, connection,
         piece_x, piece_y, piece_w, piece_h,
         conn_x, conn_y, conn_w, conn_h,

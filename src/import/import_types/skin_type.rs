@@ -37,8 +37,7 @@ impl SkinType {
     use SkinType::*;
     let likely_animated = ext.as_ref() == "gif" || opts.has_fields();
     let ratio = |target: f64| (width as f64 / height as f64).sub(target).abs() < 0.1;
-    log::info!("Guessing format for ext: {} w: {} h: {} anim: {}", ext, width, height, likely_animated);
-    match (ext.as_ref(), width, height, likely_animated) {
+    let result = match (ext.as_ref(), width, height, likely_animated) {
       (    _, 256, 256, true) => Some(Tetrio61ConnectedAnimated { opts }),
       (    _, 256, 256,    _) => Some(Tetrio61Connected),
       (    _, 128, 128, true) => Some(Tetrio61ConnectedGhostAnimated { opts }),
@@ -54,8 +53,13 @@ impl SkinType {
       (    _,   _,   _, true) if ratio(9.0) => Some(JstrisAnimated { opts }),
       (    _,   _,   _,    _) if ratio(9.0) => Some(JstrisConnected),
       (    _,   _,   _,    _) if ratio(9.0/20.0) => Some(JstrisConnected),
-      _ => todo!()
-    }
+      _ => None
+    };
+    log::info!(
+      "Guessing format for ext: {} w: {} h: {} anim: {} = {:?}",
+      ext, width, height, likely_animated, result
+    );
+    result
   }
 
   /// Returns the native size of the texture as a combination of the default size of the individual

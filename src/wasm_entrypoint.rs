@@ -1,14 +1,16 @@
 use std::collections::HashMap;
+use std::ops::DerefMut;
 use std::sync::Mutex;
 use lazy_static::lazy_static;
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::*;
-use crate::import::{import, ImportType};
+use crate::import::{DefaultAssetProvider, import, ImportOptions, ImportType};
 use crate::tpse::TPSE;
 
 #[derive(Default)]
 struct State {
   active_tpse_files: HashMap<u32, TPSE>,
+  provider: DefaultAssetProvider,
   id_incr: u32
 }
 
@@ -25,11 +27,12 @@ lazy_static! {
     };
 }
 
-fn with_tpse<T>(tpse: u32, handler: impl FnOnce(&mut TPSE) -> T) -> Result<T, JsValue> {
+fn with_tpse<T>(tpse: u32, handler: impl FnOnce(&mut TPSE, &mut DefaultAssetProvider) -> T) -> Result<T, JsValue> {
   let mut state = GLOBAL_STATE.lock().unwrap();
-  match state.active_tpse_files.get_mut(&tpse) {
+  let mut state = state.deref_mut();
+  match &mut state.active_tpse_files.get_mut(&tpse) {
     None => Err(JsValue::from("invalid TPSE handle")),
-    Some(tpse) => Ok((handler)(tpse))
+    Some(tpse) => Ok((handler)(tpse, &mut state.provider))
   }
 }
 
@@ -47,9 +50,13 @@ pub fn create_tpse() -> u32 {
 pub fn import_file(tpse: u32, import_type: JsValue, filename: String, bytes: &[u8]) -> Result<(), JsValue> {
   let import_type = import_type.into_serde().map_err(|err| JsValue::from(err.to_string()))?;
   log::debug!("[TPSE {}] Importing file {} as {:?}", tpse, filename, import_type);
-  with_tpse(tpse, |tpse| -> Result<(), JsValue> {
-    let new_tpse = import(vec![(import_type, &filename, bytes)]).map_err(|err| {
-      JsValue::from_serde(&err).unwrap()
+  with_tpse(tpse, |tpse, provider| -> Result<(), JsValue> {
+    let options = ImportOptions {
+      asset_source: provider,
+      depth_limit: 5
+    };
+    let new_tpse = import(vec![(import_type, &filename, bytes)], options).map_err(|err| {
+      JsValue::from(err.to_string())
     })?;
     tpse.merge(new_tpse);
     Ok(())
@@ -60,7 +67,7 @@ pub fn import_file(tpse: u32, import_type: JsValue, filename: String, bytes: &[u
 #[wasm_bindgen]
 pub fn export_tpse(tpse: u32) -> Result<String, JsValue> {
   log::debug!("[TPSE {}] Exporting", tpse);
-  with_tpse(tpse, |tpse| serde_json::to_string(tpse).unwrap())
+  with_tpse(tpse, |tpse, _| serde_json::to_string(tpse).unwrap())
 }
 
 #[wasm_bindgen]
@@ -72,4 +79,13 @@ pub fn drop_tpse(tpse: u32) -> Result<(), JsValue> {
   } else {
     Ok(())
   }
+}
+
+#[wasm_bindgen]
+pub fn provide_asset(asset: JsValue, data: &[u8]) -> Result<(), JsValue> {
+  let mut state = GLOBAL_STATE.lock().unwrap();
+  let asset = asset.into_serde().map_err(|err| JsValue::from(err.to_string()))?;
+  log::debug!("Provided asset {}: {} bytes", asset, data.len());
+  state.provider.preload(asset, Vec::from(data));
+  Ok(())
 }
