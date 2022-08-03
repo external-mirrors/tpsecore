@@ -7,3 +7,11 @@ pub enum BackgroundType {
   Video,
   Image
 }
+impl From<crate::tpse::BackgroundType> for BackgroundType {
+  fn from(bg: crate::tpse::BackgroundType) -> Self {
+    match bg {
+      crate::tpse::BackgroundType::Image => Self::Image,
+      crate::tpse::BackgroundType::Video => Self::Video
+    }
+  }
+}

@@ -1,20 +1,27 @@
 use crate::import::{ImportOptions, SpecificImportType};
+use crate::tpse::File;
 
 #[derive(Clone)]
-pub struct ImportResult<'a, 'b, 'c> {
-  pub filename: &'a str,
-  pub bytes: &'b [u8],
-  pub options: ImportOptions<'c>,
-  pub specific_import_type: SpecificImportType
+pub struct ImportResult<'c> {
+  pub filename: String,
+  pub file: File,
+  pub specific_import_type: SpecificImportType,
+  pub options: ImportOptions<'c>
 }
 
-impl<'a, 'b, 'c> ImportResult<'a, 'b, 'c> {
+impl<'c> ImportResult<'c> {
   pub fn new(
-    filename: &'a str,
-    bytes: &'b [u8],
+    filename: &str,
+    bytes: &[u8],
+    mime_type: &str,
     options: ImportOptions<'c>,
     specific_import_type: SpecificImportType
   ) -> Self {
-    Self { filename, bytes, options, specific_import_type }
+    Self {
+      filename: filename.to_string(),
+      file: File { binary: bytes.to_owned(), mime: mime_type.to_string() },
+      specific_import_type,
+      options
+    }
   }
 }

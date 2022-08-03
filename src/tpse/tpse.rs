@@ -132,27 +132,27 @@ pub type CustomSoundAtlas = HashMap<String, (f64, f64)>;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Song {
-  id: String,
-  filename: String,
+  pub id: String,
+  pub filename: String,
   #[serde(rename = "override")]
-  song_override: Option<String>,
-  metadata: SongMetadata
+  pub song_override: Option<String>,
+  pub metadata: SongMetadata
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Debug, serde::Serialize, serde::Deserialize)]
 pub struct SongMetadata {
-  name: String,
-  jpname: String,
-  artist: String,
-  jpartist: String,
-  genre: SongGenre,
-  source: String,
+  pub name: String,
+  pub jpname: String,
+  pub artist: String,
+  pub jpartist: String,
+  pub genre: SongGenre,
+  pub source: String,
   #[serde(rename = "loop")]
-  song_loop: bool,
+  pub song_loop: bool,
   #[serde(rename = "loopStart")]
-  loop_start: u32,
+  pub loop_start: u32,
   #[serde(rename = "loopLength")]
-  loop_length: u32
+  pub loop_length: u32
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -163,6 +163,11 @@ pub enum SongGenre {
   Override,
   Calm,
   Battle
+}
+impl Default for SongGenre {
+  fn default() -> Self {
+    Self::Calm
+  }
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]

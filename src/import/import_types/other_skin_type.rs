@@ -1,3 +1,5 @@
+use crate::tpse::{File, TPSE};
+
 #[derive(Debug, Hash, Eq, PartialEq, Copy, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "subtype", rename_all = "snake_case")]
 pub enum OtherSkinType {
@@ -35,4 +37,45 @@ pub enum OtherSkinType {
   RankU,
   RankX,
   RankZ
+}
+
+impl OtherSkinType {
+  pub fn tpse_field<'a>(&'_ self, tpse: &'a mut TPSE) -> &'a mut Option<File> {
+    match self {
+      Self::Board => &mut tpse.board,
+      Self::Queue => &mut tpse.board,
+      Self::Grid => &mut tpse.grid,
+      Self::ParticleBeam => &mut tpse.particle_beam,
+      Self::ParticleBeamsBeam => &mut tpse.particle_beams_beam,
+      Self::ParticleBigBox => &mut tpse.particle_bigbox,
+      Self::ParticleBox => &mut tpse.particle_box,
+      Self::ParticleChip => &mut tpse.particle_chip,
+      Self::ParticleChirp => &mut tpse.particle_chirp,
+      Self::ParticleDust => &mut tpse.particle_dust,
+      Self::ParticleFBox => &mut tpse.particle_fbox,
+      Self::ParticleFire => &mut tpse.particle_fire,
+      Self::ParticleParticle => &mut tpse.particle_particle,
+      Self::ParticleSmoke => &mut tpse.particle_smoke,
+      Self::ParticleStar => &mut tpse.particle_star,
+      Self::ParticleFlake => &mut tpse.particle_flake,
+      Self::RankD => &mut tpse.rank_d,
+      Self::RankDPlus => &mut tpse.rank_dplus,
+      Self::RankCMinus => &mut tpse.rank_cminus,
+      Self::RankC => &mut tpse.rank_c,
+      Self::RankCPlus => &mut tpse.rank_cplus,
+      Self::RankBMinus => &mut tpse.rank_bminus,
+      Self::RankB => &mut tpse.rank_b,
+      Self::RankBPlus => &mut tpse.rank_bplus,
+      Self::RankAMinus => &mut tpse.rank_aminus,
+      Self::RankA => &mut tpse.rank_a,
+      Self::RankAPlus => &mut tpse.rank_aplus,
+      Self::RankSMinus => &mut tpse.rank_sminus,
+      Self::RankS => &mut tpse.rank_s,
+      Self::RankSPlus => &mut tpse.rank_splus,
+      Self::RankSS => &mut tpse.rank_ss,
+      Self::RankU => &mut tpse.rank_u,
+      Self::RankX => &mut tpse.rank_x,
+      Self::RankZ => &mut tpse.rank_z
+    }
+  }
 }

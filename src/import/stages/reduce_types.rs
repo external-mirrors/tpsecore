@@ -3,10 +3,11 @@ use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
 use std::path::Path;
 use crate::import::{ImportErrorType, ImportResult, SkinType, SpecificImportType};
-use crate::import::import_task::ImportTask;
+use crate::import::import_task::{ImportTask, SoundEffect};
+use crate::tpse::File;
 
 /// Collates multiple import results into a list of import tasks
-pub fn reduce_types<'a>(results: &'a [ImportResult]) -> Result<Vec<ImportTask<'a>>, ImportErrorType> {
+pub fn reduce_types(results: &[ImportResult]) -> Result<Vec<ImportTask>, ImportErrorType> {
   let mut map: HashMap<SpecificImportType, Vec<ImportResult>> = HashMap::new();
   for res in results {
     map.entry(res.specific_import_type).or_default().push(res.clone());
@@ -16,7 +17,7 @@ pub fn reduce_types<'a>(results: &'a [ImportResult]) -> Result<Vec<ImportTask<'a
   let mut import_tasks = vec![];
   // Sound effects are collated so that they can be assembled all at once
   // Duplicate order is undefined
-  let mut sound_effects: Vec<(String, &'a [u8])> = vec![];
+  let mut sound_effects: Vec<SoundEffect> = vec![];
   // Minos and ghosts are collated to allow for animated-from-frames style textures
   let mut animated_minos: Option<(SkinType, Vec<ImportResult>)> = None;
   let mut animated_ghost: Option<(SkinType, Vec<ImportResult>)> = None;
@@ -29,13 +30,13 @@ pub fn reduce_types<'a>(results: &'a [ImportResult]) -> Result<Vec<ImportTask<'a
     use SpecificImportType as SIT;
     match key {
       SpecificImportType::Zip => {
-        import_tasks.extend(files.into_iter().map(|file| {
-          ImportTask::Basic(SIT::Zip, file.bytes)
+        import_tasks.extend(files.into_iter().map(|import_result| {
+          ImportTask::Basic(SIT::Zip, import_result.filename, import_result.file)
         }));
       },
       SpecificImportType::TPSE => {
-        import_tasks.extend(files.into_iter().map(|file| {
-          ImportTask::Basic(SIT::TPSE, file.bytes)
+        import_tasks.extend(files.into_iter().map(|import_result| {
+          ImportTask::Basic(SIT::TPSE, import_result.filename, import_result.file)
         }));
       },
       SpecificImportType::Skin(skin_type) => {
@@ -70,30 +71,38 @@ pub fn reduce_types<'a>(results: &'a [ImportResult]) -> Result<Vec<ImportTask<'a
             }
           }
         } else {
-          import_tasks.extend(files.into_iter().map(|file| {
-            ImportTask::Basic(SIT::Skin(skin_type), file.bytes)
+          import_tasks.extend(files.into_iter().map(|import_result| {
+            ImportTask::Basic(SIT::Skin(skin_type), import_result.filename, import_result.file)
           }));
         }
       }
       SpecificImportType::OtherSkin(skin_type) => {
-        import_tasks.extend(files.into_iter().map(|file| {
-          ImportTask::Basic(SIT::OtherSkin(skin_type), file.bytes)
+        import_tasks.extend(files.into_iter().map(|import_result| {
+          ImportTask::Basic(SIT::OtherSkin(skin_type), import_result.filename, import_result.file)
         }));
       }
       SpecificImportType::SoundEffects => {
-        sound_effects.extend(files.into_iter().map(|file| {
-          let name = Path::new(file.filename).file_stem().unwrap_or(OsStr::new(file.filename));
-          (name.to_string_lossy().to_string(), file.bytes)
+        sound_effects.extend(files.into_iter().map(|import_result| {
+          let name = Path::new(&import_result.filename)
+            .file_stem()
+            .unwrap_or(OsStr::new(&import_result.filename))
+            .to_string_lossy()
+            .to_string();
+          SoundEffect {
+            name,
+            filename: import_result.filename,
+            file: import_result.file
+          }
         }));
       }
       SpecificImportType::Background(bg_type) => {
-        import_tasks.extend(files.into_iter().map(|file| {
-          ImportTask::Basic(SIT::Background(bg_type), file.bytes)
+        import_tasks.extend(files.into_iter().map(|import_result| {
+          ImportTask::Basic(SIT::Background(bg_type), import_result.filename, import_result.file)
         }));
       }
       SpecificImportType::Music => {
-        import_tasks.extend(files.into_iter().map(|file| {
-          ImportTask::Basic(SIT::Music, file.bytes)
+        import_tasks.extend(files.into_iter().map(|import_result| {
+          ImportTask::Basic(SIT::Music, import_result.filename, import_result.file)
         }));
       }
     }
@@ -110,11 +119,13 @@ pub fn reduce_types<'a>(results: &'a [ImportResult]) -> Result<Vec<ImportTask<'a
   }
   if animated_minos.as_ref().map(|(t,_)| *t) != animated_ghost.as_ref().map(|(t,_)| *t) {
     if let Some((ghost_type, results)) = animated_ghost {
-      import_tasks.push(ImportTask::AnimatedSkinFrames(ghost_type, results.iter().map(|res| res.bytes).collect()))
+      let files = results.into_iter().map(|res| res.file).collect();
+      import_tasks.push(ImportTask::AnimatedSkinFrames(ghost_type, files))
     }
   }
   if let Some((mino_type, results)) = animated_minos {
-    import_tasks.push(ImportTask::AnimatedSkinFrames(mino_type, results.iter().map(|res| res.bytes).collect()))
+    let files = results.into_iter().map(|res| res.file).collect();
+    import_tasks.push(ImportTask::AnimatedSkinFrames(mino_type, files))
   }
 
   Ok(import_tasks)

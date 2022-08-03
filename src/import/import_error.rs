@@ -37,6 +37,7 @@ pub enum ImportErrorType {
   AssetParseFailure(#[from] AssetParseFailure)
 }
 
+/// An error indicating failure to parse base game assets
 #[derive(Debug, thiserror::Error)]
 pub enum AssetParseFailure {
   #[error("Tried to parse non-UTF8 data as UTF8")]
@@ -47,10 +48,15 @@ pub enum AssetParseFailure {
   SoundEffectsAtlasParse,
 }
 
+/// An error indicating failure to parse a media file
 #[derive(Debug, thiserror::Error)]
 pub enum LoadError {
   #[error("failed to load image: {0}")]
-  ImageError(#[from] image::ImageError)
+  ImageError(#[from] image::ImageError),
+  #[error("failed to decode audio: {0}")]
+  SymphoniaError(#[from] symphonia::core::errors::Error),
+  #[error("failed to decode audio: no supported audio track")]
+  NoSupportedAudioTrack
 }
 
 impl From<ImageError> for ImportErrorType {

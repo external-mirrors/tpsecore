@@ -23,3 +23,11 @@ pub enum BackgroundType {
   /// Special music-graph-only backgrounds that can use video files
   Video
 }
+impl From<crate::import::BackgroundType> for BackgroundType {
+  fn from(bg: crate::import::BackgroundType) -> Self {
+    match bg {
+      crate::import::BackgroundType::Image => Self::Image,
+      crate::import::BackgroundType::Video => Self::Video
+    }
+  }
+}

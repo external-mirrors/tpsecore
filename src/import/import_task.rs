@@ -1,9 +1,25 @@
+use std::path::Path;
 use crate::import::{SkinType, SpecificImportType};
+use crate::tpse::File;
 
 /// A collated form of a SpecificImportType suitable for performing the actual import step.
-#[derive(Debug, Hash, Eq, PartialEq, Clone)]
-pub enum ImportTask<'a> {
-  AnimatedSkinFrames(SkinType, Vec<&'a [u8]>),
-  SoundEffects(Vec<(String, &'a [u8])>),
-  Basic(SpecificImportType, &'a [u8])
+#[derive(Debug, Clone)]
+pub enum ImportTask {
+  AnimatedSkinFrames(SkinType, Vec<File>),
+  SoundEffects(Vec<SoundEffect>),
+  Basic(SpecificImportType, String, File)
+}
+
+#[derive(Debug, Clone)]
+pub struct SoundEffect {
+  /// The name of the sound effect, usually the file name sans extension
+  pub name: String,
+  pub filename: String,
+  pub file: File,
+}
+
+impl SoundEffect {
+  pub fn extension(&self) -> Option<String> {
+    Path::new(&self.filename).extension().map(|el| el.to_string_lossy().to_string())
+  }
 }

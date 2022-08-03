@@ -7,9 +7,9 @@ use crate::import::tetriojs::custom_sound_atlas;
 
 
 /// Prepares a single file for import.
-pub fn decide_specific_type<'a, 'b, 'c>
-  (import_type: ImportType, filename: &'a str, bytes: &'b [u8], options: ImportOptions<'c>)
-  -> Result<ImportResult<'a, 'b, 'c>, ImportErrorType>
+pub fn decide_specific_type<'c>
+  (import_type: ImportType, filename: &str, bytes: &[u8], options: ImportOptions<'c>)
+  -> Result<ImportResult<'c>, ImportErrorType>
 {
   if options.depth_limit == 0 {
     return Err(ImportErrorType::TooMuchNesting)
@@ -52,9 +52,10 @@ pub fn decide_specific_type<'a, 'b, 'c>
     ImportType::Skin { subtype } => SIT::Skin(subtype),
     ImportType::OtherSkin { subtype } => SIT::OtherSkin(subtype),
     ImportType::SoundEffects => SIT::SoundEffects,
-    ImportType::Background => SIT::Background,
+    ImportType::Background { subtype } => SIT::Background(subtype),
     ImportType::Music => SIT::Music
   };
 
-  Ok(ImportResult::new(filename, bytes, options.clone(), specific_import_type))
+  let mime = mime_guess::from_path(filename).first_or_octet_stream().to_string();
+  Ok(ImportResult::new(filename, bytes, &mime, options.clone(), specific_import_type))
 }
