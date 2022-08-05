@@ -70,7 +70,7 @@ pub fn execute_task(task: ImportTask, options: ImportOptions<'_>) -> Result<TPSE
       let mut decoded = Vec::with_capacity(546 * 44100 * 2);
       decode(tetrio_ogg, Some("ogg"), |samples| {
         decoded.extend_from_slice(samples);
-      });
+      })?;
 
       for sfx_name in unvisited {
         let (offset, duration) = atlas.get_mut(&sfx_name).unwrap();

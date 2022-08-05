@@ -1,5 +1,6 @@
 use std::ffi::{CStr, CString};
 use std::io::Cursor;
+use std::io::ErrorKind::UnexpectedEof;
 use std::os::raw::c_char;
 use std::ptr::{null, null_mut};
 use symphonia::core::audio::SampleBuffer;
@@ -14,22 +15,25 @@ use crate::import::LoadError::{NoSupportedAudioTrack, SymphoniaError};
 use crate::tpse::CustomSoundAtlas;
 
 pub struct TetrioAtlasDecoder {
-  pub decoded: Vec<f32>,
+  pub atlas: CustomSoundAtlas,
+  pub decoded: Vec<f32>
 }
 
 impl TetrioAtlasDecoder {
-  pub fn decode(bytes: &[u8], extension: Option<&str>) -> Result<Self, ImportErrorType> {
+  pub fn decode(atlas: CustomSoundAtlas, bytes: &[u8], extension: Option<&str>) -> Result<Self, ImportErrorType> {
     let mut decoded = Vec::with_capacity(546 * 44100 * 2);
     decode(bytes, Some("ogg"), |samples| {
       decoded.extend_from_slice(samples);
     })?;
-    Ok(TetrioAtlasDecoder { decoded })
+    Ok(TetrioAtlasDecoder { atlas, decoded })
   }
 
-  pub fn lookup(&self, atlas: &CustomSoundAtlas, sfx_name: &str) -> Option<&[f32]> {
-    let (offset, duration) = atlas.get(sfx_name)?;
-    let offset_samples = (offset * 44100.0 * 2.0) as usize;
-    let offset_duration = (duration * 44100.0 * 2.0) as usize;
+  pub fn lookup(&self, sfx_name: &str) -> Option<&[f32]> {
+    let (offset, duration) = self.atlas.get(sfx_name)?;
+    // todo throw on overflow (and all the other places we do unchecked casts)
+    let offset_samples = (offset * 44100.0/1000.0 * 2.0) as usize;
+    let offset_duration = (duration * 44100.0/1000.0 * 2.0) as usize;
+    log::trace!("lookup {}: {} {} -> {} {}", sfx_name, offset, duration, offset_samples, offset_duration);
     Some(&self.decoded[offset_samples..offset_samples + offset_duration])
   }
 }
@@ -59,11 +63,15 @@ pub fn decode(bytes: &[u8], extension: Option<&str>, mut caller: impl FnMut(&[f3
   loop {
     let packet = match probe.format.next_packet() {
       Err(symphonia::core::errors::Error::ResetRequired) => break,
+      Err(symphonia::core::errors::Error::IoError(err)) if err.kind() == UnexpectedEof => {
+        log::warn!("[temporary debug] ignoring unexpected eof");
+        break
+      },
       Err(other) => {
-        log::warn!("{:?}", other);
+        log::debug!("Rich symphonia error: {:?}", other);
         return Err(SymphoniaError(other).into())
       },
-      Ok(packet) => packet,
+      Ok(packet) => packet
     };
     if packet.track_id() != track_id { continue; }
     let decoded = decoder.decode(&packet).map_err(|err| SymphoniaError(err))?;

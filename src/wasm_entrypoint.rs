@@ -13,9 +13,25 @@ use crate::tpse::TPSE;
 
 #[derive(Default)]
 struct State {
-  active_tpse_files: HashMap<u32, TPSE>,
+  active_tpse_files: HashMap<u32, CacheContext<TPSE>>,
+  default_context: CacheContext<()>,
   provider: DefaultAssetProvider,
   id_incr: u32
+}
+
+#[derive(Default)]
+struct CacheContext<T: Default> {
+  pub cached_tetrio_atlas_decoder: Option<TetrioAtlasDecoder>,
+  tpse: T
+}
+impl<T: Default> CacheContext<T> {
+  pub fn get(&self) -> &T {
+    &self.tpse
+  }
+  pub fn get_mut(&mut self) -> &mut T {
+    self.cached_tetrio_atlas_decoder = None;
+    &mut self.tpse
+  }
 }
 
 lazy_static! {
@@ -31,12 +47,22 @@ lazy_static! {
     };
 }
 
-fn with_tpse<T>(tpse: u32, handler: impl FnOnce(&mut TPSE, &mut DefaultAssetProvider) -> Result<T, ImportErrorType>) -> Result<T, JsValue> {
+fn with_tpse<T>(tpse: u32, handler: impl FnOnce(&mut CacheContext<TPSE>, &mut DefaultAssetProvider) -> Result<T, ImportErrorType>) -> Result<T, JsValue> {
   let mut state = GLOBAL_STATE.lock().unwrap();
   let state = state.deref_mut();
   state.active_tpse_files.get_mut(&tpse)
     .ok_or_else(|| JsValue::from("invalid TPSE handle"))
     .and_then(|tpse| (handler)(tpse, &mut state.provider).map_err(stringify_error))
+}
+
+impl From<ImportErrorType> for JsValue {
+  fn from(err: ImportErrorType) -> Self {
+    stringify_error(err)
+  }
+}
+
+fn stringify_error(t: impl Display) -> JsValue {
+  JsValue::from(t.to_string())
 }
 
 #[wasm_bindgen]
@@ -59,7 +85,7 @@ pub fn import_file(tpse: u32, import_type: JsValue, filename: String, bytes: &[u
       depth_limit: 5
     };
     let new_tpse = import(vec![(import_type, &filename, bytes)], options)?;
-    tpse.merge(new_tpse);
+    tpse.get_mut().merge(new_tpse);
     Ok(())
   })?;
   Ok(())
@@ -68,7 +94,7 @@ pub fn import_file(tpse: u32, import_type: JsValue, filename: String, bytes: &[u
 #[wasm_bindgen]
 pub fn export_tpse(tpse: u32) -> Result<String, JsValue> {
   log::debug!("[TPSE {}] Exporting", tpse);
-  with_tpse(tpse, |tpse, _| Ok(serde_json::to_string(tpse).unwrap()))
+  with_tpse(tpse, |tpse, _| Ok(serde_json::to_string(tpse.get()).unwrap()))
 }
 
 #[wasm_bindgen]
@@ -94,7 +120,7 @@ pub fn provide_asset(asset: JsValue, data: &[u8]) -> Result<(), JsValue> {
 #[wasm_bindgen]
 pub fn get_atlas(tpse: u32) -> Result<JsValue, JsValue> {
   log::debug!("[TPSE {}] Get atlas", tpse);
-  with_tpse(tpse, |tpse, _| Ok(JsValue::from_serde(&tpse.custom_sound_atlas).unwrap()))
+  with_tpse(tpse, |tpse, _| Ok(JsValue::from_serde(&tpse.get().custom_sound_atlas).unwrap()))
 }
 
 #[wasm_bindgen]
@@ -110,43 +136,43 @@ pub fn get_default_atlas() -> Result<JsValue, JsValue> {
 pub fn render_sound_effect(tpse: u32, sound: &str) -> Result<Option<Vec<f32>>, JsValue> {
   log::debug!("[TPSE {}] Render sound effect", tpse);
   with_tpse(tpse, |tpse, opts| {
-    let atlas = match &tpse.custom_sound_atlas {
-      None => return Err(RenderFailure::NoSoundEffectsConfiguration.into()),
-      Some(atlas) => atlas
-    };
-    let ogg = match &tpse.custom_sounds {
-      None => return Err(RenderFailure::NoSoundEffectsConfiguration.into()),
-      Some(ogg) => ogg
-    };
-    let ext = mime_guess::get_mime_extensions_str(&ogg.mime)
-      .and_then(|mime| mime.first())
-      .map(Deref::deref);
-    let decoder = TetrioAtlasDecoder::decode(&ogg.binary, ext)?;
-    Ok(decoder.lookup(atlas, sound).map(|slice| slice.to_vec()))
+    if tpse.cached_tetrio_atlas_decoder.is_none() {
+      tpse.cached_tetrio_atlas_decoder = Some({
+        let atlas = match &tpse.get().custom_sound_atlas {
+          None => return Err(RenderFailure::NoSoundEffectsConfiguration.into()),
+          Some(atlas) => atlas
+        };
+        let ogg = match &tpse.get().custom_sounds {
+          None => return Err(RenderFailure::NoSoundEffectsConfiguration.into()),
+          Some(ogg) => ogg
+        };
+        let ext = mime_guess::get_mime_extensions_str(&ogg.mime)
+          .and_then(|mime| mime.first())
+          .map(Deref::deref);
+        TetrioAtlasDecoder::decode(atlas.clone(), &ogg.binary, ext)?
+      });
+    }
+    let decoder = tpse.cached_tetrio_atlas_decoder.as_ref().unwrap();
+    Ok(decoder.lookup(sound).map(|slice| slice.to_vec()))
   })
 }
 
 #[wasm_bindgen]
 pub fn render_default_sound_effect(sound: &str) -> Result<Vec<f32>, JsValue> {
   log::debug!("[TPSE] Render default sound effect");
-  let state = GLOBAL_STATE.lock().unwrap();
-  let tetrio_js = state.provider.provide(Asset::TetrioJS)?;
-  let tetrio_ogg = state.provider.provide(Asset::TetrioOGG)?;
-  let atlas = custom_sound_atlas(tetrio_js).map_err(|err| ImportErrorType::AssetParseFailure(err))?;
-  let decoder = TetrioAtlasDecoder::decode(tetrio_ogg, Some("ogg"))?;
-  let samples = decoder.lookup(&atlas, sound)
+  let mut state = GLOBAL_STATE.lock().unwrap();
+  if state.default_context.cached_tetrio_atlas_decoder.is_none() {
+    state.default_context.cached_tetrio_atlas_decoder = Some({
+      let tetrio_js = state.provider.provide(Asset::TetrioJS)?;
+      let tetrio_ogg = state.provider.provide(Asset::TetrioOGG)?;
+      let atlas = custom_sound_atlas(tetrio_js).map_err(|err| ImportErrorType::AssetParseFailure(err))?;
+      TetrioAtlasDecoder::decode(atlas.clone(), tetrio_ogg, Some("ogg"))?
+    });
+  }
+  let decoder = state.default_context.cached_tetrio_atlas_decoder.as_ref().unwrap();
+  let samples = decoder.lookup(sound)
     .ok_or_else(|| RenderFailure::NoSoundSoundEffect(sound.to_string()))
     .map_err(stringify_error)?
     .to_vec();
   Ok(samples)
-}
-
-impl From<ImportErrorType> for JsValue {
-  fn from(err: ImportErrorType) -> Self {
-    stringify_error(err)
-  }
-}
-
-fn stringify_error(t: impl Display) -> JsValue {
-  JsValue::from(t.to_string())
 }

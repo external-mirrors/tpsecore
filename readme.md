@@ -7,7 +7,7 @@ It's written in Rust and compiled to WebAssembly.
 ## Feature Roadmap
 - Import content
   - Custom skins (Partially implemented: non-animated skins only)
-  - Sound effects (Not yet functional)
+  - Sound effects (Partially functional)
   - Music (Not implemented)
   - Backgrounds (Not implemented)
 - Work with TPSE files
