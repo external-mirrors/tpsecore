@@ -1,6 +1,7 @@
+use std::collections::HashSet;
 use std::io::{Cursor, Seek};
+use hound::{SampleFormat, WavSpec};
 use image::DynamicImage;
-use ogg::PacketWriter;
 use symphonia::core::audio::{AudioBufferRef, SampleBuffer};
 use symphonia::core::codecs::{CODEC_TYPE_NULL, DecoderOptions};
 use symphonia::core::formats::FormatOptions;
@@ -10,10 +11,12 @@ use symphonia::core::probe::Hint;
 use symphonia::default::{get_codecs, get_probe};
 use crate::import::import_task::ImportTask;
 use crate::import::{Asset, ImportErrorType, ImportOptions, OtherSkinType, SkinType, SpecificImportType};
+use crate::import::decode_helper::decode;
 use crate::import::LoadError::{NoSupportedAudioTrack, SymphoniaError};
 use crate::import::skin_splicer::SkinSplicer;
 use crate::import::tetriojs::custom_sound_atlas;
 use crate::tpse::{Background, File, MiscTPSEValue, Song, SongMetadata, TPSE};
+
 
 /// Executes an import task
 pub fn execute_task(task: ImportTask, options: ImportOptions<'_>) -> Result<TPSE, ImportErrorType> {
@@ -21,14 +24,30 @@ pub fn execute_task(task: ImportTask, options: ImportOptions<'_>) -> Result<TPSE
   match task {
     ImportTask::AnimatedSkinFrames(skin_type, frames) => todo!(),
     ImportTask::SoundEffects(sound_effects) => {
-      let js = options.asset_source.provide(Asset::TetrioJS)?;
-      let ogg = options.asset_source.provide(Asset::TetrioOGG)?;
-      let mut atlas = custom_sound_atlas(js)?;
-      let mut encoded = vec![];
-      let mut encoder = PacketWriter::new(&mut encoded);
-      let mut position = 0;
+      let tetrio_js = options.asset_source.provide(Asset::TetrioJS)?;
+      let tetrio_ogg = options.asset_source.provide(Asset::TetrioOGG)?;
+      let mut atlas = custom_sound_atlas(tetrio_js)?;
 
-      // todo: add default base game sound effects
+      let mut encoded = vec![];
+      // todo: probably not safe to assume 2 channel 44.1KHz audio
+      let channels = 2;
+      let sample_rate = 44100;
+      let bits_per_sample = 32;
+      let mut cursor = Cursor::new(&mut encoded);
+      // todo: this is a wav encoder, but I can't find a wasm-compatible rust ogg encoder.
+      // hopefully tetrio won't care?
+      let mut encoder = hound::WavWriter::new(&mut cursor, WavSpec {
+        channels: 2,
+        sample_rate: 44100,
+        bits_per_sample: 32,
+        sample_format: SampleFormat::Float
+      }).unwrap();
+      let mut encoder_position = 0;
+
+      let tetrio = Hint::new().with_extension("ogg");
+      let mut stream = MediaSourceStream::new(Box::new(Cursor::new(tetrio_ogg.to_vec())), Default::default());
+      let mut unvisited = atlas.keys().cloned().collect::<HashSet<_>>();
+
       for sfx in sound_effects {
         let entry = match atlas.get_mut(&sfx.name) {
           Some(entry) => entry,
@@ -37,45 +56,39 @@ pub fn execute_task(task: ImportTask, options: ImportOptions<'_>) -> Result<TPSE
             continue;
           }
         };
-
-        let mut hint = Hint::new();
-        if let Some(ext) = sfx.extension() {
-          hint.with_extension(&ext);
-        }
-        let mut stream = MediaSourceStream::new(Box::new(Cursor::new(sfx.file.binary)), Default::default());
-        let fmt_opts = FormatOptions { enable_gapless: true, ..Default::default() };
-        let mut probe = get_probe()
-          .format(&hint, stream, &fmt_opts, &Default::default())
-          .map_err(|err| SymphoniaError(err))?;
-
-        let track = probe.format.tracks().iter()
-          .find(|t| t.codec_params.codec != CODEC_TYPE_NULL)
-          .ok_or(NoSupportedAudioTrack)?;
-
-        let track_id = track.id;
-
-        let mut decoder = get_codecs()
-          .make(&track.codec_params, &Default::default())
-          .map_err(|err| SymphoniaError(err))?;
-
-        loop {
-          let packet = probe.format.next_packet().map_err(|err| SymphoniaError(err))?;
-          if packet.track_id() != track_id { continue; }
-          let decoded = decoder.decode(&packet).map_err(|err| SymphoniaError(err))?;
-          let mut sample_buf = SampleBuffer::<f32>::new(decoded.capacity() as u64, *decoded.spec());
-          sample_buf.copy_interleaved_ref(decoded);
-          let samples = sample_buf.samples();
-
-          // todo: figure out how to use this library
-          // encoder.
-
-          // todo: probably not safe to assume 2 channel 44.1KHz audio
-          let length = samples.len() / 2;
-          entry.0 = position as f64 / 44100.0;
-          entry.1 = length as f64 / 44100.0;
-          position += length;
-        }
+        unvisited.remove(&sfx.name);
+        let mut new_duration: usize = 0;
+        decode(&sfx.file.binary, sfx.extension().as_ref().map(|el| el.as_str()), |samples| {
+          for sample in samples { encoder.write_sample(*sample).unwrap(); }
+          new_duration += samples.len() / channels;
+        })?;
+        entry.0 = encoder_position as f64 / 44100.0;
+        entry.1 = new_duration as f64 / 44100.0;
+        encoder_position += new_duration;
       }
+
+      let mut decoded = Vec::with_capacity(546 * 44100 * 2);
+      decode(tetrio_ogg, Some("ogg"), |samples| {
+        decoded.extend_from_slice(samples);
+      });
+
+      for sfx_name in unvisited {
+        let (offset, duration) = atlas.get_mut(&sfx_name).unwrap();
+        let offset_samples = (*offset * 44100.0) as usize;
+        let duration_samples = (*duration * 44100.0) as usize;
+        let samples = &decoded[offset_samples..offset_samples + duration_samples];
+        for sample in samples { encoder.write_sample(*sample).unwrap(); }
+        *offset = encoder_position as f64 / 44100.0;
+        *duration = samples.len() as f64 / 44100.0;
+        encoder_position += samples.len() / channels;
+      }
+
+      encoder.finalize().unwrap();
+      tpse.custom_sounds = Some(File {
+        binary: encoded,
+        mime: "audio/wav".to_string()
+      });
+      tpse.custom_sound_atlas = Some(atlas);
     },
     ImportTask::Basic(specific_type, filename, file) => {
       match specific_type {

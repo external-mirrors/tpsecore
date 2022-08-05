@@ -34,7 +34,9 @@ pub enum ImportErrorType {
   #[error("the {0} asset was not preloaded and the given AssetProvider cannot fetch it")]
   AssetNotPreloaded(Asset),
   #[error("asset parse failure: {0}")]
-  AssetParseFailure(#[from] AssetParseFailure)
+  AssetParseFailure(#[from] AssetParseFailure),
+  #[error("rendering failure: {0}")]
+  RenderFailure(#[from] RenderFailure)
 }
 
 /// An error indicating failure to parse base game assets
@@ -57,6 +59,14 @@ pub enum LoadError {
   SymphoniaError(#[from] symphonia::core::errors::Error),
   #[error("failed to decode audio: no supported audio track")]
   NoSupportedAudioTrack
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum RenderFailure {
+  #[error("tpse has no sound effect configuration")]
+  NoSoundEffectsConfiguration,
+  #[error("tpse has no such sound effect {0}")]
+  NoSoundSoundEffect(String)
 }
 
 impl From<ImageError> for ImportErrorType {

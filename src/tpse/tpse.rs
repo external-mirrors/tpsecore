@@ -111,8 +111,12 @@ pub struct TPSE {
   pub skin_anim_meta: Option<AnimMeta>,
   #[serde(rename = "ghostAnimMeta")]
   pub ghost_anim_meta: Option<AnimMeta>,
+  /// The atlas file describing the layout of `custom_sounds`
   #[serde(rename = "customSoundAtlas")]
   pub custom_sound_atlas: Option<CustomSoundAtlas>,
+  /// The tetrio-compatible sound effects file, encoded as ogg.
+  #[serde(rename = "customSounds")]
+  pub custom_sounds: Option<File>,
   pub backgrounds: Option<Vec<Background>>,
   #[serde(rename = "animatedBackground")]
   pub animated_background: Option<AnimatedBackground>,
