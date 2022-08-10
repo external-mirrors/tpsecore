@@ -3,17 +3,20 @@ use std::collections::HashSet;
 use image::ImageError;
 
 use crate::import::asset_provider::Asset;
-use crate::import::SkinType;
+use crate::import::{ImportContextEntry, SkinType};
 
+/// An error tracking both the actual error and the import context in which it occurred
+#[derive(Debug, thiserror::Error)]
+#[error("import error at {context:?}: {error}")]
 pub struct ImportError {
-  pub context: Vec<String>,
+  pub context: Vec<ImportContextEntry>,
   pub error: ImportErrorType
 }
 
 impl ImportError {
-  pub fn with_context(mut self, ctx: String) -> Self {
-    self.context.push(ctx);
-    self
+  /// Creates an import error with no import context
+  pub fn with_no_context(error: ImportErrorType) -> Self {
+    Self { error, context: vec![] }
   }
 }
 

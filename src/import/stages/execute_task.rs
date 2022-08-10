@@ -13,7 +13,7 @@ use symphonia::default::{get_codecs, get_probe};
 use zip::read::ZipFile;
 use zip::ZipArchive;
 use crate::import::import_task::ImportTask;
-use crate::import::{Asset, import, ImportErrorType, ImportOptions, ImportType, LoadError, OtherSkinType, SkinType, SpecificImportType};
+use crate::import::{Asset, import, ImportErrorType, ImportContext, ImportType, LoadError, OtherSkinType, SkinType, SpecificImportType, ImportContextEntry, ImportError};
 use crate::import::decode_helper::decode;
 use crate::import::LoadError::{NoSupportedAudioTrack, SymphoniaError};
 use crate::import::skin_splicer::SkinSplicer;
@@ -22,15 +22,15 @@ use crate::tpse::{Background, File, MiscTPSEValue, Song, SongMetadata, TPSE};
 
 
 /// Executes an import task
-pub fn execute_task(task: ImportTask, options: ImportOptions<'_>) -> Result<TPSE, ImportErrorType> {
+pub fn execute_task(task: ImportTask, ctx: ImportContext<'_>) -> Result<TPSE, ImportError> {
   log::debug!("Executing import task {:?}", task);
   let mut tpse = TPSE::default();
   match task {
     ImportTask::AnimatedSkinFrames(skin_type, frames) => todo!(),
     ImportTask::SoundEffects(sound_effects) => {
-      let tetrio_js = options.asset_source.provide(Asset::TetrioJS)?;
-      let tetrio_ogg = options.asset_source.provide(Asset::TetrioOGG)?;
-      let mut atlas = custom_sound_atlas(tetrio_js)?;
+      let tetrio_js = ctx.asset_source.provide(Asset::TetrioJS).map_err(|err| ctx.wrap(err))?;
+      let tetrio_ogg = ctx.asset_source.provide(Asset::TetrioOGG).map_err(|err| ctx.wrap(err))?;
+      let mut atlas = custom_sound_atlas(tetrio_js).map_err(|err| ctx.wrap(err.into()))?;
 
       let mut encoded = vec![];
       // todo: probably not safe to assume 2 channel 44.1KHz audio
@@ -68,7 +68,7 @@ pub fn execute_task(task: ImportTask, options: ImportOptions<'_>) -> Result<TPSE
         decode(&sfx.file.binary, sfx.extension().as_ref().map(|el| el.as_str()), |samples| {
           for sample in samples { encoder.write_sample(*sample).unwrap(); }
           new_duration += samples.len() / channels;
-        })?;
+        }).map_err(|err| ctx.wrap(err))?;
         entry.0 = encoder_position as f64 / 44100.0;
         entry.1 = new_duration as f64 / 44100.0;
         encoder_position += new_duration;
@@ -78,7 +78,7 @@ pub fn execute_task(task: ImportTask, options: ImportOptions<'_>) -> Result<TPSE
       let mut decoded = Vec::with_capacity(546 * 44100 * 2);
       decode(tetrio_ogg, Some("ogg"), |samples| {
         decoded.extend_from_slice(samples);
-      })?;
+      }).map_err(|err| ctx.wrap(err))?;
 
       log::trace!("Encoding... (@ {:?}", start.elapsed());
       for sfx_name in unvisited {
@@ -99,13 +99,15 @@ pub fn execute_task(task: ImportTask, options: ImportOptions<'_>) -> Result<TPSE
       });
       tpse.custom_sound_atlas = Some(atlas);
     },
-    ImportTask::Basic(specific_type, filename, file) => {
-      match specific_type {
+    ImportTask::Basic { import_type, filename, file } => {
+      match import_type {
         SpecificImportType::Zip => {
           // todo: optimeiz
 
           let mut groups: HashMap<String, Vec<(ImportType, String, Vec<u8>)>> = HashMap::new();
-          let zip = ZipArchive::new(Cursor::new(&file.binary)).map_err(LoadError::from)?;
+          let zip = ZipArchive::new(Cursor::new(&file.binary))
+            .map_err(LoadError::from)
+            .map_err(|err| ctx.wrap(err.into()))?;
           for i in 0..zip.len() {
             let mut zip = zip.clone();
             let mut file = zip.by_index(i).unwrap();
@@ -123,22 +125,23 @@ pub fn execute_task(task: ImportTask, options: ImportOptions<'_>) -> Result<TPSE
               }
             ));
           }
-          for files in groups.into_values() {
+          for (folder, files) in groups {
             let files = files.iter()
               .map(|(it, name, bytes)| (*it, name.as_ref(), bytes.as_ref()))
               .collect::<Vec<_>>();
-            let new_tpse = import(files, options.minus_one_depth())?;
+            let context = ctx.with_context(ImportContextEntry::ZipFolder(folder));
+            let new_tpse = import(files, context)?;
             tpse.merge(new_tpse);
           }
         },
         SpecificImportType::TPSE => {
           tpse.merge(serde_json::from_slice(&file.binary).map_err(|err| {
             ImportErrorType::InvalidTPSE(err.to_string())
-          })?);
+          }).map_err(|err| ctx.wrap(err))?);
         },
         SpecificImportType::Skin(skin_type) => {
           log::trace!("Splicing {:?} to t61", skin_type);
-          let (minos, ghost) = splice_to_t61(skin_type, &file.binary)?;
+          let (minos, ghost) = splice_to_t61(skin_type, &file.binary).map_err(|err| ctx.wrap(err))?;
           log::trace!("Done splicing!");
           if let Some(minos) = minos { tpse.skin = Some(minos.into()); }
           if let Some(ghost) = ghost { tpse.ghost = Some(ghost.into()); }

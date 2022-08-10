@@ -1,20 +1,22 @@
-use crate::import::{ImportErrorType, ImportType};
+use crate::import::{ImportContextEntry, ImportError, ImportErrorType, ImportTaskContextEntry, ImportType};
 
-use crate::import::import_types::ImportOptions;
+use crate::import::import_types::ImportContext;
 use crate::import::stages::{decide_specific_type, execute_task, reduce_types};
 use crate::tpse::TPSE;
 
-pub fn import(files: Vec<(ImportType, &str, &[u8])>, options: ImportOptions) -> Result<TPSE, ImportErrorType> {
+pub fn import(files: Vec<(ImportType, &str, &[u8])>, context: ImportContext) -> Result<TPSE, ImportError> {
   let mut results = Vec::with_capacity(files.len());
   for (file_type, name, contents) in files {
-    results.push(decide_specific_type(file_type, name, contents, options)?);
+    let context = context.with_context(ImportContextEntry::File(name.to_string(), file_type));
+    results.push(decide_specific_type(file_type, name, contents, context)?);
   }
 
-  let tasks = reduce_types(&results)?;
+  let tasks = reduce_types(&results, context.with_context(ImportContextEntry::ReduceTypes))?;
 
   let mut tpse = TPSE::default();
   for task in tasks {
-    tpse.merge(execute_task(task, options)?);
+    let context = context.with_context(ImportTaskContextEntry::from(&task).into());
+    tpse.merge(execute_task(task, context)?);
   }
 
   Ok(tpse)

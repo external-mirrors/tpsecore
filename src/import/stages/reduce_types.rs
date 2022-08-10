@@ -2,12 +2,15 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
 use std::path::Path;
-use crate::import::{ImportErrorType, ImportResult, SkinType, SpecificImportType};
-use crate::import::import_task::{ImportTask, SoundEffect};
+use crate::import::{ImportContext, ImportError, ImportErrorType, ImportResult, SkinType, SpecificImportType};
+use crate::import::import_task::{AnimatedSkinFrame, ImportTask, SoundEffect};
 use crate::tpse::File;
 
 /// Collates multiple import results into a list of import tasks
-pub fn reduce_types(results: &[ImportResult]) -> Result<Vec<ImportTask>, ImportErrorType> {
+pub fn reduce_types
+  (results: &[ImportResult], ctx: ImportContext<'_>)
+   -> Result<Vec<ImportTask>, ImportError>
+{
   let mut map: HashMap<SpecificImportType, Vec<ImportResult>> = HashMap::new();
   for res in results {
     map.entry(res.specific_import_type).or_default().push(res.clone());
@@ -31,12 +34,20 @@ pub fn reduce_types(results: &[ImportResult]) -> Result<Vec<ImportTask>, ImportE
     match key {
       SpecificImportType::Zip => {
         import_tasks.extend(files.into_iter().map(|import_result| {
-          ImportTask::Basic(SIT::Zip, import_result.filename, import_result.file)
+          ImportTask::Basic {
+            import_type: SIT::Zip,
+            filename: import_result.filename,
+            file: import_result.file
+          }
         }));
       },
       SpecificImportType::TPSE => {
         import_tasks.extend(files.into_iter().map(|import_result| {
-          ImportTask::Basic(SIT::TPSE, import_result.filename, import_result.file)
+          ImportTask::Basic {
+            import_type: SIT::TPSE,
+            filename: import_result.filename,
+            file: import_result.file
+          }
         }));
       },
       SpecificImportType::Skin(skin_type) => {
@@ -72,13 +83,21 @@ pub fn reduce_types(results: &[ImportResult]) -> Result<Vec<ImportTask>, ImportE
           }
         } else {
           import_tasks.extend(files.into_iter().map(|import_result| {
-            ImportTask::Basic(SIT::Skin(skin_type), import_result.filename, import_result.file)
+            ImportTask::Basic {
+              import_type: SIT::Skin(skin_type),
+              filename: import_result.filename,
+              file: import_result.file
+            }
           }));
         }
       }
       SpecificImportType::OtherSkin(skin_type) => {
         import_tasks.extend(files.into_iter().map(|import_result| {
-          ImportTask::Basic(SIT::OtherSkin(skin_type), import_result.filename, import_result.file)
+          ImportTask::Basic {
+            import_type: SIT::OtherSkin(skin_type),
+            filename: import_result.filename,
+            file: import_result.file
+          }
         }));
       }
       SpecificImportType::SoundEffects => {
@@ -97,12 +116,20 @@ pub fn reduce_types(results: &[ImportResult]) -> Result<Vec<ImportTask>, ImportE
       }
       SpecificImportType::Background(bg_type) => {
         import_tasks.extend(files.into_iter().map(|import_result| {
-          ImportTask::Basic(SIT::Background(bg_type), import_result.filename, import_result.file)
+          ImportTask::Basic {
+            import_type: SIT::Background(bg_type),
+            filename: import_result.filename,
+            file: import_result.file
+          }
         }));
       }
       SpecificImportType::Music => {
         import_tasks.extend(files.into_iter().map(|import_result| {
-          ImportTask::Basic(SIT::Music, import_result.filename, import_result.file)
+          ImportTask::Basic {
+            import_type: SIT::Music,
+            filename: import_result.filename,
+            file: import_result.file
+          }
         }));
       }
     }
@@ -112,19 +139,31 @@ pub fn reduce_types(results: &[ImportResult]) -> Result<Vec<ImportTask>, ImportE
     import_tasks.push(ImportTask::SoundEffects(sound_effects));
   }
   if ambiguous_mino_skin_errors.len() > 0 {
-    return Err(ImportErrorType::AmbiguousAnimatedSkinResults(Cow::from("mino"), ambiguous_mino_skin_errors));
+    return Err(ctx.wrap(ImportErrorType::AmbiguousAnimatedSkinResults(
+      Cow::from("mino"),
+      ambiguous_mino_skin_errors
+    )));
   }
   if ambiguous_ghost_skin_errors.len() > 0 {
-    return Err(ImportErrorType::AmbiguousAnimatedSkinResults(Cow::from("ghost"), ambiguous_mino_skin_errors));
+    return Err(ctx.wrap(ImportErrorType::AmbiguousAnimatedSkinResults(
+      Cow::from("ghost"),
+      ambiguous_mino_skin_errors
+    )));
   }
   if animated_minos.as_ref().map(|(t,_)| *t) != animated_ghost.as_ref().map(|(t,_)| *t) {
     if let Some((ghost_type, results)) = animated_ghost {
-      let files = results.into_iter().map(|res| res.file).collect();
+      let files = results
+        .into_iter()
+        .map(|res| AnimatedSkinFrame { filename: res.filename, file: res.file })
+        .collect();
       import_tasks.push(ImportTask::AnimatedSkinFrames(ghost_type, files))
     }
   }
   if let Some((mino_type, results)) = animated_minos {
-    let files = results.into_iter().map(|res| res.file).collect();
+    let files = results
+      .into_iter()
+      .map(|res| AnimatedSkinFrame { filename: res.filename, file: res.file })
+      .collect();
     import_tasks.push(ImportTask::AnimatedSkinFrames(mino_type, files))
   }
 

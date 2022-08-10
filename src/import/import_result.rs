@@ -1,4 +1,4 @@
-use crate::import::{ImportOptions, SpecificImportType};
+use crate::import::{ImportContext, SpecificImportType};
 use crate::tpse::File;
 
 #[derive(Clone)]
@@ -6,7 +6,7 @@ pub struct ImportResult<'c> {
   pub filename: String,
   pub file: File,
   pub specific_import_type: SpecificImportType,
-  pub options: ImportOptions<'c>
+  pub options: ImportContext<'c>
 }
 
 impl<'c> ImportResult<'c> {
@@ -14,7 +14,7 @@ impl<'c> ImportResult<'c> {
     filename: &str,
     bytes: &[u8],
     mime_type: &str,
-    options: ImportOptions<'c>,
+    options: ImportContext<'c>,
     specific_import_type: SpecificImportType
   ) -> Self {
     Self {

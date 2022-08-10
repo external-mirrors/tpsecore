@@ -1,34 +1,36 @@
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use crate::import::{ImportErrorType, ImportResult, ImportType, SkinType, FileType, SpecificImportType as SIT, ImportOptions, Asset, BackgroundType};
+use crate::import::{ImportErrorType, ImportResult, ImportType, SkinType, FileType, SpecificImportType as SIT, ImportContext, Asset, BackgroundType, ImportContextEntry, ImportError};
 use crate::import::skin_splicer::{decode_image};
 use crate::import::tetriojs::custom_sound_atlas;
 
 
 /// Prepares a single file for import.
 pub fn decide_specific_type<'c>
-  (import_type: ImportType, filename: &str, bytes: &[u8], options: ImportOptions<'c>)
-  -> Result<ImportResult<'c>, ImportErrorType>
+  (import_type: ImportType, filename: &str, bytes: &[u8], ctx: ImportContext<'c>)
+   -> Result<ImportResult<'c>, ImportError>
 {
   log::debug!("Deciding import type for {:?} {}", import_type, filename);
-  if options.depth_limit == 0 {
-    return Err(ImportErrorType::TooMuchNesting)
+  if ctx.is_too_deep() {
+    return Err(ctx.wrap(ImportErrorType::TooMuchNesting))
   }
 
   let specific_import_type = match import_type {
     ImportType::Automatic => {
       if let Some(filekey) = ImportType::parse_filekey(filename) {
-        return decide_specific_type(filekey, filename, bytes, options.minus_one_depth())
+        let context = ctx.with_context(ImportContextEntry::WithFilekey(filekey));
+        return decide_specific_type(filekey, filename, bytes, context);
       } else if let Some(guess) = FileType::from_extension(filename) {
         match guess {
           FileType::Zip => SIT::Zip,
           FileType::TPSE => SIT::TPSE,
           FileType::Image => {
-            let image = decode_image(bytes)?;
+            let image = decode_image(bytes).map_err(|err| ctx.wrap(err.into()))?;
             if let Some(format) = SkinType::guess_format(filename, image.width(), image.height()) {
               let format = ImportType::Skin { subtype: format };
-              return decide_specific_type(format, filename, bytes, options.minus_one_depth())
+              let context = ctx.with_context(ImportContextEntry::WithGuessedType(format));
+              return decide_specific_type(format, filename, bytes, context)
             } else {
               match Path::new(&filename).extension().map(|ext| ext.to_string_lossy()) {
                 Some(str) if str == "gif" => SIT::Background(BackgroundType::Video),
@@ -38,7 +40,8 @@ pub fn decide_specific_type<'c>
           },
           FileType::Video => SIT::Background(BackgroundType::Video),
           FileType::Audio => {
-            let atlas = custom_sound_atlas(options.asset_source.provide(Asset::TetrioJS)?)?;
+            let asset = ctx.asset_source.provide(Asset::TetrioJS).map_err(|err| ctx.wrap(err))?;
+            let atlas = custom_sound_atlas(asset).map_err(|err| ctx.wrap(err.into()))?;
             let sfx = PathBuf::from(filename).file_stem().and_then(|ext| atlas.get(filename));
             match sfx {
               Some(_) => SIT::SoundEffects,
@@ -47,7 +50,7 @@ pub fn decide_specific_type<'c>
           }
         }
       } else {
-        return Err(ImportErrorType::UnknownFileType);
+        return Err(ctx.wrap(ImportErrorType::UnknownFileType));
       }
     },
     ImportType::Skin { subtype } => SIT::Skin(subtype),
@@ -58,5 +61,5 @@ pub fn decide_specific_type<'c>
   };
 
   let mime = mime_guess::from_path(filename).first_or_octet_stream().to_string();
-  Ok(ImportResult::new(filename, bytes, &mime, options.clone(), specific_import_type))
+  Ok(ImportResult::new(filename, bytes, &mime, ctx.clone(), specific_import_type))
 }

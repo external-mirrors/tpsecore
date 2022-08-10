@@ -5,9 +5,19 @@ use crate::tpse::File;
 /// A collated form of a SpecificImportType suitable for performing the actual import step.
 #[derive(Debug, Clone)]
 pub enum ImportTask {
-  AnimatedSkinFrames(SkinType, Vec<File>),
+  AnimatedSkinFrames(SkinType, Vec<AnimatedSkinFrame>),
   SoundEffects(Vec<SoundEffect>),
-  Basic(SpecificImportType, String, File)
+  Basic {
+    import_type: SpecificImportType,
+    filename: String,
+    file: File
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct AnimatedSkinFrame {
+  pub filename: String,
+  pub file: File
 }
 
 #[derive(Debug, Clone)]

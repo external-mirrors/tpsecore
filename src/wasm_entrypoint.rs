@@ -6,7 +6,7 @@ use lazy_static::lazy_static;
 use mime::Mime;
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::*;
-use crate::import::{Asset, AssetProvider, DefaultAssetProvider, import, ImportErrorType, ImportOptions, RenderFailure};
+use crate::import::{Asset, AssetProvider, DefaultAssetProvider, import, ImportErrorType, ImportContext, RenderFailure, ImportError};
 use crate::import::decode_helper::{decode, TetrioAtlasDecoder};
 use crate::import::tetriojs::custom_sound_atlas;
 use crate::tpse::TPSE;
@@ -47,7 +47,7 @@ lazy_static! {
     };
 }
 
-fn with_tpse<T>(tpse: u32, handler: impl FnOnce(&mut CacheContext<TPSE>, &mut DefaultAssetProvider) -> Result<T, ImportErrorType>) -> Result<T, JsValue> {
+fn with_tpse<T>(tpse: u32, handler: impl FnOnce(&mut CacheContext<TPSE>, &mut DefaultAssetProvider) -> Result<T, ImportError>) -> Result<T, JsValue> {
   let mut state = GLOBAL_STATE.lock().unwrap();
   let state = state.deref_mut();
   state.active_tpse_files.get_mut(&tpse)
@@ -80,10 +80,7 @@ pub fn import_file(tpse: u32, import_type: JsValue, filename: String, bytes: &[u
   let import_type = import_type.into_serde().map_err(stringify_error)?;
   log::debug!("[TPSE {}] Importing file {} as {:?}", tpse, filename, import_type);
   with_tpse(tpse, |tpse, provider| {
-    let options = ImportOptions {
-      asset_source: provider,
-      depth_limit: 5
-    };
+    let options = ImportContext::new(provider, 5);
     let new_tpse = import(vec![(import_type, &filename, bytes)], options)?;
     tpse.get_mut().merge(new_tpse);
     Ok(())
@@ -138,18 +135,20 @@ pub fn render_sound_effect(tpse: u32, sound: &str) -> Result<Option<Vec<f32>>, J
   with_tpse(tpse, |tpse, opts| {
     if tpse.cached_tetrio_atlas_decoder.is_none() {
       tpse.cached_tetrio_atlas_decoder = Some({
-        let atlas = match &tpse.get().custom_sound_atlas {
-          None => return Err(RenderFailure::NoSoundEffectsConfiguration.into()),
-          Some(atlas) => atlas
-        };
-        let ogg = match &tpse.get().custom_sounds {
-          None => return Err(RenderFailure::NoSoundEffectsConfiguration.into()),
-          Some(ogg) => ogg
-        };
+        let atlas = &tpse.get().custom_sound_atlas.as_ref().ok_or_else(|| {
+          let err = RenderFailure::NoSoundEffectsConfiguration;
+          ImportError::with_no_context(err.into())
+        })?;
+        let ogg = &tpse.get().custom_sounds.as_ref().ok_or_else(|| {
+          let err = RenderFailure::NoSoundEffectsConfiguration;
+          ImportError::with_no_context(err.into())
+        })?;
         let ext = mime_guess::get_mime_extensions_str(&ogg.mime)
           .and_then(|mime| mime.first())
           .map(Deref::deref);
-        TetrioAtlasDecoder::decode(atlas.clone(), &ogg.binary, ext)?
+        TetrioAtlasDecoder
+          ::decode((*atlas).clone(), &ogg.binary, ext)
+          .map_err(ImportError::with_no_context)?
       });
     }
     let decoder = tpse.cached_tetrio_atlas_decoder.as_ref().unwrap();
