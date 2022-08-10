@@ -23,7 +23,7 @@ pub enum ImportTaskContextEntry {
   AnimatedSkinFrames(SkinType, Vec<String>),
   #[error("sound effects from files: {0:?}")]
   SoundEffects(Vec<String>),
-  #[error("{0:?} {1}")]
+  #[error("`{1}` (as {0:?})")]
   Basic(SpecificImportType, String)
 }
 

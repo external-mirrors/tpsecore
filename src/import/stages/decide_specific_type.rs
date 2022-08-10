@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use log::Level;
 use crate::import::{ImportErrorType, ImportResult, ImportType, SkinType, FileType, SpecificImportType as SIT, ImportContext, Asset, BackgroundType, ImportContextEntry, ImportError};
 use crate::import::skin_splicer::{decode_image};
 use crate::import::tetriojs::custom_sound_atlas;
@@ -11,7 +12,7 @@ pub fn decide_specific_type<'c>
   (import_type: ImportType, filename: &str, bytes: &[u8], ctx: ImportContext<'c>)
    -> Result<ImportResult<'c>, ImportError>
 {
-  log::debug!("Deciding import type for {:?} {}", import_type, filename);
+  ctx.log(Level::Info, format_args!("Deciding import type for {:?} {}", import_type, filename));
   if ctx.is_too_deep() {
     return Err(ctx.wrap(ImportErrorType::TooMuchNesting))
   }
@@ -27,7 +28,7 @@ pub fn decide_specific_type<'c>
           FileType::TPSE => SIT::TPSE,
           FileType::Image => {
             let image = decode_image(bytes).map_err(|err| ctx.wrap(err.into()))?;
-            if let Some(format) = SkinType::guess_format(filename, image.width(), image.height()) {
+            if let Some(format) = SkinType::guess_format(filename, image.width(), image.height(), &ctx) {
               let format = ImportType::Skin { subtype: format };
               let context = ctx.with_context(ImportContextEntry::WithGuessedType(format));
               return decide_specific_type(format, filename, bytes, context)

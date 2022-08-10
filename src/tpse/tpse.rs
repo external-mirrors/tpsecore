@@ -123,6 +123,7 @@ pub struct TPSE {
   pub music: Option<Vec<Song>>, // todo
   #[serde(rename = "musicGraph")]
   pub music_graph: Option<String>, // todo
+  #[serde(default)]
   #[serde(rename = "touchControlConfig")]
   #[serde(deserialize_with = "deserialize_as_string", serialize_with = "serialize_as_string")]
   pub touch_control_config: Option<TouchControlConfig>,

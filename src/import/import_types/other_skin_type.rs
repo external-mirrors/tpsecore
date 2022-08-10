@@ -1,3 +1,4 @@
+use std::fmt::{Display, Formatter};
 use crate::tpse::{File, TPSE};
 
 #[derive(Debug, Hash, Eq, PartialEq, Copy, Clone, serde::Serialize, serde::Deserialize)]
@@ -77,5 +78,46 @@ impl OtherSkinType {
       Self::RankX => &mut tpse.rank_x,
       Self::RankZ => &mut tpse.rank_z
     }
+  }
+}
+
+impl Display for OtherSkinType {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", match self {
+      OtherSkinType::Board => "board",
+      OtherSkinType::Queue => "queue",
+      OtherSkinType::Grid => "grid",
+      OtherSkinType::ParticleBeam => "particle_beam",
+      OtherSkinType::ParticleBeamsBeam => "particle_beams_beam",
+      OtherSkinType::ParticleBigBox => "particle_big_box",
+      OtherSkinType::ParticleBox => "particle_box",
+      OtherSkinType::ParticleChip => "particle_chip",
+      OtherSkinType::ParticleChirp => "particle_chirp",
+      OtherSkinType::ParticleDust => "particle_dust",
+      OtherSkinType::ParticleFBox => "particle_f_box",
+      OtherSkinType::ParticleFire => "particle_fire",
+      OtherSkinType::ParticleParticle => "particle_particle",
+      OtherSkinType::ParticleSmoke => "particle_smoke",
+      OtherSkinType::ParticleStar => "particle_star",
+      OtherSkinType::ParticleFlake => "particle_flake",
+      OtherSkinType::RankD => "rank_d",
+      OtherSkinType::RankDPlus => "rank_d_plus",
+      OtherSkinType::RankCMinus => "rank_c_minus",
+      OtherSkinType::RankC => "rank_c",
+      OtherSkinType::RankCPlus => "rank_c_plus",
+      OtherSkinType::RankBMinus => "rank_b_minus",
+      OtherSkinType::RankB => "rank_b",
+      OtherSkinType::RankBPlus => "rank_b_plus",
+      OtherSkinType::RankAMinus => "rank_a_minus",
+      OtherSkinType::RankA => "rank_a",
+      OtherSkinType::RankAPlus => "rank_a_plus",
+      OtherSkinType::RankSMinus => "rank_s_minus",
+      OtherSkinType::RankS => "rank_s",
+      OtherSkinType::RankSPlus => "rank_s_plus",
+      OtherSkinType::RankSS => "rank_ss",
+      OtherSkinType::RankU => "rank_u",
+      OtherSkinType::RankX => "rank_x",
+      OtherSkinType::RankZ => "rank_z"
+    })
   }
 }

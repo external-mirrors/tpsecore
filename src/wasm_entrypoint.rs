@@ -3,6 +3,7 @@ use std::fmt::Display;
 use std::ops::{Deref, DerefMut};
 use std::sync::Mutex;
 use lazy_static::lazy_static;
+use log::Level;
 use mime::Mime;
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::*;
@@ -47,22 +48,16 @@ lazy_static! {
     };
 }
 
-fn with_tpse<T>(tpse: u32, handler: impl FnOnce(&mut CacheContext<TPSE>, &mut DefaultAssetProvider) -> Result<T, ImportError>) -> Result<T, JsValue> {
+fn with_tpse<T>(tpse: u32, handler: impl FnOnce(&mut CacheContext<TPSE>, &mut DefaultAssetProvider) -> Result<T, ImportError>) -> Result<T, JsError> {
   let mut state = GLOBAL_STATE.lock().unwrap();
   let state = state.deref_mut();
   state.active_tpse_files.get_mut(&tpse)
-    .ok_or_else(|| JsValue::from("invalid TPSE handle"))
+    .ok_or_else(|| JsError::new("invalid TPSE handle"))
     .and_then(|tpse| (handler)(tpse, &mut state.provider).map_err(stringify_error))
 }
 
-impl From<ImportErrorType> for JsValue {
-  fn from(err: ImportErrorType) -> Self {
-    stringify_error(err)
-  }
-}
-
-fn stringify_error(t: impl Display) -> JsValue {
-  JsValue::from(t.to_string())
+fn stringify_error(t: impl Display) -> JsError {
+  JsError::new(&t.to_string())
 }
 
 #[wasm_bindgen]
@@ -76,11 +71,21 @@ pub fn create_tpse() -> u32 {
 }
 
 #[wasm_bindgen]
-pub fn import_file(tpse: u32, import_type: JsValue, filename: String, bytes: &[u8]) -> Result<(), JsValue> {
+pub fn import_file
+  (tpse: u32, import_type: JsValue, filename: String, bytes: &[u8], js_logger: &js_sys::Function)
+  -> Result<(), JsError>
+{
   let import_type = import_type.into_serde().map_err(stringify_error)?;
   log::debug!("[TPSE {}] Importing file {} as {:?}", tpse, filename, import_type);
   with_tpse(tpse, |tpse, provider| {
-    let options = ImportContext::new(provider, 5);
+    let logger = |level: Level, msg: std::fmt::Arguments<'_>| {
+      js_logger.call2(
+        &JsValue::null(),
+        &JsValue::from(level.as_str()),
+        &JsValue::from(format!("{}", msg))
+      ).unwrap();
+    };
+    let options = ImportContext::new(provider, 5).with_logger(&logger);
     let new_tpse = import(vec![(import_type, &filename, bytes)], options)?;
     tpse.get_mut().merge(new_tpse);
     Ok(())
@@ -89,24 +94,24 @@ pub fn import_file(tpse: u32, import_type: JsValue, filename: String, bytes: &[u
 }
 
 #[wasm_bindgen]
-pub fn export_tpse(tpse: u32) -> Result<String, JsValue> {
+pub fn export_tpse(tpse: u32) -> Result<String, JsError> {
   log::debug!("[TPSE {}] Exporting", tpse);
   with_tpse(tpse, |tpse, _| Ok(serde_json::to_string(tpse.get()).unwrap()))
 }
 
 #[wasm_bindgen]
-pub fn drop_tpse(tpse: u32) -> Result<(), JsValue> {
+pub fn drop_tpse(tpse: u32) -> Result<(), JsError> {
   log::debug!("[TPSE {}] Dropping", tpse);
   let mut state = GLOBAL_STATE.lock().unwrap();
   if !state.active_tpse_files.remove(&tpse).is_some() {
-    Err(JsValue::from("invalid TPSE handle"))
+    Err(JsError::new("invalid TPSE handle"))
   } else {
     Ok(())
   }
 }
 
 #[wasm_bindgen]
-pub fn provide_asset(asset: JsValue, data: &[u8]) -> Result<(), JsValue> {
+pub fn provide_asset(asset: JsValue, data: &[u8]) -> Result<(), JsError> {
   let mut state = GLOBAL_STATE.lock().unwrap();
   let asset = asset.into_serde().map_err(stringify_error)?;
   log::debug!("Provided asset {}: {} bytes", asset, data.len());
@@ -115,13 +120,13 @@ pub fn provide_asset(asset: JsValue, data: &[u8]) -> Result<(), JsValue> {
 }
 
 #[wasm_bindgen]
-pub fn get_atlas(tpse: u32) -> Result<JsValue, JsValue> {
+pub fn get_atlas(tpse: u32) -> Result<JsValue, JsError> {
   log::debug!("[TPSE {}] Get atlas", tpse);
   with_tpse(tpse, |tpse, _| Ok(JsValue::from_serde(&tpse.get().custom_sound_atlas).unwrap()))
 }
 
 #[wasm_bindgen]
-pub fn get_default_atlas() -> Result<JsValue, JsValue> {
+pub fn get_default_atlas() -> Result<JsValue, JsError> {
   log::debug!("[TPSE] Get default atlas");
   let state = GLOBAL_STATE.lock().unwrap();
   let tetriojs = state.provider.provide(Asset::TetrioJS).map_err(stringify_error)?;
@@ -130,7 +135,7 @@ pub fn get_default_atlas() -> Result<JsValue, JsValue> {
 }
 
 #[wasm_bindgen]
-pub fn render_sound_effect(tpse: u32, sound: &str) -> Result<Option<Vec<f32>>, JsValue> {
+pub fn render_sound_effect(tpse: u32, sound: &str) -> Result<Option<Vec<f32>>, JsError> {
   log::debug!("[TPSE {}] Render sound effect", tpse);
   with_tpse(tpse, |tpse, opts| {
     if tpse.cached_tetrio_atlas_decoder.is_none() {
@@ -157,7 +162,7 @@ pub fn render_sound_effect(tpse: u32, sound: &str) -> Result<Option<Vec<f32>>, J
 }
 
 #[wasm_bindgen]
-pub fn render_default_sound_effect(sound: &str) -> Result<Vec<f32>, JsValue> {
+pub fn render_default_sound_effect(sound: &str) -> Result<Vec<f32>, JsError> {
   log::debug!("[TPSE] Render default sound effect");
   let mut state = GLOBAL_STATE.lock().unwrap();
   if state.default_context.cached_tetrio_atlas_decoder.is_none() {

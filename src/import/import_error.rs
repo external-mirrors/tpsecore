@@ -1,16 +1,22 @@
 use std::borrow::Cow;
 use std::collections::HashSet;
+use std::fmt::{Display, Formatter};
 use image::ImageError;
+use itertools::Itertools;
 
 use crate::import::asset_provider::Asset;
 use crate::import::{ImportContextEntry, SkinType};
 
 /// An error tracking both the actual error and the import context in which it occurred
-#[derive(Debug, thiserror::Error)]
-#[error("import error at {context:?}: {error}")]
+#[derive(Debug)]
 pub struct ImportError {
   pub context: Vec<ImportContextEntry>,
   pub error: ImportErrorType
+}
+impl Display for ImportError {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    write!(f, "import error at {}: {}", self.context.iter().format(" "), self.error)
+  }
 }
 
 impl ImportError {

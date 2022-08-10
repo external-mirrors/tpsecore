@@ -7,38 +7,45 @@ authors = ["UniQMG"]
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-[features]
-default = ["console_error_panic_hook"]
-
 [dependencies]
+# Wasm stuff
 wasm-bindgen = { version = "0.2.63", features = ["serde-serialize"] }
-console_error_panic_hook = { version = "0.1.6", optional = true }
+console_error_panic_hook = { version = "0.1.6" }
 #wee_alloc = { version = "0.4.5", optional = true }
+console_log = "0.2.0"
+js-sys = "0.3.59"
+
+# Data utilities
 base64 = "0.13.0"
-lazy_static = "1.4.0"
 regex = "1.6.0"
 serde = "1.0.122"
 serde_json = "1.0.45"
 serde_with = "1.14.0"
 data-url = "0.1.1"
-thiserror = "1.0.31"
-image = "0.24.3"
-console_log = "0.2.0"
-log = "0.4.17"
-simple_logger = "2.2.0"
 num-traits = "0.2.15"
-resvg = "0.23.0"
-usvg = "0.23.0"
-tiny-skia = "0.6"
-web-sys = { version = "0.3.4", features = ["XmlHttpRequest", "XmlHttpRequestResponseType"]}
 mime_guess = "2.0.4"
 mime = "0.3.16"
 sha2 = "0.10.2"
 hex = "0.4.3"
-ogg = "0.9.0"
-symphonia = { version = "0.5.1", features = ["mp3", "isomp4", "aac"] }
-hound = "3.4.0"
-zip = "0.6.2"
+zip = { version = "0.6.2", default-features = false, features = ["deflate"] } # bzip + zstd busted for wasm?
+
+# Other utilities
+lazy_static = "1.4.0"
+thiserror = "1.0.31"
+log = "0.4.17"
+simple_logger = "2.2.0"
+
+# Image
+image = "0.24.3"
+resvg = "0.23.0"
+usvg = "0.23.0"
+tiny-skia = "0.6"
+
+# Audio
+symphonia = { version = "0.5.1", features = ["mp3", "isomp4", "aac"] } # various decoders
+hound = "3.4.0" # wav encoder
+itertools = "0.10.3"
+instant = "0.1.12"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.13"

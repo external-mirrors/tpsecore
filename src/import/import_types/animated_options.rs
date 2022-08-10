@@ -1,3 +1,4 @@
+use std::fmt::{Display, Formatter};
 use lazy_static::lazy_static;
 use regex::Regex;
 
@@ -12,6 +13,24 @@ pub struct AnimatedOptions {
 impl AnimatedOptions {
   pub fn has_fields(&self) -> bool {
     self.delay.is_some() || self.combine.is_some()
+  }
+}
+
+impl Display for AnimatedOptions {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    write!(
+      f,
+      "at a {} delay and drawn {}",
+      match self.delay.as_ref() {
+        Some(delay) => format!("{} frame", delay),
+        None => format!("unspecified")
+      },
+      match self.combine {
+        None => "unspecified",
+        Some(true) => "optimized (combine)",
+        Some(false) => "unoptimized (replace)"
+      }
+    )
   }
 }
 

@@ -1,35 +1,49 @@
 use std::borrow::Cow;
+use std::fmt::{Display, Formatter};
 use std::ops::Sub;
 use std::path::Path;
-use crate::import::AnimatedOptions;
+use log::Level;
+use crate::import::{AnimatedOptions, ImportContext};
 
-#[derive(Debug, Hash, Eq, PartialEq, Copy, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Hash, Eq, PartialEq, Copy, Clone, serde::Serialize, serde::Deserialize, thiserror::Error)]
 #[serde(tag = "subtype", rename_all = "snake_case")]
 pub enum SkinType {
   // The new tetrio formats used after TETR.IO v6.1.0
+  #[error("tetrio v6.1 unconnected minos")]
   Tetrio61,
+  #[error("tetrio v6.1 unconnected ghost")]
   Tetrio61Ghost,
+  #[error("tetrio v6.1 connected minos")]
   Tetrio61Connected,
+  #[error("tetrio v6.1 connected ghost")]
   Tetrio61ConnectedGhost,
+  #[error("tetrio v6.1 connected animated {opts}")]
   Tetrio61ConnectedAnimated { #[serde(flatten)] opts: AnimatedOptions },
+  #[error("tetrio v6.1 connected ghost animated {opts}")]
   Tetrio61ConnectedGhostAnimated { #[serde(flatten)] opts: AnimatedOptions },
 
   // The old tetrio format used before TETR.IO v6.1.0
+  #[error("old tetrio svg")]
   TetrioSVG,
+  #[error("old tetrio raster")]
   TetrioRaster,
+  #[error("old tetrio animated {opts}")]
   TetrioAnimated { #[serde(flatten)] opts: AnimatedOptions },
 
   // The format used by jstris
+  #[error("jstris")]
   JstrisRaster,
+  #[error("jstris animated")]
   JstrisAnimated { #[serde(flatten)] opts: AnimatedOptions },
 
   // The connected format used by the jstris connected textures userscript
   // e.g. https://docs.google.com/document/d/1JCXhdDI7E1yvVaedr6b1gudXty8G7uRLWuyuZPQIGcs
+  #[error("jstris connected")]
   JstrisConnected
 }
 
 impl SkinType {
-  pub fn guess_format(filename: &str, width: u32, height: u32) -> Option<SkinType> {
+  pub fn guess_format(filename: &str, width: u32, height: u32, ctx: &ImportContext) -> Option<SkinType> {
     let ext = Path::new(&filename).extension()
       .map(|ext| ext.to_string_lossy())
       .unwrap_or(Cow::from(filename));
@@ -55,10 +69,10 @@ impl SkinType {
       (    _,   _,   _,    _) if ratio(9.0/20.0) => Some(JstrisConnected),
       _ => None
     };
-    log::info!(
+    ctx.log(Level::Debug, format_args!(
       "Guessing format for ext={} w={} h={} anim={}: {:?}",
       ext, width, height, likely_animated, result
-    );
+    ));
     result
   }
 

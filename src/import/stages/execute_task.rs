@@ -3,6 +3,7 @@ use std::io::{Cursor, Read, Seek};
 use std::path::{Path, PathBuf};
 use hound::{SampleFormat, WavSpec};
 use image::DynamicImage;
+use log::Level;
 use symphonia::core::audio::{AudioBufferRef, SampleBuffer};
 use symphonia::core::codecs::{CODEC_TYPE_NULL, DecoderOptions};
 use symphonia::core::formats::FormatOptions;
@@ -23,7 +24,7 @@ use crate::tpse::{Background, File, MiscTPSEValue, Song, SongMetadata, TPSE};
 
 /// Executes an import task
 pub fn execute_task(task: ImportTask, ctx: ImportContext<'_>) -> Result<TPSE, ImportError> {
-  log::debug!("Executing import task {:?}", task);
+  ctx.log(Level::Info, format_args!("Executing import task {:?}", task));
   let mut tpse = TPSE::default();
   match task {
     ImportTask::AnimatedSkinFrames(skin_type, frames) => todo!(),
@@ -51,20 +52,19 @@ pub fn execute_task(task: ImportTask, ctx: ImportContext<'_>) -> Result<TPSE, Im
       let tetrio = Hint::new().with_extension("ogg");
       let mut stream = MediaSourceStream::new(Box::new(Cursor::new(tetrio_ogg.to_vec())), Default::default());
       let mut unvisited = atlas.keys().cloned().collect::<HashSet<_>>();
-      let start = std::time::Instant::now();
 
       for sfx in sound_effects {
         let with_filekey_removed = sfx.name.replace(ImportType::SoundEffects.filekey(), "");
         let entry = match atlas.get_mut(&with_filekey_removed) {
           Some(entry) => entry,
           None => {
-            log::warn!("Skipping unknown sound effect {}", sfx.name);
+            ctx.log(Level::Warn, format_args!("Skipping unknown sound effect {}", sfx.name));
             continue;
           }
         };
         unvisited.remove(&sfx.name);
         let mut new_duration: usize = 0;
-        log::trace!("Decoding {}: {} bytes (@ {:?})", sfx.filename, sfx.file.binary.len(), start.elapsed());
+        ctx.log(Level::Trace, format_args!("Decoding {}: {} bytes", sfx.filename, sfx.file.binary.len()));
         decode(&sfx.file.binary, sfx.extension().as_ref().map(|el| el.as_str()), |samples| {
           for sample in samples { encoder.write_sample(*sample).unwrap(); }
           new_duration += samples.len() / channels;
@@ -74,13 +74,13 @@ pub fn execute_task(task: ImportTask, ctx: ImportContext<'_>) -> Result<TPSE, Im
         encoder_position += new_duration;
       }
 
-      log::trace!("Decoding tetrio.ogg {} bytes (@ {:?})", tetrio_ogg.len(), start.elapsed());
+      ctx.log(Level::Trace, format_args!("Decoding tetrio.ogg: {} bytes", tetrio_ogg.len()));
       let mut decoded = Vec::with_capacity(546 * 44100 * 2);
       decode(tetrio_ogg, Some("ogg"), |samples| {
         decoded.extend_from_slice(samples);
       }).map_err(|err| ctx.wrap(err))?;
 
-      log::trace!("Encoding... (@ {:?}", start.elapsed());
+      ctx.log(Level::Trace, format_args!("Encoding..."));
       for sfx_name in unvisited {
         let (offset, duration) = atlas.get_mut(&sfx_name).unwrap();
         let offset_samples = (*offset / 1000.0 * 44100.0) as usize;
@@ -140,12 +140,9 @@ pub fn execute_task(task: ImportTask, ctx: ImportContext<'_>) -> Result<TPSE, Im
           }).map_err(|err| ctx.wrap(err))?);
         },
         SpecificImportType::Skin(skin_type) => {
-          log::trace!("Splicing {:?} to t61", skin_type);
           let (minos, ghost) = splice_to_t61(skin_type, &file.binary).map_err(|err| ctx.wrap(err))?;
-          log::trace!("Done splicing!");
           if let Some(minos) = minos { tpse.skin = Some(minos.into()); }
           if let Some(ghost) = ghost { tpse.ghost = Some(ghost.into()); }
-          log::trace!("Done converting!");
         },
         SpecificImportType::OtherSkin(skin_type) => {
           skin_type.tpse_field(&mut tpse).replace(file);
