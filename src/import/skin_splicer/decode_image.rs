@@ -1,17 +1,25 @@
 use std::io::Cursor;
+use std::panic::catch_unwind;
 use image::DynamicImage;
 use image::io::Reader;
 use tiny_skia::{Pixmap, Transform};
-use crate::import::ImportErrorType;
+use crate::import::{ImportErrorType, LoadError};
 
-pub fn decode_image(bytes: &[u8]) -> Result<DynamicImage, ImportErrorType> {
+pub fn decode_image(bytes: &[u8]) -> Result<DynamicImage, LoadError> {
   let transcoded = decode_svg(bytes);
   let bytes = match transcoded.as_ref() {
     Some(transcoded) => transcoded,
     None => bytes
   };
 
-  Ok(Reader::new(Cursor::new(bytes)).with_guessed_format().unwrap().decode()?)
+  Ok(catch_unwind(|| {
+    let reader = Reader::new(Cursor::new(bytes))
+      .with_guessed_format()
+      .expect("Cursor<&[u8]> shouldn't generate IO errors");
+    reader.decode()
+  }).map_err(|err| {
+    LoadError::ImageLoadPanic
+  })??)
 }
 
 fn decode_svg(bytes: &[u8]) -> Option<Vec<u8>> {

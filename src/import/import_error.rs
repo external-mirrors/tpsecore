@@ -55,10 +55,14 @@ pub enum AssetParseFailure {
 pub enum LoadError {
   #[error("failed to load image: {0}")]
   ImageError(#[from] image::ImageError),
+  #[error("the image decoder we're using is broken as hell and panicked")]
+  ImageLoadPanic,
   #[error("failed to decode audio: {0}")]
   SymphoniaError(#[from] symphonia::core::errors::Error),
   #[error("failed to decode audio: no supported audio track")]
-  NoSupportedAudioTrack
+  NoSupportedAudioTrack,
+  #[error("failed to read zip file: {0}")]
+  Zip(#[from] zip::result::ZipError)
 }
 
 #[derive(Debug, thiserror::Error)]

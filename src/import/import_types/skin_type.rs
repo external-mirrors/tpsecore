@@ -56,7 +56,7 @@ impl SkinType {
       _ => None
     };
     log::info!(
-      "Guessing format for ext: {} w: {} h: {} anim: {} = {:?}",
+      "Guessing format for ext={} w={} h={} anim={}: {:?}",
       ext, width, height, likely_animated, result
     );
     result

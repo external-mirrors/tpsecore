@@ -3,7 +3,7 @@ use std::ops::{Deref, DerefMut};
 use image::{DynamicImage, GenericImage, GenericImageView, ImageBuffer, Rgba, SubImage};
 use image::imageops::FilterType;
 use image::io::Reader;
-use crate::import::skin_splicer::{lookup_skin, Piece};
+use crate::import::skin_splicer::{decode_image, lookup_skin, Piece};
 use crate::import::skin_splicer::maps::*;
 use crate::import::{LoadError, SkinType};
 
@@ -14,7 +14,7 @@ pub struct SkinSplicer {
 impl SkinSplicer {
   /// Loads an image into the SkinSplicer, putting it at the end of the queue
   pub fn load(&mut self, format: SkinType, file: &[u8]) -> Result<(), LoadError> {
-    let image = Reader::new(Cursor::new(file)).with_guessed_format().unwrap().decode()?;
+    let image = decode_image(file)?;
     self.images.push((format, image));
     Ok(())
   }
@@ -55,7 +55,9 @@ impl SkinSplicer {
   pub fn set(&mut self, piece: Piece, connection: u8, buffer: &DynamicImage) -> Option<()> {
     for mut slicer in self.lookup_mut(piece, connection) {
       let mut canvas = slicer.next_mut()?;
+      log::trace!("Resizing image: {} {} -> {} {}", buffer.width(), buffer.height(), canvas.width(), canvas.height());
       let buffer = image::imageops::resize(buffer, canvas.width(), canvas.height(), FilterType::CatmullRom);
+      log::trace!("Overlaying image");
       image::imageops::overlay(canvas.deref_mut(), &buffer, 0, 0);
       return Some(());
     }
@@ -69,7 +71,7 @@ impl SkinSplicer {
     self.images.iter().map(move |(skin_type, image)| {
       let slices = lookup_skin(*skin_type, piece)
         .and_then(|skin_slice| skin_slice.slices(connection, image.width(), image.height()))
-        .map(|iter| iter.map(|(x, y, w, h)| better_view(image, x, y, w, h)));
+        .map(|iter| iter.map(|(x, y, w, h)| traced_view(image, x, y, w, h)));
       (*skin_type,  slices)
     })
   }
@@ -92,6 +94,11 @@ impl SkinSplicer {
   pub fn convert(&self, target_type: SkinType, block_size_override: Option<u32>)
     -> Option<DynamicImage>
   {
+    log::trace!(
+      "Converting splicer of {:?} to {:?}",
+      self.images.iter().map(|el| el.0).collect::<Vec<_>>(),
+      target_type
+    );
     let mut target = SkinSplicer::default();
     target.create_empty(target_type, block_size_override);
     let mut valid = false;
@@ -106,16 +113,17 @@ impl SkinSplicer {
       }
     }
 
+    log::trace!("Conversion finished!");
     if valid { Some(target.images.remove(0).1) } else { None }
   }
 }
 
-fn better_view(image: &DynamicImage, x: u32, y: u32, w: u32, h: u32) -> SubImage<&DynamicImage> {
-  log::debug!("Creating view of {}x{} image: {} {} {} {}", image.width(), image.height(), x, y, w, h);
+fn traced_view(image: &DynamicImage, x: u32, y: u32, w: u32, h: u32) -> SubImage<&DynamicImage> {
+  log::trace!("Creating view of {}x{} image: {} {} {} {}", image.width(), image.height(), x, y, w, h);
   image.view(x, y, w, h)
 }
-fn better_view_mut(image: &mut DynamicImage, x: u32, y: u32, w: u32, h: u32) -> SubImage<&mut DynamicImage> {
-  log::debug!("Creating mutable view of {}x{} image: {} {} {} {}", image.width(), image.height(), x, y, w, h);
+fn traced_view_mut(image: &mut DynamicImage, x: u32, y: u32, w: u32, h: u32) -> SubImage<&mut DynamicImage> {
+  log::trace!("Creating mutable view of {}x{} image: {} {} {} {}", image.width(), image.height(), x, y, w, h);
   image.sub_image(x, y, w, h)
 }
 
@@ -128,12 +136,12 @@ struct SliceLookup<T, IT> {
 impl<T, IT> SliceLookup<T, IT> where T: Deref<Target = DynamicImage>, IT: Iterator<Item = (u32, u32, u32, u32)> {
   fn next(&mut self) -> Option<SubImage<&DynamicImage>> {
     let (x, y, w, h) = self.iter.as_mut()?.next()?;
-    Some(better_view(&self.image, x, y, w, h))
+    Some(traced_view(&self.image, x, y, w, h))
   }
 }
 impl<T, IT> SliceLookup<T, IT> where T: DerefMut<Target = DynamicImage>, IT: Iterator<Item = (u32, u32, u32, u32)> {
   fn next_mut(&mut self) -> Option<SubImage<&mut DynamicImage>> {
     let (x, y, w, h) = self.iter.as_mut()?.next()?;
-    Some(better_view_mut(&mut self.image, x, y, w, h))
+    Some(traced_view_mut(&mut self.image, x, y, w, h))
   }
 }

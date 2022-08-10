@@ -1,5 +1,6 @@
-use std::collections::HashSet;
-use std::io::{Cursor, Seek};
+use std::collections::{HashMap, HashSet};
+use std::io::{Cursor, Read, Seek};
+use std::path::{Path, PathBuf};
 use hound::{SampleFormat, WavSpec};
 use image::DynamicImage;
 use symphonia::core::audio::{AudioBufferRef, SampleBuffer};
@@ -9,8 +10,10 @@ use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 use symphonia::default::{get_codecs, get_probe};
+use zip::read::ZipFile;
+use zip::ZipArchive;
 use crate::import::import_task::ImportTask;
-use crate::import::{Asset, ImportErrorType, ImportOptions, OtherSkinType, SkinType, SpecificImportType};
+use crate::import::{Asset, import, ImportErrorType, ImportOptions, ImportType, LoadError, OtherSkinType, SkinType, SpecificImportType};
 use crate::import::decode_helper::decode;
 use crate::import::LoadError::{NoSupportedAudioTrack, SymphoniaError};
 use crate::import::skin_splicer::SkinSplicer;
@@ -20,6 +23,7 @@ use crate::tpse::{Background, File, MiscTPSEValue, Song, SongMetadata, TPSE};
 
 /// Executes an import task
 pub fn execute_task(task: ImportTask, options: ImportOptions<'_>) -> Result<TPSE, ImportErrorType> {
+  log::debug!("Executing import task {:?}", task);
   let mut tpse = TPSE::default();
   match task {
     ImportTask::AnimatedSkinFrames(skin_type, frames) => todo!(),
@@ -47,9 +51,11 @@ pub fn execute_task(task: ImportTask, options: ImportOptions<'_>) -> Result<TPSE
       let tetrio = Hint::new().with_extension("ogg");
       let mut stream = MediaSourceStream::new(Box::new(Cursor::new(tetrio_ogg.to_vec())), Default::default());
       let mut unvisited = atlas.keys().cloned().collect::<HashSet<_>>();
+      let start = std::time::Instant::now();
 
       for sfx in sound_effects {
-        let entry = match atlas.get_mut(&sfx.name) {
+        let with_filekey_removed = sfx.name.replace(ImportType::SoundEffects.filekey(), "");
+        let entry = match atlas.get_mut(&with_filekey_removed) {
           Some(entry) => entry,
           None => {
             log::warn!("Skipping unknown sound effect {}", sfx.name);
@@ -58,6 +64,7 @@ pub fn execute_task(task: ImportTask, options: ImportOptions<'_>) -> Result<TPSE
         };
         unvisited.remove(&sfx.name);
         let mut new_duration: usize = 0;
+        log::trace!("Decoding {}: {} bytes (@ {:?})", sfx.filename, sfx.file.binary.len(), start.elapsed());
         decode(&sfx.file.binary, sfx.extension().as_ref().map(|el| el.as_str()), |samples| {
           for sample in samples { encoder.write_sample(*sample).unwrap(); }
           new_duration += samples.len() / channels;
@@ -67,19 +74,21 @@ pub fn execute_task(task: ImportTask, options: ImportOptions<'_>) -> Result<TPSE
         encoder_position += new_duration;
       }
 
+      log::trace!("Decoding tetrio.ogg {} bytes (@ {:?})", tetrio_ogg.len(), start.elapsed());
       let mut decoded = Vec::with_capacity(546 * 44100 * 2);
       decode(tetrio_ogg, Some("ogg"), |samples| {
         decoded.extend_from_slice(samples);
       })?;
 
+      log::trace!("Encoding... (@ {:?}", start.elapsed());
       for sfx_name in unvisited {
         let (offset, duration) = atlas.get_mut(&sfx_name).unwrap();
-        let offset_samples = (*offset * 44100.0) as usize;
-        let duration_samples = (*duration * 44100.0) as usize;
+        let offset_samples = (*offset / 1000.0 * 44100.0) as usize;
+        let duration_samples = (*duration / 1000.0 * 44100.0) as usize;
         let samples = &decoded[offset_samples..offset_samples + duration_samples];
         for sample in samples { encoder.write_sample(*sample).unwrap(); }
-        *offset = encoder_position as f64 / 44100.0;
-        *duration = samples.len() as f64 / 44100.0;
+        *offset = encoder_position as f64 / 44100.0 * 1000.0;
+        *duration = samples.len() as f64 / 44100.0 * 1000.0;
         encoder_position += samples.len() / channels;
       }
 
@@ -92,16 +101,48 @@ pub fn execute_task(task: ImportTask, options: ImportOptions<'_>) -> Result<TPSE
     },
     ImportTask::Basic(specific_type, filename, file) => {
       match specific_type {
-        SpecificImportType::Zip => todo!(),
+        SpecificImportType::Zip => {
+          // todo: optimeiz
+
+          let mut groups: HashMap<String, Vec<(ImportType, String, Vec<u8>)>> = HashMap::new();
+          let zip = ZipArchive::new(Cursor::new(&file.binary)).map_err(LoadError::from)?;
+          for i in 0..zip.len() {
+            let mut zip = zip.clone();
+            let mut file = zip.by_index(i).unwrap();
+            if !file.is_file() {
+              continue;
+            }
+            let (folder, filename) = file.name().rsplit_once("/").unwrap_or(("", file.name()));
+            groups.entry(folder.to_string()).or_default().push((
+              ImportType::Automatic,
+              filename.to_string(),
+              {
+                let mut bytes = Vec::new();
+                file.read_to_end(&mut bytes);
+                bytes
+              }
+            ));
+          }
+          for files in groups.into_values() {
+            let files = files.iter()
+              .map(|(it, name, bytes)| (*it, name.as_ref(), bytes.as_ref()))
+              .collect::<Vec<_>>();
+            let new_tpse = import(files, options.minus_one_depth())?;
+            tpse.merge(new_tpse);
+          }
+        },
         SpecificImportType::TPSE => {
           tpse.merge(serde_json::from_slice(&file.binary).map_err(|err| {
             ImportErrorType::InvalidTPSE(err.to_string())
           })?);
         },
         SpecificImportType::Skin(skin_type) => {
+          log::trace!("Splicing {:?} to t61", skin_type);
           let (minos, ghost) = splice_to_t61(skin_type, &file.binary)?;
+          log::trace!("Done splicing!");
           if let Some(minos) = minos { tpse.skin = Some(minos.into()); }
           if let Some(ghost) = ghost { tpse.ghost = Some(ghost.into()); }
+          log::trace!("Done converting!");
         },
         SpecificImportType::OtherSkin(skin_type) => {
           skin_type.tpse_field(&mut tpse).replace(file);
@@ -132,6 +173,7 @@ pub fn execute_task(task: ImportTask, options: ImportOptions<'_>) -> Result<TPSE
       }
     }
   };
+  log::trace!("Done executing import task");
   Ok(tpse)
 }
 
