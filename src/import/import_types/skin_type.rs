@@ -4,6 +4,7 @@ use std::ops::Sub;
 use std::path::Path;
 use log::Level;
 use crate::import::{AnimatedOptions, ImportContext};
+use crate::tpse::AnimMeta;
 
 #[derive(Debug, Hash, Eq, PartialEq, Copy, Clone, serde::Serialize, serde::Deserialize, thiserror::Error)]
 #[serde(tag = "subtype", rename_all = "snake_case")]
@@ -93,6 +94,29 @@ impl SkinType {
       SkinType::JstrisRaster                          => ( 9.0, 1.0, 30),
       SkinType::JstrisAnimated { .. }                 => ( 9.0, 1.0, 30),
       SkinType::JstrisConnected                       => ( 9.0, 20.0, 32)
+    }
+  }
+
+  /// Returns the animated options for this skin format, returning an object with all `None`s if
+  /// not an animated format.
+  pub fn get_anim_options(&self) -> AnimatedOptions {
+    let opts = match self {
+      SkinType::Tetrio61 => None,
+      SkinType::Tetrio61Ghost => None,
+      SkinType::Tetrio61Connected => None,
+      SkinType::Tetrio61ConnectedGhost => None,
+      SkinType::Tetrio61ConnectedAnimated { opts } => Some(*opts),
+      SkinType::Tetrio61ConnectedGhostAnimated { opts } => Some(*opts),
+      SkinType::TetrioSVG => None,
+      SkinType::TetrioRaster => None,
+      SkinType::TetrioAnimated { opts } => Some(*opts),
+      SkinType::JstrisRaster => None,
+      SkinType::JstrisAnimated { opts } => Some(*opts),
+      SkinType::JstrisConnected => None,
+    };
+    AnimatedOptions {
+      delay: opts.and_then(|opt| opt.delay),
+      combine: opts.and_then(|opt| opt.combine)
     }
   }
 }

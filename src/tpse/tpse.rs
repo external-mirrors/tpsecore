@@ -287,4 +287,8 @@ impl TPSE {
     self.touch_control_config = other.touch_control_config.or(self.touch_control_config.take());
     self.other.extend(other.other.drain());
   }
+
+  pub fn validate(&self) {
+    // todo: check image sizes, file IDs match up
+  }
 }

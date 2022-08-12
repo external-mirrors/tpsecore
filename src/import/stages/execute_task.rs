@@ -1,8 +1,13 @@
 use std::collections::{HashMap, HashSet};
 use std::io::{Cursor, Read, Seek};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use hound::{SampleFormat, WavSpec};
-use image::DynamicImage;
+use image::codecs::gif::GifDecoder;
+use image::{AnimationDecoder, Delay, DynamicImage, Frame};
+use image::codecs::png::PngDecoder;
+use image::codecs::webp::WebPDecoder;
+use image::imageops::FilterType;
 use log::Level;
 use symphonia::core::audio::{AudioBufferRef, SampleBuffer};
 use symphonia::core::codecs::{CODEC_TYPE_NULL, DecoderOptions};
@@ -17,17 +22,123 @@ use crate::import::import_task::ImportTask;
 use crate::import::{Asset, import, ImportErrorType, ImportContext, ImportType, LoadError, OtherSkinType, SkinType, SpecificImportType, ImportContextEntry, ImportError};
 use crate::import::decode_helper::decode;
 use crate::import::LoadError::{NoSupportedAudioTrack, SymphoniaError};
-use crate::import::skin_splicer::SkinSplicer;
+use crate::import::skin_splicer::{decode_image, SkinSplicer};
 use crate::import::tetriojs::custom_sound_atlas;
-use crate::tpse::{Background, File, MiscTPSEValue, Song, SongMetadata, TPSE};
-
+use crate::tpse::{AnimMeta, Background, File, MiscTPSEValue, Song, SongMetadata, TPSE};
 
 /// Executes an import task
 pub fn execute_task(task: ImportTask, ctx: ImportContext<'_>) -> Result<TPSE, ImportError> {
   ctx.log(Level::Info, format_args!("Executing import task {:?}", task));
   let mut tpse = TPSE::default();
   match task {
-    ImportTask::AnimatedSkinFrames(skin_type, frames) => todo!(),
+    ImportTask::AnimatedSkinFrames(skin_type, frames) => {
+      let frames = frames
+        .into_iter()
+        .enumerate()
+        .flat_map(|(i, frame)| {
+          let ctx = ctx.with_context(ImportContextEntry::FrameSource(i, frame.filename));
+          let ctx2 = ctx.clone();
+          let img = match decode_image(&frame.file.binary) {
+            Err(err) => {
+              let res = Err(ctx.wrap(err.into()));
+              return Box::new(std::iter::once(res)) as Box<dyn Iterator<Item = _>>
+            },
+            Ok(img) => img
+          };
+          let iter = match frame.file.mime.as_str() {
+            "image/gif" => {
+              GifDecoder::new(Cursor::new(frame.file.binary))
+                .map_err(Into::into)
+                .map(move |decoder| decoder.into_frames().map(move |r| {
+                  r.map_err(|e| ctx.wrap(LoadError::ImageError(e).into()))
+                }))
+                .map(|iter| Box::new(iter) as Box<dyn Iterator<Item = _>>)
+            }
+            "image/webp" => {
+              WebPDecoder::new(Cursor::new(frame.file.binary))
+                .map_err(Into::into)
+                .map(move |decoder| decoder.into_frames().map(move |r| {
+                  r.map_err(|e| ctx.wrap(LoadError::ImageError(e).into()))
+                }))
+                .map(|iter| Box::new(iter) as Box<dyn Iterator<Item = _>>)
+            },
+            _ => { // other single frame image
+              let res = decode_image(&frame.file.binary)
+                .map(|res| {
+                  let delay = Delay::from_saturating_duration(Duration::from_millis(1000/30));
+                  Frame::from_parts(res.into_rgba8(), 0, 0, delay)
+                })
+                .map_err(|err| ctx2.wrap(err.into()));
+              Ok(Box::new(std::iter::once(res)) as Box<dyn Iterator<Item = _>>)
+            }
+          };
+          match iter {
+            Err(err) => Box::new(std::iter::once(Err(ctx2.wrap(err)))),
+            Ok(iter) => iter
+          }
+        })
+        .collect::<Result<Vec<Frame>, ImportError>>()?;
+
+      // Yay, no more arbitrary canvas size restrictions!
+      // Note: tetrio plus forces non-UHD HD texture res when using animated skins just because
+      // they get absurdly huge and the 4x savings is worth it. Each frame is always 1024x1024.
+      let width = 1024 * frames.len() as u32;
+      let height = 1024;
+      let block_size = 48; // at HD/1024x1024 resolution
+      let mut mino_canvas: Option<DynamicImage> = None;
+      let mut ghost_canvas: Option<DynamicImage> = None;
+      for (i, frame) in frames.iter().enumerate() {
+        let mut source = SkinSplicer::default();
+        source.load_decoded(skin_type, frame.buffer().clone().into());
+        let groups = [
+          (source.convert(SkinType::Tetrio61Connected, Some(block_size)), &mut mino_canvas),
+          (source.convert(SkinType::Tetrio61ConnectedGhost, Some(block_size)), &mut ghost_canvas)
+        ];
+        for (frame, canvas) in groups {
+          if let Some(frame) = frame {
+            let canvas = canvas.get_or_insert_with(|| DynamicImage::new_rgb8(width, height));
+            image::imageops::overlay(canvas, &frame, (i * 1024) as i64, 0);
+          }
+        }
+      }
+      let delay = skin_type.get_anim_options().delay.unwrap_or_else(|| {
+        let milliseconds_per_image_frame = frames.iter()
+          .map(|frame| {
+            let (num, denom) = frame.delay().numer_denom_ms();
+            return num as f64 / denom as f64;
+          })
+          .min_by(|left, right| left.partial_cmp(right).expect("float comparison failed"))
+          .expect("There should be at least one frame");
+        let milliseconds_per_game_frame = 1000.0 / 60.0;
+        let game_frame_per_image_frame = milliseconds_per_image_frame / milliseconds_per_game_frame;
+        game_frame_per_image_frame as u32
+      });
+
+      // Back to normal 96px blocks for non-animated skin fallback
+
+      let uhd_block_size = 96;
+      if let Some(mino_canvas) = mino_canvas {
+        tpse.skin_anim = Some(mino_canvas.into());
+        tpse.skin_anim_meta = Some(AnimMeta { frames: frames.len() as u32, delay });
+
+        let mut source = SkinSplicer::default();
+        let first_frame = frames.first().expect("There should be at least one frame");
+        source.load_decoded(skin_type, first_frame.buffer().clone().into());
+        let skin = source.convert(SkinType::Tetrio61Connected, Some(uhd_block_size));
+        tpse.skin = Some(skin.expect("Skin should exist if animated buffer was created").into());
+      }
+
+      if let Some(ghost_canvas) = ghost_canvas {
+        tpse.ghost_anim = Some(ghost_canvas.into());
+        tpse.ghost_anim_meta = Some(AnimMeta { frames: frames.len() as u32, delay });
+
+        let mut source = SkinSplicer::default();
+        let first_frame = frames.first().expect("There should be at least one frame");
+        source.load_decoded(skin_type, first_frame.buffer().clone().into());
+        let ghost = source.convert(SkinType::Tetrio61ConnectedGhost, Some(uhd_block_size));
+        tpse.ghost = Some(ghost.expect("Skin should exist if animated buffer was created").into());
+      }
+    },
     ImportTask::SoundEffects(sound_effects) => {
       let tetrio_js = ctx.asset_source.provide(Asset::TetrioJS).map_err(|err| ctx.wrap(err))?;
       let tetrio_ogg = ctx.asset_source.provide(Asset::TetrioOGG).map_err(|err| ctx.wrap(err))?;

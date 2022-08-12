@@ -3,8 +3,10 @@ use crate::import::import_task::{ImportTask, SoundEffect};
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum ImportContextEntry {
-  #[error("file {0} (as {1:?})")]
-  File(String, ImportType),
+  #[error("file `{0}` (as {1:?})")]
+  ImportFile(String, ImportType),
+  #[error("frame source {0} from file `{1}`")]
+  FrameSource(usize, String),
   #[error("zip folder {0}")]
   ZipFolder(String),
   #[error("with filekey {0:?}")]

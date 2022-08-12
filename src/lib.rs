@@ -22,17 +22,37 @@ mod tests {
     #[test]
     fn import_tests() {
         let start = Instant::now();
+
         SimpleLogger::new()
           .with_level(LevelFilter::Warn)
           .with_module_level("usvg", LevelFilter::Error)
-          .with_module_level("tpsecore", LevelFilter::Trace)
+          .with_module_level("tpsecore", LevelFilter::Debug)
           .init().unwrap();
         log::info!("Initialized logger ({:?})", start.elapsed());
+
         let mut provider = DefaultAssetProvider::default();
         provider.preload(Asset::TetrioJS, include_bytes!("../testdata/tetrio.js")[..].into());
         provider.preload(Asset::TetrioOGG, include_bytes!("../testdata/tetrio.ogg")[..].into());
         log::info!("Preloaded assets ({:?})", start.elapsed());
-        let opts = ImportContext::new(&provider, 5);
+
+        let opts = ImportContext::new(&provider, 5).with_logger(&|level, args| {
+            log::log!(level, "Import: {}", args);
+        });
+
+        log::info!("--- Test: animated skin --- ({:?})", start.elapsed());
+        let tpse = import(vec![(
+            ImportType::Automatic,
+            "rgb_gamer_minos.gif",
+            include_bytes!("../testdata/rgb_gamer_minos.gif")
+        )], opts).unwrap();
+
+        std::fs::write(
+            "./rgb_game_minos.gif-output.tpse",
+            serde_json::to_string(&tpse).unwrap()
+        ).unwrap();
+
+        log::info!("Done! ({:?})", start.elapsed());
+
         // log::info!("--- Test: skin --- ({:?})", start.elapsed());
         // import(vec![(
         //     ImportType::Automatic,
@@ -49,13 +69,13 @@ mod tests {
         //     include_bytes!("../testdata/Emerald_PalaceWebp_BG.webp")
         // )], opts));
         // log::info!("Done! ({:?})", start.elapsed());
-        log::info!("--- Test: simple --- ({:?})", start.elapsed());
-        log::info!("{:?}", import(vec![(
-            ImportType::Automatic,
-            "EmeraldPalaceSimple.zip",
-            include_bytes!("../testdata/EmeraldPalaceSimple.zip")
-        )], opts));
-        log::info!("Done! ({:?})", start.elapsed());
+        // log::info!("--- Test: simple --- ({:?})", start.elapsed());
+        // log::info!("{:?}", import(vec![(
+        //     ImportType::Automatic,
+        //     "EmeraldPalaceSimple.zip",
+        //     include_bytes!("../testdata/EmeraldPalaceSimple.zip")
+        // )], opts));
+        // log::info!("Done! ({:?})", start.elapsed());
         // log::info!("--- Test: single folder --- ({:?})", start.elapsed());
         // import(vec![(
         //     ImportType::Automatic,

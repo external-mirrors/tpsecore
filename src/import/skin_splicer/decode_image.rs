@@ -1,6 +1,8 @@
 use std::io::Cursor;
 use std::panic::catch_unwind;
-use image::DynamicImage;
+use image::{AnimationDecoder, DynamicImage, Frame, ImageResult};
+use image::codecs::gif::GifDecoder;
+use image::codecs::webp::WebPDecoder;
 use image::io::Reader;
 use tiny_skia::{Pixmap, Transform};
 use crate::import::{ImportErrorType, LoadError};

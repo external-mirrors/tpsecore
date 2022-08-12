@@ -6,17 +6,17 @@ It's written in Rust and compiled to WebAssembly.
 
 ## Feature Roadmap
 - Import content
-  - Custom skins (Partially implemented: non-animated skins only)
-  - Sound effects (Partially functional)
-  - Music (Not implemented)
-  - Backgrounds (Not implemented)
+  - Custom skins
+  - Sound effects (Partially functional - encodes to wav instead of ogg)
+  - Music
+  - Backgrounds
 - Work with TPSE files
   - Parse
   - Validate (Not implemented)
   - Merge (Partially implemented)
 - Generate previews from TPSE files
-  - Slice skin textures into blocks with specific connections (Not implemented)
-  - Slice and play specific sound effects (Not implemented)
+  - Slice skin textures into blocks with specific connections
+  - Slice and play specific sound effects
   - Generate game-like previews showing most of a `tpse`'s content. This
     includes at least skins, animated skins, sound effects, and board,
     queue, and background skins. These take the form of a still image

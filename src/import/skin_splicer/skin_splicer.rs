@@ -19,6 +19,11 @@ impl SkinSplicer {
     Ok(())
   }
 
+  /// Loads a pre-decoded image into the SkinSplicer, putting it at the end of the queue
+  pub fn load_decoded(&mut self, format: SkinType, image: DynamicImage) {
+    self.images.push((format, image))
+  }
+
   /// Creates an empty canvas sized for the given format
   pub fn create_empty(&mut self, format: SkinType, block_size_override: Option<u32>) {
     let (image_width_ratio, image_height_ratio, mut block_size) = format.get_native_texture_size();
@@ -105,7 +110,11 @@ impl SkinSplicer {
 
     for piece in Piece::values() {
       for conn in tetrio_connections_submap.connections.keys() {
-        if let Some(texture) = self.get(*piece, *conn, block_size_override) {
+        let default_conn = tetrio_connections_submap.default;
+        let texture = self.get(*piece, *conn, block_size_override)
+          .or_else(|| self.get(*piece, default_conn, block_size_override));
+
+        if let Some(texture) = texture {
           if let Some(()) = target.set(*piece, *conn, &DynamicImage::from(texture)) {
             valid = true;
           }
