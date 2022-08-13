@@ -12,8 +12,9 @@ It's written in Rust and compiled to WebAssembly.
   - Backgrounds
 - Work with TPSE files
   - Parse
-  - Validate (Not implemented)
-  - Merge (Partially implemented)
+  - Validate (Partially implemented)
+  - Merge (Partially implemented, untested)
+  - Migrate (Not implemented)
 - Generate previews from TPSE files
   - Slice skin textures into blocks with specific connections
   - Slice and play specific sound effects
@@ -22,6 +23,12 @@ It's written in Rust and compiled to WebAssembly.
     queue, and background skins. These take the form of a still image
     or a short video. (Not implemented)
 
+## Why would you want this as a user?
+- It's more portable, so all tetrio plus related tools will have consistent behavior. No more `❌ Error: Unsupported image type`, better previews on the site, previews in tetrio plus itself, fewer arbitrary restrictions on asset size in importers, etc.
+- Asset IDs are now based on file hashes. If two people import the same song, it's guaranteed to have the same ID. If you reimport a song after deleting it, you won't need to update it in the music graph.
+- Slightly reworked automatic import process with more file keys and the ability to specify animated skin framerate as a parameterized file key.
+- Better error messages.
+- (Thereotically) better performance.
 
 ## Potential blockades
 - Limited availability of AV libraries for Rust

@@ -4,6 +4,7 @@ use crate::tpse::{Background, File, MiscTPSEValue, TouchControlConfig};
 use serde::{Serialize, Deserialize, Serializer, Deserializer};
 use serde::de::{DeserializeOwned, Error};
 use serde::ser::Error as SerError;
+use crate::tpse::music_graph::Node;
 
 /// The root TPSE type
 /// Essentially a schema for a key-value store
@@ -120,9 +121,9 @@ pub struct TPSE {
   pub backgrounds: Option<Vec<Background>>,
   #[serde(rename = "animatedBackground")]
   pub animated_background: Option<AnimatedBackground>,
-  pub music: Option<Vec<Song>>, // todo
+  pub music: Option<Vec<Song>>,
   #[serde(rename = "musicGraph")]
-  pub music_graph: Option<String>, // todo
+  pub music_graph: Option<Vec<Node>>,
   #[serde(default)]
   #[serde(rename = "touchControlConfig")]
   #[serde(deserialize_with = "deserialize_as_string", serialize_with = "serialize_as_string")]
@@ -282,13 +283,31 @@ impl TPSE {
       (false, true) => self.music = other.music.take(),
       (_, false) => {}
     }
-    // todo: smarter merging
-    self.music_graph = other.music_graph.or(self.music_graph.take());
+    match (self.music_graph_enabled.is_some(), other.music_graph.is_some()) {
+      (true, true) => {
+        let self_graph = self.music_graph.as_mut().unwrap();
+        let mut other_graph = other.music_graph.unwrap();
+        let max_id = self_graph.iter().map(|v| v.id).max().unwrap_or(0);
+        let mut remapped_ids = HashMap::new();
+        // Assign new IDs
+        for (i, node) in other_graph.iter_mut().enumerate() {
+          let new_id = max_id + i as u64 + 1;
+          remapped_ids.insert(node.id, new_id);
+          node.id = new_id;
+        }
+        // Update all ID references
+        for node in &mut other_graph {
+          for trigger in &mut node.triggers {
+            trigger.target = remapped_ids.get(&trigger.target).copied().unwrap_or(0);
+          }
+        }
+        // Merge them graphs
+        self_graph.extend(other_graph)
+      },
+      (false, true) => self.music_graph = other.music_graph.take(),
+      (_, false) => {}
+    }
     self.touch_control_config = other.touch_control_config.or(self.touch_control_config.take());
     self.other.extend(other.other.drain());
-  }
-
-  pub fn validate(&self) {
-    // todo: check image sizes, file IDs match up
   }
 }

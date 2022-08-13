@@ -82,8 +82,10 @@ pub fn execute_task(task: ImportTask, ctx: ImportContext<'_>) -> Result<TPSE, Im
       // Yay, no more arbitrary canvas size restrictions!
       // Note: tetrio plus forces non-UHD HD texture res when using animated skins just because
       // they get absurdly huge and the 4x savings is worth it. Each frame is always 1024x1024.
-      let width = 1024 * frames.len() as u32;
-      let height = 1024;
+      // tetrio plus also assumes animated textures sprite sheets wrap every 16 frames.
+      let frame_count = frames.len();
+      let width = 1024 * (frame_count as u32).min(16);
+      let height = 1024 * ((frame_count + 15) / 16) as u32; // ceiling division
       let block_size = 48; // at HD/1024x1024 resolution
       let mut mino_canvas: Option<DynamicImage> = None;
       let mut ghost_canvas: Option<DynamicImage> = None;
@@ -97,7 +99,9 @@ pub fn execute_task(task: ImportTask, ctx: ImportContext<'_>) -> Result<TPSE, Im
         for (frame, canvas) in groups {
           if let Some(frame) = frame {
             let canvas = canvas.get_or_insert_with(|| DynamicImage::new_rgb8(width, height));
-            image::imageops::overlay(canvas, &frame, (i * 1024) as i64, 0);
+            let x = (i % 16) as i64 * 1024;
+            let y = (i / 16) as i64 * 1024;
+            image::imageops::overlay(canvas, &frame, x, y);
           }
         }
       }
