@@ -12,7 +12,7 @@ pub fn decide_specific_type<'c>
   (import_type: ImportType, filename: &str, bytes: &[u8], ctx: ImportContext<'c>)
    -> Result<ImportResult<'c>, ImportError>
 {
-  ctx.log(Level::Info, format_args!("Deciding import type for {:?} {}", import_type, filename));
+  ctx.log(Level::Debug, format_args!("Deciding import type for {:?} {}", import_type, filename));
   if ctx.is_too_deep() {
     return Err(ctx.wrap(ImportErrorType::TooMuchNesting))
   }

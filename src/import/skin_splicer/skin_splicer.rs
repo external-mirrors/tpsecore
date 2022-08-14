@@ -32,7 +32,7 @@ impl SkinSplicer {
     }
     let width = (image_width_ratio * block_size as f64) as u32;
     let height = (image_height_ratio * block_size as f64) as u32;
-    self.images.push((format, DynamicImage::new_rgb8(width, height)))
+    self.images.push((format, DynamicImage::new_rgba8(width, height)))
   }
 
   /// Draws a block, combining all available pieces. If no resolution is provided, the

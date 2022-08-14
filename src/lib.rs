@@ -16,7 +16,7 @@ mod tests {
     use log::LevelFilter;
     use simple_logger::SimpleLogger;
     use crate::import::{Asset, AssetProvider, DefaultAssetProvider, import, ImportContext, ImportType};
-    use crate::render::render;
+    use crate::render::{BoardElement, render, RenderOptions};
 
     // todo: automated tests should eventually be moved to a separate repository
     // the actual testdata dir is gitignored because it'd be messy to keep in this repository
@@ -48,10 +48,15 @@ mod tests {
             include_bytes!("../testdata/render_test.zip")
         )], opts).unwrap();
         std::fs::write("./testdata/render_result.tpse", &serde_json::to_string(&tpse).unwrap()).unwrap();
-        let image = render(&tpse).unwrap().expect("there should be renderable assets");
-        let mut bytes = vec![];
-        image.write_to(&mut Cursor::new(&mut bytes), ImageOutputFormat::Png);
-        std::fs::write("./testdata/render_result.png", &bytes).unwrap();
+
+        for part in BoardElement::get_draw_order() {
+            let image = render(&tpse, RenderOptions {
+                board_pieces: &[*part][..]
+            }).unwrap().expect("there should be renderable assets");
+            let mut bytes = vec![];
+            image.write_to(&mut Cursor::new(&mut bytes), ImageOutputFormat::Bmp);
+            std::fs::write(format!("./testdata/render_parts/{:?}.bmp", part), &bytes).unwrap();
+        }
 
         //
         // log::info!("--- Test: animated skin --- ({:?})", start.elapsed());
