@@ -49,14 +49,23 @@ mod tests {
         )], opts).unwrap();
         std::fs::write("./testdata/render_result.tpse", &serde_json::to_string(&tpse).unwrap()).unwrap();
 
-        for part in BoardElement::get_draw_order() {
-            let image = render(&tpse, RenderOptions {
-                board_pieces: &[*part][..]
-            }).unwrap().expect("there should be renderable assets");
-            let mut bytes = vec![];
-            image.write_to(&mut Cursor::new(&mut bytes), ImageOutputFormat::Bmp);
-            std::fs::write(format!("./testdata/render_parts/{:?}.bmp", part), &bytes).unwrap();
-        }
+        // for part in BoardElement::get_draw_order() {
+        //     let image = render(&tpse, RenderOptions {
+        //         board_pieces: &[*part][..],
+        //         debug_grid: true
+        //     }).unwrap().expect("there should be renderable assets");
+        //     let mut bytes = vec![];
+        //     image.write_to(&mut Cursor::new(&mut bytes), ImageOutputFormat::Bmp);
+        //     std::fs::write(format!("./testdata/render_parts/part_{:?}.bmp", part), &bytes).unwrap();
+        // }
+
+        let image = render(&tpse, RenderOptions {
+            debug_grid: true,
+            ..RenderOptions::default()
+        }).unwrap().expect("there should be renderable assets");
+        let mut bytes = vec![];
+        image.write_to(&mut Cursor::new(&mut bytes), ImageOutputFormat::Bmp);
+        std::fs::write(format!("./testdata/render_parts/full_render.bmp"), &bytes).unwrap();
 
         //
         // log::info!("--- Test: animated skin --- ({:?})", start.elapsed());

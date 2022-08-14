@@ -3,6 +3,7 @@ mod board_element;
 use std::ops::Deref;
 use image::{DynamicImage, GenericImage, GenericImageView};
 use image::imageops::FilterType;
+use rusttype::{Font, Scale};
 pub use board_element::BoardElement;
 use crate::import::{LoadError, SkinType};
 use crate::import::skin_splicer::{decode_image, Piece, SkinSplicer};
@@ -58,9 +59,9 @@ pub fn nine_slice(w: u32, h: u32, pad_top: u32, pad_right: u32, pad_bottom: u32,
     (0, pad_top, pad_left, center_height), // middle left
     (pad_left, pad_top, center_width, center_height), // center
     (pad_left + center_width, pad_top, pad_right, center_height), // middle right
-    (0, pad_top + center_height, pad_left, pad_top), // bottom left
-    (pad_left, pad_top + center_height, center_width, pad_top), // bottom center
-    (pad_left + center_width, pad_top + center_height, pad_right, pad_top), // bottom right
+    (0, pad_top + center_height, pad_left, pad_bottom), // bottom left
+    (pad_left, pad_top + center_height, center_width, pad_bottom), // bottom center
+    (pad_left + center_width, pad_top + center_height, pad_right, pad_bottom), // bottom right
   ]
 }
 
@@ -71,7 +72,9 @@ pub fn nine_slice_resize
   let sources = nine_slice(tex.width(), tex.height(), pad_top, pad_right, pad_bottom, pad_left);
   let dests = nine_slice(w, h, pad_top, pad_right, pad_bottom, pad_left);
   let mut dest = DynamicImage::new_rgba8(w, h);
-  for ((sx, sy, sw, sh), (dx, dy, dw, dh)) in sources.iter().copied().zip(dests.iter().copied()) {
+  for (i, ((sx, sy, sw, sh), (dx, dy, dw, dh))) in sources.iter().copied().zip(dests.iter().copied()).enumerate() {
+    println!("slice {} of {} {}: draw {} {} {} {} to {} {} {} {}", i+1, tex.width(), tex.height(), sx, sy, sw, sh, dx, dy, dw, dh);
+    if sw == 0 || sh == 0 { continue; }
     let slice = tex.view(sx, sy, sw, sh);
     let resized = image::imageops::resize(slice.deref(), dw, dh, FilterType::CatmullRom);
     image::imageops::overlay(&mut dest, &resized, dx as i64, dy as i64);
@@ -87,12 +90,14 @@ pub fn clone_slice(tex: &DynamicImage, x: u32, y: u32, w: u32, h: u32) -> Dynami
 }
 
 pub struct RenderOptions<'a> {
-  pub board_pieces: &'a [BoardElement]
+  pub board_pieces: &'a [BoardElement],
+  pub debug_grid: bool
 }
 impl Default for RenderOptions<'static> {
   fn default() -> Self {
     RenderOptions {
-      board_pieces: BoardElement::get_draw_order()
+      board_pieces: BoardElement::get_draw_order(),
+      debug_grid: false
     }
   }
 }
@@ -107,7 +112,7 @@ pub fn render(tpse: &TPSE, opts: RenderOptions) -> Result<Option<DynamicImage>, 
     let texture = decode_image(&board.binary)?;
     for el in BoardElement::get_draw_order() {
       if !opts.board_pieces.contains(el) { continue }
-      let (x, y, w, h, pad_top, pad_right, pad_bottom, pad_left) = el.get_slice();
+      let ((x, y, w, h), (pad_top, pad_right, pad_bottom, pad_left)) = el.get_slice();
       let texture = clone_slice(&texture, x, y, w, h);
       let (x, y, w, h) = el.get_target();
       let texture = nine_slice_resize(
@@ -137,11 +142,7 @@ pub fn render(tpse: &TPSE, opts: RenderOptions) -> Result<Option<DynamicImage>, 
           splicer.get(piece, *connection, None).or_else(|| splicer.get(piece, 0b00000, None))
         });
         if let Some(tex) = tex {
-          // to line up blocks with board, determined using same image as `BoardElement::get_slice`
-          let brx = 209.0 / 34.0;
-          // for skyline
-          let bry = -4.0;
-          tasks.push((tex.into(), col as f64 + brx, row as f64 + bry, 1.0, 1.0));
+          tasks.push((tex.into(), col as f64, (row - 4) as f64, 1.0, 1.0));
         }
       }
     }
@@ -165,6 +166,45 @@ pub fn render(tpse: &TPSE, opts: RenderOptions) -> Result<Option<DynamicImage>, 
   for (img, x, y, w, h) in tasks {
     let resized = image::imageops::resize(&img, w as u32, h as u32, FilterType::CatmullRom);
     image::imageops::overlay(&mut canvas, &resized, x - min_x, y - min_y);
+  }
+
+  if opts.debug_grid {
+    let white = [255, 255, 255, 255].into();
+    let font = Font::try_from_bytes(include_bytes!("../../assets/pfw.ttf")).unwrap();
+    for x in (min_x..max_x).filter(|el| el % 48 == 0 /* "performance"? */) {
+      let height = canvas.height();
+      imageproc::drawing::draw_line_segment_mut(
+        &mut canvas,
+        ((x - min_x) as f32, 0.0),
+        ((x - min_x) as f32, height as f32),
+        white
+      );
+      imageproc::drawing::draw_text_mut(
+        &mut canvas,
+        white,
+        (x - min_x) as i32 + 2, 2,
+        Scale::uniform(16.0),
+        &font,
+        &format!("X{}", x)
+      );
+    }
+    for y in (min_y..max_y).filter(|el| el % 48 == 0) {
+      let width = canvas.width();
+      imageproc::drawing::draw_line_segment_mut(
+        &mut canvas,
+        (0.0, (y - min_y) as f32),
+        (width as f32, (y - min_y) as f32),
+        white
+      );
+      imageproc::drawing::draw_text_mut(
+        &mut canvas,
+        white,
+        2, (y - min_y) as i32 + if y == min_y { 16 } else { 2 },
+        Scale::uniform(16.0),
+        &font,
+        &format!("Y{}", y)
+      );
+    }
   }
 
   Ok(Some(canvas))

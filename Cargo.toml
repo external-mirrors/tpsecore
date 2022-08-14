@@ -40,12 +40,14 @@ image = "0.24.3"
 resvg = "0.23.0"
 usvg = "0.23.0"
 tiny-skia = "0.6"
+imageproc = "0.23.0"
 
 # Audio
 symphonia = { version = "0.5.1", features = ["mp3", "isomp4", "aac"] } # various decoders
 hound = "3.4.0" # wav encoder
 itertools = "0.10.3"
 instant = "0.1.12"
+rusttype = "0.9.2"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.13"
