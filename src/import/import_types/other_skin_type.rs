@@ -44,7 +44,7 @@ impl OtherSkinType {
   pub fn tpse_field<'a>(&'_ self, tpse: &'a mut TPSE) -> &'a mut Option<File> {
     match self {
       Self::Board => &mut tpse.board,
-      Self::Queue => &mut tpse.board,
+      Self::Queue => &mut tpse.queue,
       Self::Grid => &mut tpse.grid,
       Self::ParticleBeam => &mut tpse.particle_beam,
       Self::ParticleBeamsBeam => &mut tpse.particle_beams_beam,

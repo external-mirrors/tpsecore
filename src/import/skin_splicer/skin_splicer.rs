@@ -36,7 +36,8 @@ impl SkinSplicer {
   }
 
   /// Draws a block, combining all available pieces. If no resolution is provided, the
-  /// first available image size is used instead.
+  /// first available image size is used instead. If the connection or piece isn't supported
+  /// by the loaded skins, None will be returned.
   pub fn get(&self, piece: Piece, connection: u8, resolution: Option<u32>)
     -> Option<ImageBuffer<Rgba<u8>, Vec<u8>>>
   {
@@ -52,7 +53,7 @@ impl SkinSplicer {
       let resized = image::imageops::resize(canvas.deref(), buffer.width(), buffer.height(), FilterType::CatmullRom);
       image::imageops::overlay(&mut buffer, &resized, 0, 0);
     }
-    Some(buffer)
+    Some(buffer.into())
   }
 
   /// Draws a buffer to the first available slice for a block

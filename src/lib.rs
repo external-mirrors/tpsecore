@@ -2,19 +2,21 @@
 
 pub mod tpse;
 pub mod import;
+pub mod render;
 mod wasm_entrypoint;
 
 // library cleanup todos:
 // - Reintroduce lifetimes into the tpse management to reduce memory overhead
-// - Add file trace/stack location to errors
-// - Add per-task logging
 
 #[cfg(test)]
 mod tests {
+    use std::io::Cursor;
     use std::time::Instant;
+    use image::ImageOutputFormat;
     use log::LevelFilter;
     use simple_logger::SimpleLogger;
     use crate::import::{Asset, AssetProvider, DefaultAssetProvider, import, ImportContext, ImportType};
+    use crate::render::render;
 
     // todo: automated tests should eventually be moved to a separate repository
     // the actual testdata dir is gitignored because it'd be messy to keep in this repository
@@ -39,19 +41,32 @@ mod tests {
             log::log!(level, "Import: {}", args);
         });
 
-        log::info!("--- Test: animated skin --- ({:?})", start.elapsed());
+        log::info!("--- Test: render --- ({:?})", start.elapsed());
         let tpse = import(vec![(
             ImportType::Automatic,
-            "rgb_gamer_minos.gif",
-            include_bytes!("../testdata/rgb_gamer_minos.gif")
+            "render_test.zip",
+            include_bytes!("../testdata/render_test.zip")
         )], opts).unwrap();
+        std::fs::write("./testdata/render_result.tpse", &serde_json::to_string(&tpse).unwrap()).unwrap();
+        let image = render(&tpse).unwrap().expect("there should be renderable assets");
+        let mut bytes = vec![];
+        image.write_to(&mut Cursor::new(&mut bytes), ImageOutputFormat::Png);
+        std::fs::write("./testdata/render_result.png", &bytes).unwrap();
 
-        std::fs::write(
-            "./rgb_game_minos.gif-output.tpse",
-            serde_json::to_string(&tpse).unwrap()
-        ).unwrap();
-
-        log::info!("Done! ({:?})", start.elapsed());
+        //
+        // log::info!("--- Test: animated skin --- ({:?})", start.elapsed());
+        // let tpse = import(vec![(
+        //     ImportType::Automatic,
+        //     "rgb_gamer_minos.gif",
+        //     include_bytes!("../testdata/rgb_gamer_minos.gif")
+        // )], opts).unwrap();
+        //
+        // std::fs::write(
+        //     "./rgb_game_minos.gif-output.tpse",
+        //     serde_json::to_string(&tpse).unwrap()
+        // ).unwrap();
+        //
+        // log::info!("Done! ({:?})", start.elapsed());
 
         // log::info!("--- Test: skin --- ({:?})", start.elapsed());
         // import(vec![(

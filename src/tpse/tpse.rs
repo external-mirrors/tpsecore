@@ -102,7 +102,9 @@ pub struct TPSE {
   pub rank_u: Option<File>,
   pub rank_x: Option<File>,
   pub rank_z: Option<File>,
+  /// The block/mino skin in use as a png-encoded `Tetrio61Connected` format image
   pub skin: Option<File>,
+  /// The ghost and topout skin in use as a png-encoded `Tetrio61ConnectedGhost` format image
   pub ghost: Option<File>,
   #[serde(rename = "skinAnim")]
   pub skin_anim: Option<File>,
