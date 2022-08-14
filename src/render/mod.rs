@@ -103,10 +103,10 @@ impl Default for RenderOptions<'static> {
 }
 
 pub fn render(tpse: &TPSE, opts: RenderOptions) -> Result<Option<DynamicImage>, LoadError> {
-  /// A list of drawing tasks to perform. Units are in blocks.
-  let mut tasks: Vec<(DynamicImage, f64, f64, f64, f64)> = vec![];
-  /// The size of a block in pixels.
-  let resolution = 48;
+  /// A list of drawing tasks to perform. Units are in pixels.
+  let mut tasks: Vec<(DynamicImage, i64, i64, i64, i64)> = vec![];
+  /// Note: by convention, blocks are 48px
+  let block_size: i64 = 48;
 
   if let Some(board) = &tpse.board {
     let texture = decode_image(&board.binary)?;
@@ -117,8 +117,8 @@ pub fn render(tpse: &TPSE, opts: RenderOptions) -> Result<Option<DynamicImage>, 
       let (x, y, w, h) = el.get_target();
       let texture = nine_slice_resize(
         &texture,
-        (w * resolution as f64) as u32,
-        (h * resolution as f64) as u32,
+        w as u32,
+        h as u32,
         pad_top,
         pad_right,
         pad_bottom,
@@ -142,7 +142,7 @@ pub fn render(tpse: &TPSE, opts: RenderOptions) -> Result<Option<DynamicImage>, 
           splicer.get(piece, *connection, None).or_else(|| splicer.get(piece, 0b00000, None))
         });
         if let Some(tex) = tex {
-          tasks.push((tex.into(), col as f64, (row - 4) as f64, 1.0, 1.0));
+          tasks.push((tex.into(), col as i64 * block_size, (row as i64 - 4) * block_size, block_size, block_size));
         }
       }
     }
@@ -153,10 +153,10 @@ pub fn render(tpse: &TPSE, opts: RenderOptions) -> Result<Option<DynamicImage>, 
   }
 
   // convert task block coordinates into pixel coordinates
-  let tasks = tasks.into_iter().map(|(img, x, y, w, h)| {
-    let res = resolution as f64;
-    (img, (x * res) as i64, (y * res) as i64, (w * res) as i64, (h * res) as i64)
-  }).collect::<Vec<_>>();
+  // let tasks = tasks.into_iter().map(|(img, x, y, w, h)| {
+  //   let res = resolution as f64;
+  //   (img, (x * res) as i64, (y * res) as i64, (w * res) as i64, (h * res) as i64)
+  // }).collect::<Vec<_>>();
 
   let min_x = tasks.iter().map(|(img, x, y, w, h)| *x).min().unwrap();
   let min_y = tasks.iter().map(|(img, x, y, w, h)| *y).min().unwrap();

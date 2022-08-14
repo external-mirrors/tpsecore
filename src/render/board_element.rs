@@ -67,35 +67,27 @@ impl BoardElement {
 
   /// Gets the relative location the texture should be drawn to in a rendered board.
   /// Units are in blocks.
-  pub fn get_target(&self) -> (f64, f64, f64, f64) {
-    let (mut x, mut y, w, h) = match self {
-      Self::Background => (205, 0, 355, 701),
+  pub fn get_target(&self) -> (i64, i64, i64, i64) {
+    match self {
+      Self::Background => (-13, -20, 501, 990),
       Self::MiniGridBorder => todo!(),
       Self::NameTagBackground => todo!(),
       Self::NameTagBackgroundOnFire => todo!(),
-      Self::DangerLine => (209, 0, 348, 3),
-      Self::DangerGlow => (209, 3, 348, 101),
-      Self::BoardGridBordersInnerBottom => (205, 0, 355, 701),
-      Self::GarbageBar => (178, 0, 31, 701),
-      Self::ProgressBar => (557, 0, 31, 701),
-      Self::Stock => (363, 737, 38, 31),
-      Self::Garbage => (182, 627, 24, 70),
-      Self::Progress => (561, 0, 23, 697),
-      Self::GarbageCap => (182, 417, 23, 3),
-      Self::Warning => (161, 302, 93, 93),
-      Self::Target => (753, 25, 100, 99), // made up off-board value
-      Self::PendingGarbage => (182, 557, 24, 70),
-      Self::MegaBackground => (205, 0, 355, 701),
-      Self::MegaForeground => (205, 0, 355, 701)
-    };
-    // manual realignment to fit with aligned blocks
-    x -= 209 + (7.0 * (34.0) * (1.0 / 48.0)) as i32;
-    y -= (20.0 * (34.0) * (1.0 / 48.0)) as i32;
-
-
-
-    // These values were made up by inspecting screenshots where the blocks were approximately 34px
-    (x as f64 / 34.0, y as f64 / 34.0, w as f64 / 34.0, h as f64 / 34.0)
+      Self::DangerLine => (-7, -20, 491, 4),
+      Self::DangerGlow => (-7, -16, 491, 143),
+      Self::BoardGridBordersInnerBottom => (-13, -20, 501, 990),
+      Self::GarbageBar => (-51, -20, 44, 990),
+      Self::ProgressBar => (484, -20, 44, 990),
+      Self::Stock => (210, 1020, 54, 44),
+      Self::Garbage => (-45, 865, 34, 99),
+      Self::Progress => (490, -20, 32, 984),
+      Self::GarbageCap => (-45, 569, 32, 4),
+      Self::Warning => (-75, 406, 131, 131),
+      Self::Target => (761, 15, 141, 140), // made up off-board value
+      Self::PendingGarbage => (-45, 766, 34, 99),
+      Self::MegaBackground => (-13, -20, 501, 990),
+      Self::MegaForeground => (-13, -20, 501, 990)
+    }
   }
 
   /// Gets the coordinates of the subtexture from the main board texture in pixels
