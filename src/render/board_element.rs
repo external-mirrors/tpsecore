@@ -1,3 +1,4 @@
+/// An element contained on the `board.png` texture
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum BoardElement {
   /// Board background.
@@ -38,6 +39,26 @@ pub enum BoardElement {
   MegaForeground
 }
 
+mod board_size_units {
+  /// The size of a single mino
+  pub const BLOCK: i64 = 48;
+  /// How wide a border on the board is
+  pub const BORDER: i64 = 9; // todo: these show up as thinner in game for some reason?
+  /// The space inside the board where the blocks and grid are located.
+  /// Does not include the default borders.
+  pub const BOARD_INTERNAL: (i64, i64, i64, i64) = (0, 0, BLOCK*10, BLOCK*20);
+  /// The whole board including its borders but not including any bars
+  pub const BOARD_WITH_BORDER: (i64, i64, i64, i64) = (-BORDER, 0, BLOCK*10 + BORDER*2, BLOCK*20 + BORDER);
+  /// How wide each bar is
+  pub const BAR_WIDTH: i64 = 32;
+  /// The garbage bar, located to the left of the board
+  pub const GARBAGE_BAR: (i64, i64, i64, i64) = (BORDER*-2 + BAR_WIDTH*-1, 0, BORDER*2 + BAR_WIDTH, BLOCK*20 + BORDER);
+  /// The progress bar, located to the right of the board
+  pub const PROGRESS_BAR: (i64, i64, i64, i64) = (BLOCK*10, 0, BORDER*2 + BAR_WIDTH, BLOCK*20 + BORDER);
+  /// How many pixels to bad the bar contents by
+  pub const BAR_PAD: i64 = 4;
+}
+
 impl BoardElement {
   pub fn get_draw_order() -> &'static [BoardElement] {
     &[
@@ -65,28 +86,52 @@ impl BoardElement {
     ]
   }
 
-  /// Gets the relative location the texture should be drawn to in a rendered board.
-  /// Units are in blocks.
-  pub fn get_target(&self) -> (i64, i64, i64, i64) {
+  pub fn tint(&self) -> u32 {
     match self {
-      Self::Background => (-13, -20, 501, 990),
+      BoardElement::Garbage => 0xF71700FF,
+      BoardElement::Progress => 0xB84E07FF,
+      BoardElement::GarbageCap => 0xF717007F,
+      _ => 0xFFFFFFFF
+    }
+  }
+
+  /// Gets the relative location the texture should be drawn to in a rendered board.
+  /// Values in pixels, where 0,0 is the top left corner of the inner board where the blocks start.
+  /// All values determined using only screenshots, the tetrio board texture, and manual alignment.
+  pub fn get_target(&self) -> (i64, i64, i64, i64) {
+    use board_size_units::*;
+    use BAR_PAD as p;
+    match self {
+      Self::Background => BOARD_INTERNAL,
       Self::MiniGridBorder => todo!(),
       Self::NameTagBackground => todo!(),
       Self::NameTagBackgroundOnFire => todo!(),
-      Self::DangerLine => (-7, -20, 491, 4),
-      Self::DangerGlow => (-7, -16, 491, 143),
-      Self::BoardGridBordersInnerBottom => (-13, -20, 501, 990),
-      Self::GarbageBar => (-51, -20, 44, 990),
-      Self::ProgressBar => (484, -20, 44, 990),
-      Self::Stock => (210, 1020, 54, 44),
-      Self::Garbage => (-45, 865, 34, 99),
-      Self::Progress => (490, -20, 32, 984),
-      Self::GarbageCap => (-45, 569, 32, 4),
-      Self::Warning => (-75, 406, 131, 131),
-      Self::Target => (761, 15, 141, 140), // made up off-board value
-      Self::PendingGarbage => (-45, 766, 34, 99),
-      Self::MegaBackground => (-13, -20, 501, 990),
-      Self::MegaForeground => (-13, -20, 501, 990)
+      Self::DangerLine => (0, 0, BLOCK*10, BORDER),
+      Self::DangerGlow => (0, 0, BLOCK*10, 150),
+      Self::BoardGridBordersInnerBottom => (-BORDER, 0, BLOCK*10 + BORDER*2, BLOCK*20 + BORDER),
+      Self::GarbageBar => GARBAGE_BAR,
+      Self::ProgressBar => PROGRESS_BAR,
+      Self::Stock => (BLOCK*5 - 24, BLOCK*20+BORDER*2, 48, 48),
+      Self::Garbage => {
+        let (x, y, w, h) = GARBAGE_BAR;
+        (x + BORDER + p, y + BLOCK*16 + p, w - BORDER*2 - p*2, BLOCK*4 - p*2)
+      },
+      Self::Progress => {
+        let (x, y, w, h) = PROGRESS_BAR;
+        (x + BORDER + p, y + BLOCK*10 + p, w - BORDER*2 - p*2, BLOCK*10 - p*2)
+      },
+      Self::GarbageCap => {
+        let (x, y, w, h) = GARBAGE_BAR;
+        (x + BORDER + p, y + BLOCK*14 + p, w - BORDER*2 - p*2, BORDER - p*2)
+      },
+      Self::Warning => (-75, 406, 130, 130),
+      Self::Target => (BLOCK*20+BORDER+BAR_WIDTH+BORDER+10, 0, 100, 100), // made up off-board value
+      Self::PendingGarbage => {
+        let (x, y, w, h) = GARBAGE_BAR;
+        (x + BORDER + p, y + BLOCK*14 + p, w - BORDER*2 - p*2, BLOCK*2 - p*2)
+      },
+      Self::MegaBackground => BOARD_INTERNAL,
+      Self::MegaForeground => (-BORDER, 0, BLOCK*10+BORDER*2, BLOCK*20+BORDER)
     }
   }
 

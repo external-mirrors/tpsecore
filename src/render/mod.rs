@@ -48,8 +48,10 @@ const PCO_MAP: &[&[(Option<Piece>, u8)]] = &[
   &[(D, 0b00100), (D, 0b00101), (D, 0b00101), (D, 0b00101), (D, 0b00101), (D, 0b00101), (D, 0b00101), (D, 0b00101), (D, 0b00101), (D, 0b00001)], // 1
 ];
 
-
-pub fn nine_slice(w: u32, h: u32, pad_top: u32, pad_right: u32, pad_bottom: u32, pad_left: u32) -> [(u32, u32, u32, u32); 9] {
+pub fn nine_slice
+  (w: u32, h: u32, pad_top: u32, pad_right: u32, pad_bottom: u32, pad_left: u32)
+  -> [(u32, u32, u32, u32); 9]
+{
   let center_width = w.saturating_sub(pad_left + pad_right);
   let center_height = h.saturating_sub(pad_top + pad_bottom);
   [
@@ -72,8 +74,7 @@ pub fn nine_slice_resize
   let sources = nine_slice(tex.width(), tex.height(), pad_top, pad_right, pad_bottom, pad_left);
   let dests = nine_slice(w, h, pad_top, pad_right, pad_bottom, pad_left);
   let mut dest = DynamicImage::new_rgba8(w, h);
-  for (i, ((sx, sy, sw, sh), (dx, dy, dw, dh))) in sources.iter().copied().zip(dests.iter().copied()).enumerate() {
-    println!("slice {} of {} {}: draw {} {} {} {} to {} {} {} {}", i+1, tex.width(), tex.height(), sx, sy, sw, sh, dx, dy, dw, dh);
+  for ((sx, sy, sw, sh), (dx, dy, dw, dh)) in sources.iter().copied().zip(dests.iter().copied()) {
     if sw == 0 || sh == 0 { continue; }
     let slice = tex.view(sx, sy, sw, sh);
     let resized = image::imageops::resize(slice.deref(), dw, dh, FilterType::CatmullRom);
@@ -124,7 +125,14 @@ pub fn render(tpse: &TPSE, opts: RenderOptions) -> Result<Option<DynamicImage>, 
         pad_bottom,
         pad_left
       );
-      tasks.push((texture, x, y, w, h))
+      let mut texture = texture.into_rgba8();
+      for pixel in texture.pixels_mut() {
+        pixel.0[0] = (((el.tint() >> 24) & 0xFF) as f64 / 0xFF as f64 * pixel.0[0] as f64) as u8;
+        pixel.0[1] = (((el.tint() >> 16) & 0xFF) as f64 / 0xFF as f64 * pixel.0[1] as f64) as u8;
+        pixel.0[2] = (((el.tint() >> 08) & 0xFF) as f64 / 0xFF as f64 * pixel.0[2] as f64) as u8;
+        pixel.0[3] = (((el.tint() >> 00) & 0xFF) as f64 / 0xFF as f64 * pixel.0[3] as f64) as u8;
+      }
+      tasks.push((texture.into(), x, y, w, h))
     }
   }
 
@@ -152,19 +160,13 @@ pub fn render(tpse: &TPSE, opts: RenderOptions) -> Result<Option<DynamicImage>, 
     return Ok(None)
   }
 
-  // convert task block coordinates into pixel coordinates
-  // let tasks = tasks.into_iter().map(|(img, x, y, w, h)| {
-  //   let res = resolution as f64;
-  //   (img, (x * res) as i64, (y * res) as i64, (w * res) as i64, (h * res) as i64)
-  // }).collect::<Vec<_>>();
-
   let min_x = tasks.iter().map(|(img, x, y, w, h)| *x).min().unwrap();
   let min_y = tasks.iter().map(|(img, x, y, w, h)| *y).min().unwrap();
   let max_x = tasks.iter().map(|(img, x, y, w, h)| x+w).max().unwrap();
   let max_y = tasks.iter().map(|(img, x, y, w, h)| y+h).max().unwrap();
   let mut canvas = DynamicImage::new_rgba8((max_x - min_x) as u32, (max_y - min_y) as u32);
   for (img, x, y, w, h) in tasks {
-    let resized = image::imageops::resize(&img, w as u32, h as u32, FilterType::CatmullRom);
+    let mut resized = image::imageops::resize(&img, w as u32, h as u32, FilterType::CatmullRom);
     image::imageops::overlay(&mut canvas, &resized, x - min_x, y - min_y);
   }
 
