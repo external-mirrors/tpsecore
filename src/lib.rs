@@ -16,6 +16,7 @@ mod tests {
     use log::LevelFilter;
     use simple_logger::SimpleLogger;
     use crate::import::{Asset, AssetProvider, DefaultAssetProvider, import, ImportContext, ImportType};
+    use crate::import::skin_splicer::Piece;
     use crate::render::{BoardElement, render, RenderOptions};
 
     // todo: automated tests should eventually be moved to a separate repository
@@ -66,6 +67,16 @@ mod tests {
         let mut bytes = vec![];
         image.write_to(&mut Cursor::new(&mut bytes), ImageOutputFormat::Bmp);
         std::fs::write(format!("./testdata/render_parts/full_render.bmp"), &bytes).unwrap();
+
+        let image = render(&tpse, RenderOptions {
+            debug_grid: true,
+            board: &[&[(Some(Piece::T), 0)]],
+            skyline: 4,
+            ..RenderOptions::default()
+        }).unwrap().expect("there should be renderable assets");
+        let mut bytes = vec![];
+        image.write_to(&mut Cursor::new(&mut bytes), ImageOutputFormat::Bmp);
+        std::fs::write(format!("./testdata/render_parts/full_render_tiny.bmp"), &bytes).unwrap();
 
         //
         // log::info!("--- Test: animated skin --- ({:?})", start.elapsed());
