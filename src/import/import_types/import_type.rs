@@ -93,6 +93,9 @@ impl ImportType {
       Skin { subtype: Tetrio61Connected } => "_connected_minos",
       Skin { subtype: Tetrio61ConnectedGhost } => "_connected_ghost",
       // todo: Not sure exactly how animated skin filekeys will work out?
+      // potential things that come up: this[0] is called `flow_connected_minos`, so it'll import
+      // as a *non*-animated skin.
+      // [0] https://you.have.fail/ed/at/tetrioplus/#skin-Haley_Halcyon-loop_connected_minos
       Skin { subtype: Tetrio61ConnectedAnimated { .. } } => "_animated_connected_minos",
       Skin { subtype: Tetrio61ConnectedGhostAnimated { .. } } => "_animated_connected_ghost",
       Skin { subtype: TetrioSVG } => "_old_tetrio_svg",

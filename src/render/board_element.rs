@@ -48,6 +48,10 @@ pub enum BoardElement {
   Replay
 }
 
+/// Adjusts the scale of `BoardGridBordersInnerBottom`, `GarbageBar`, `ProgressBar`, `Hold`, `Next`
+/// and some layout changes to make it all fit.
+const BORDER_SCALE: u32 = 2;
+
 pub enum BoardTextureKind {
   Board,
   Queue,
@@ -59,6 +63,9 @@ impl BoardElement {
     &[
       Self::Background,
       Self::MegaBackground,
+
+      Self::Hold,
+      Self::Next,
 
       Self::BoardGridBordersInnerBottom,
       Self::GarbageBar,
@@ -76,8 +83,6 @@ impl BoardElement {
 
       Self::GarbageCap,
 
-      Self::Hold,
-      Self::Next,
       Self::Replay,
 
       Self::Warning,
@@ -103,7 +108,7 @@ impl BoardElement {
     /// How many pixels each block is
     let block = opts.block_size;
     /// How wide a border on the board is
-    let border = 9; // todo: these show up as thinner in game for some reason?
+    let border = 9 / BORDER_SCALE as i64;
     /// The space inside the board where the blocks and grid are located.
     /// Does not include the default borders.
     let board_internal = (0, 0, block*width, block*height);
@@ -164,15 +169,15 @@ impl BoardElement {
       Self::MegaForeground => (-border, 0, block*width+ border*2, block*height + border),
       Self::Hold => {
         let height = block*4; // Arbitrary, but it lines up almost perfectly
-        let width = (height as f64 * 150.0/116.0) as i64; // approximate aspect ratio
+        let width = (height as f64 * 183.0/137.0) as i64; // approximate aspect ratio
         let (_, _, gw, _) = garbage_bar;
-        (-(gw + width), 0, width, height)
+        (-(gw + width) + border /* overlapping border */, 0, width, height)
       },
       Self::Next => {
         let height = block*16; // Arbitrary, but it lines up almost perfectly
-        let width = (height as f64 * 150.0/469.0) as i64; // approximate aspect ratio
+        let width = (height as f64 * 183.0/556.0) as i64; // approximate aspect ratio
         let (px, _, pw, _) = progress_bar;
-        (px + pw, 0, width, height)
+        (px + pw - border /* overlapping border */, 0, width, height)
       },
       Self::Replay => (0, 0, 0, 0) // TODO
     }
@@ -182,30 +187,31 @@ impl BoardElement {
   /// The first value is the board texture type to pull from
   /// The second four values are the x,y,w,h of the texture
   /// The third four values make up the padding of a 9-slice grid on the sides: 🡱🡲🡳🡰
-  pub fn get_slice(&self) -> (BoardTextureKind, (u32, u32, u32, u32), (u32, u32, u32, u32)) {
+  /// The fourth value is a scale to multiply the nine-slice resize size by.
+  pub fn get_slice(&self) -> (BoardTextureKind, (u32, u32, u32, u32), (u32, u32, u32, u32), u32) {
     use BoardTextureKind::*;
     match self {
-      Self::Background => (Board, (0, 0, 20, 20), (0, 0, 0, 0)),
-      Self::MiniGridBorder => (Board, (22, 0, 26, 18), (0, 10, 10, 10)),
-      Self::NameTagBackground => (Board, (50, 0, 20, 20), (0, 0, 0, 0)),
-      Self::NameTagBackgroundOnFire => (Board, (72, 0, 20, 20), (0, 0, 0, 0)),
-      Self::DangerLine => (Board, (96, 0, 13, 11), (0, 0, 0, 0)),
-      Self::DangerGlow => (Board, (96, 11, 13, 64), (0, 0, 0, 0)),
-      Self::BoardGridBordersInnerBottom => (Board, (111, 0, 27, 20), (0, 9, 9, 9)),
-      Self::GarbageBar => (Board, (142, 0, 27, 20), (0, 9, 9, 9)),
-      Self::ProgressBar => (Board, (173, 0, 27, 20), (0, 9, 9, 9)),
-      Self::Stock => (Board, (10, 30, 76, 76), (0, 0, 0, 0)),
-      Self::Garbage => (Board, (109, 30, 64, 56), (6, 0, 8, 0)),
-      Self::Progress => (Board, (173, 24, 64, 62), (32, 0, 0, 0)),
-      Self::GarbageCap => (Board, (111, 88, 60, 8), (0, 0, 0, 0)),
-      Self::Warning => (Board, (2, 118, 92, 92), (0, 0, 0, 0)),
-      Self::Target => (Board, (98, 100, 69, 69), (0, 0, 0, 0)),
-      Self::PendingGarbage => (Board, (173, 94, 64, 56), (6, 0, 8, 0)),
-      Self::MegaBackground => (Board, (256, 0, 256, 256), (0, 0, 0, 0)),
-      Self::MegaForeground => (Board, (258, 258, 252, 252), (0, 9, 9, 9)),
-      Self::Hold => (Queue, (2, 148, 474, 142), (77, 9, 49, 9)),
-      Self::Next => (Queue, (2, 2, 474, 142), (77, 9, 49, 9)),
-      Self::Replay => (Queue, (2, 294, 398, 77), (0, 0, 0, 0))
+      Self::Background => (Board, (0, 0, 20, 20), (0, 0, 0, 0), 1),
+      Self::MiniGridBorder => (Board, (22, 0, 26, 18), (0, 10, 10, 10), 1),
+      Self::NameTagBackground => (Board, (50, 0, 20, 20), (0, 0, 0, 0), 1),
+      Self::NameTagBackgroundOnFire => (Board, (72, 0, 20, 20), (0, 0, 0, 0), 1),
+      Self::DangerLine => (Board, (96, 0, 13, 11), (0, 0, 0, 0), 1),
+      Self::DangerGlow => (Board, (96, 11, 13, 64), (0, 0, 0, 0), 1),
+      Self::BoardGridBordersInnerBottom => (Board, (111, 0, 27, 20), (0, 9, 9, 9), BORDER_SCALE),
+      Self::GarbageBar => (Board, (142, 0, 27, 20), (0, 9, 9, 9), BORDER_SCALE),
+      Self::ProgressBar => (Board, (173, 0, 27, 20), (0, 9, 9, 9), BORDER_SCALE),
+      Self::Stock => (Board, (10, 30, 76, 76), (0, 0, 0, 0), 1),
+      Self::Garbage => (Board, (109, 30, 64, 56), (6, 0, 8, 0), 1),
+      Self::Progress => (Board, (173, 24, 64, 62), (32, 0, 0, 0), 1),
+      Self::GarbageCap => (Board, (111, 88, 60, 8), (0, 0, 0, 0), 1),
+      Self::Warning => (Board, (2, 118, 92, 92), (0, 0, 0, 0), 1),
+      Self::Target => (Board, (98, 100, 69, 69), (0, 0, 0, 0), 1),
+      Self::PendingGarbage => (Board, (173, 94, 64, 56), (6, 0, 8, 0), 1),
+      Self::MegaBackground => (Board, (256, 0, 256, 256), (0, 0, 0, 0), BORDER_SCALE),
+      Self::MegaForeground => (Board, (258, 258, 252, 252), (0, 9, 9, 9), BORDER_SCALE),
+      Self::Hold => (Queue, (2, 148, 474, 142), (77, 9, 49, 9), BORDER_SCALE),
+      Self::Next => (Queue, (2, 2, 474, 142), (77, 9, 49, 9), BORDER_SCALE),
+      Self::Replay => (Queue, (2, 294, 398, 77), (0, 0, 0, 0), 1)
     }
   }
 }

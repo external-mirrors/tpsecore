@@ -60,23 +60,17 @@ mod tests {
         //     std::fs::write(format!("./testdata/render_parts/part_{:?}.bmp", part), &bytes).unwrap();
         // }
 
-        let image = render(&tpse, RenderOptions {
+        let frames = render(&tpse, RenderOptions {
             debug_grid: true,
             ..RenderOptions::default()
-        }).unwrap().expect("there should be renderable assets");
-        let mut bytes = vec![];
-        image.write_to(&mut Cursor::new(&mut bytes), ImageOutputFormat::Bmp);
-        std::fs::write(format!("./testdata/render_parts/full_render.bmp"), &bytes).unwrap();
-
-        let image = render(&tpse, RenderOptions {
-            debug_grid: true,
-            board: &[&[(Some(Piece::T), 0)]],
-            skyline: 4,
-            ..RenderOptions::default()
-        }).unwrap().expect("there should be renderable assets");
-        let mut bytes = vec![];
-        image.write_to(&mut Cursor::new(&mut bytes), ImageOutputFormat::Bmp);
-        std::fs::write(format!("./testdata/render_parts/full_render_tiny.bmp"), &bytes).unwrap();
+        }).unwrap();
+        for (i, frame) in frames.enumerate() {
+            let frame = frame.expect("there should be renderable assets");
+            let filename = format!("./testdata/render_parts/{:04}_full_render.bmp", i);
+            let mut bytes = vec![];
+            frame.write_to(&mut Cursor::new(&mut bytes), ImageOutputFormat::Bmp);
+            std::fs::write(filename, &bytes).unwrap();
+        }
 
         //
         // log::info!("--- Test: animated skin --- ({:?})", start.elapsed());

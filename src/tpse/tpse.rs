@@ -178,7 +178,7 @@ impl Default for SongGenre {
   }
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, Clone, Copy)]
 pub struct AnimMeta {
   /// The number of frames the animation lasts for
   pub frames: u32,

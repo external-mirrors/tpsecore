@@ -126,6 +126,11 @@ impl SkinSplicer {
     log::trace!("Conversion finished!");
     if valid { Some(target.images.remove(0).1) } else { None }
   }
+
+  /// Returns the number of loaded iamges
+  pub fn len(&self) -> usize {
+    self.images.len()
+  }
 }
 
 fn traced_view(image: &DynamicImage, x: u32, y: u32, w: u32, h: u32) -> SubImage<&DynamicImage> {
