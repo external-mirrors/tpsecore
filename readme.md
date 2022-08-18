@@ -32,9 +32,12 @@ It's written in Rust and compiled to WebAssembly.
 
 ## Potential blockades
 - Limited availability of AV libraries for Rust
-  - Currently in dire need of a wasm-compatible OGG encoder
+  - Currently in dire need of a wasm-compatible OGG encoder and any wasm-compatible video encoder
   - Wasm-compatible ffmpeg bindings would be ideal
-    (`ffmpeg-dev` isn't wasm-compatible and `ffmpeg-wasi` isn't the same thing as wasm)
+    (`ffmpeg-dev` isn't wasm-compatible and `ffmpeg-wasi` isn't the same thing as wasm. Changing to a wasi toolchain
+    would be annoying due to lack of wasm-bindgen support, and `ffmpeg-wasi` also requires an
+    [older version of rust](https://github.com/jedisct1/rust-ffmpeg-wasi/issues/3#issuecomment-1184741515) to build
+    properly, which some of this project's dependencies don't support.)
 - wasm32 memory limitations: TETR.IO PLUS's current importers generally run
   under 2GB for sound effects, but animated  skins can blow up in size with high
   framerates because every frame is an extra 1024x1024 pixels to be added to a
