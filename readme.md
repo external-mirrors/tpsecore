@@ -24,9 +24,13 @@ It's written in Rust and compiled to WebAssembly.
     or a short video. (Not implemented)
 
 ## Why would you want this as a user?
-- It's more portable, so all tetrio plus related tools will have consistent behavior. No more `❌ Error: Unsupported image type`, better previews on the site, previews in tetrio plus itself, fewer arbitrary restrictions on asset size in importers, etc.
-- Asset IDs are now based on file hashes. If two people import the same song, it's guaranteed to have the same ID. If you reimport a song after deleting it, you won't need to update it in the music graph.
-- Slightly reworked automatic import process with more file keys and the ability to specify animated skin framerate as a parameterized file key.
+- It's more portable, so all tetrio plus related tools will have consistent behavior. No more `❌ Error: Unsupported
+  image type`, better previews on the site, previews in tetrio plus itself, fewer arbitrary restrictions on asset size
+  in importers, etc.
+- Asset IDs are now based on file hashes. If two people import the same song, it's guaranteed to have the same ID. If
+  you reimport a song after deleting it, you won't need to update it in the music graph.
+- Slightly reworked automatic import process with more file keys and the ability to specify animated skin framerate as a
+  parameterized file key.
 - Better error messages.
 - (Thereotically) better performance.
 
@@ -55,6 +59,12 @@ It's written in Rust and compiled to WebAssembly.
   resembles TETR.IO gameplay in realtime. The viability of this is unknown. At
   the very least, generating a 10 second 1080p60 render of assets should take no
   longer than a few minutes.
+
+## Differences to existing tetrio plus conventions
+- The automatic import format has been made more flexible. (todo: elaborate)
+- The connection bitfield format has been changed to have 4 corner connection bits (identifying distinct corners)
+  instead of 1. To fix this, just fill in all upper four bits when one is set, e.g.
+  `field = (field & 0b00010000) ? (field | 0b11110000) : field`.
 
 ## Preferred naming
 Just to get this out of the way:

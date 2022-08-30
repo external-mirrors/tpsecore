@@ -1,14 +1,18 @@
 use crate::import::skin_splicer::Piece;
-use crate::render::{BoardElement, PCO_MAP};
+use crate::render::{BoardElement, BoardMap, example_maps};
 
-#[derive(Copy, Clone)]
+
+#[derive(Debug, Clone)]
 pub struct RenderOptions<'a> {
+  /// How long this render should be shown, in seconds.
+  /// Note that animation frames are rounded up, and must last at least one video frame.
+  pub duration: f64,
   /// What parts of the board to render and in what order
-  pub board_pieces: &'a [BoardElement],
+  pub board_elements: &'a [BoardElement],
   /// Whether to draw the coordinate debug grid overlay
   pub debug_grid: bool,
-  /// The contents of the board.
-  pub board: &'a [&'a [(Option<Piece>, u8)]],
+  /// The contents of the board
+  pub board: BoardMap,
   /// The highest row that's rendered with a background.
   /// Typically four fewer (or half for a double-full-matrix-height board) of the board height.
   pub skyline: usize,
@@ -19,9 +23,10 @@ pub struct RenderOptions<'a> {
 impl Default for RenderOptions<'static> {
   fn default() -> Self {
     RenderOptions {
-      board_pieces: BoardElement::get_draw_order(),
+      duration: 0.0,
+      board_elements: BoardElement::get_draw_order(),
       debug_grid: false,
-      board: PCO_MAP,
+      board: BoardMap::from(example_maps::EMPTY_MAP),
       skyline: 20,
       // This is the size present in the modern tetrio format, so it'll look best when used with
       // most skins.
@@ -34,8 +39,8 @@ impl RenderOptions<'_> {
   /// Returns the width and height of the board. The height is calculated as the max row length,
   /// but there's no guarantee all rows are the same length.
   pub fn board_size(&self) -> (usize, usize) {
-    let height = self.board.len();
-    let width = self.board.iter().map(|row| row.len()).max().unwrap_or(0);
+    let height = self.board.height();
+    let width = self.board.width();
     (width, height)
   }
 }

@@ -1,7 +1,8 @@
 use crate::render::RenderOptions;
 
 /// An element contained on the `board.png` texture
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum BoardElement {
   /// Board: Board background.
   Background,
@@ -101,7 +102,7 @@ impl BoardElement {
   /// Gets the relative location the texture should be drawn to in a rendered board.
   /// Values in pixels, where 0,0 is the top left corner of the inner board where the blocks start.
   /// All values determined using only screenshots, the tetrio board texture, and manual alignment.
-  pub fn get_target(&self, opts: RenderOptions) -> (i64, i64, i64, i64) {
+  pub fn get_target(&self, opts: &RenderOptions) -> (i64, i64, i64, i64) {
     let (width, _) = opts.board_size();
     let width = width as i64;
     let height = opts.skyline as i64;
@@ -118,10 +119,10 @@ impl BoardElement {
     let bar_width = 32;
     /// The garbage bar, located to the left of the board
     let mut garbage_bar = (border*-2 + bar_width*-1, 0, border*2 + bar_width, block*height + border);
-    if !opts.board_pieces.contains(&BoardElement::GarbageBar) { garbage_bar.2 = 0; }
+    if !opts.board_elements.contains(&BoardElement::GarbageBar) { garbage_bar.2 = 0; }
     /// The progress bar, located to the right of the board
     let mut progress_bar = (block*width, 0, border*2 + bar_width, block*height + border);
-    if !opts.board_pieces.contains(&BoardElement::ProgressBar) { progress_bar.2 = 0; }
+    if !opts.board_elements.contains(&BoardElement::ProgressBar) { progress_bar.2 = 0; }
     /// How many pixels to bad the bar contents by
     let bar_pad = 4;
 

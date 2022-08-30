@@ -1,14 +1,15 @@
 mod board_element;
 mod nine_slice;
-mod pco_map;
+pub mod example_maps;
 mod render_options;
 mod render;
+mod board_map;
 
 pub use board_element::{BoardElement, BoardTextureKind};
 pub use nine_slice::{nine_slice, nine_slice_resize};
-pub use pco_map::PCO_MAP;
 pub use render_options::RenderOptions;
-pub use render::render;
+pub use render::*;
+pub use board_map::BoardMap;
 
 use image::DynamicImage;
 

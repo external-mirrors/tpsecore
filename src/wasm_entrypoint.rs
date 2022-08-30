@@ -1,15 +1,19 @@
 use std::collections::HashMap;
 use std::fmt::Display;
+use std::io::Cursor;
 use std::ops::{Deref, DerefMut};
 use std::sync::Mutex;
+use image::ImageOutputFormat;
 use lazy_static::lazy_static;
 use log::Level;
 use mime::Mime;
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::*;
-use crate::import::{Asset, AssetProvider, DefaultAssetProvider, import, ImportErrorType, ImportContext, RenderFailure, ImportError};
+use crate::import::{Asset, AssetProvider, DefaultAssetProvider, import, ImportErrorType, ImportContext, RenderFailure, ImportError, ImportType, SkinType};
 use crate::import::decode_helper::{decode, TetrioAtlasDecoder};
+use crate::import::skin_splicer::Piece;
 use crate::import::tetriojs::custom_sound_atlas;
+use crate::render::{BoardElement, BoardMap, Frame, render_frames, render_sound_effects, RenderOptions, SoundEffectInfo, VideoContext};
 use crate::tpse::TPSE;
 
 #[derive(Default)]
@@ -39,7 +43,7 @@ lazy_static! {
     static ref GLOBAL_STATE: Mutex<State> = {
         #[cfg(target_arch = "wasm32")] {
             std::panic::set_hook(Box::new(console_error_panic_hook::hook));
-            console_log::init_with_level(log::Level::Trace);
+            console_log::init_with_level(log::Level::Debug);
         }
         #[cfg(not(target_arch = "wasm32"))] {
             simple_logger::SimpleLogger::new().env().init().unwrap();
@@ -134,27 +138,71 @@ pub fn get_default_atlas() -> Result<JsValue, JsError> {
   Ok(JsValue::from_serde(&atlas).unwrap())
 }
 
+const fn default_frame_rate() -> f64 { 60.0 }
+const fn default_skyline() -> usize { 20 }
+const fn default_block_size() -> i64 { 48 }
+fn default_board_elements() -> Vec<BoardElement> {
+  BoardElement::get_draw_order().to_vec()
+}
+#[derive(Debug, serde::Deserialize)]
+struct RenderArgs {
+  frames: Vec<Vec<Vec<Option<(Piece, u8)>>>>,
+  #[serde(default)]
+  frame_duration: f64,
+  #[serde(default = "default_frame_rate")]
+  frame_rate: f64,
+  #[serde(default = "default_board_elements")]
+  board_elements: Vec<BoardElement>,
+  #[serde(default)]
+  debug_grid: bool,
+  #[serde(default = "default_skyline")]
+  skyline: usize,
+  #[serde(default = "default_block_size")]
+  block_size: i64,
+  #[serde(default)]
+  sound_effects: Vec<SoundEffectInfo<'static>>
+}
+
+#[wasm_bindgen]
+pub fn render_video(tpse: u32, args: JsValue) -> Result<JsValue, JsError> {
+  let args: RenderArgs = args.into_serde().map_err(stringify_error)?;
+  log::debug!("[TPSE {}] Render video: {:?}", tpse, args);
+  with_tpse(tpse, |tpse, opts| {
+    let ctx = VideoContext { frame_rate: args.frame_rate };
+    let frames = render_frames(&ctx, tpse.get(), args.frames.into_iter().map(|frame| {
+      RenderOptions {
+        duration: args.frame_duration,
+        board_elements: &args.board_elements,
+        debug_grid: args.debug_grid,
+        board: frame.into(),
+        skyline: args.skyline,
+        block_size: args.block_size
+      }
+    })).map_err(|err| ImportError::with_no_context(err.into()))?;
+    let frames = frames.map(|el| {
+      let encoded = if el.image.width() == 0 || el.image.height() == 0 {
+        include_bytes!("../assets/empty.png").to_vec()
+      } else {
+        let mut output = vec![];
+        el.image.write_to(&mut Cursor::new(&mut output), ImageOutputFormat::Png).unwrap();
+        output
+      };
+      Frame { image: encoded, min_x: el.min_x, min_y: el.min_y, max_x: el.max_x, max_y: el.max_y }
+    }).collect::<Vec<_>>();
+    let audio = render_sound_effects(&ctx, tpse.get(), &args.sound_effects).unwrap(); // todo: not unwrap
+    Ok(JsValue::from_serde(&(frames, audio.binary)).unwrap())
+  })
+}
+
 #[wasm_bindgen]
 pub fn render_sound_effect(tpse: u32, sound: &str) -> Result<Option<Vec<f32>>, JsError> {
   log::debug!("[TPSE {}] Render sound effect", tpse);
   with_tpse(tpse, |tpse, opts| {
     if tpse.cached_tetrio_atlas_decoder.is_none() {
-      tpse.cached_tetrio_atlas_decoder = Some({
-        let atlas = &tpse.get().custom_sound_atlas.as_ref().ok_or_else(|| {
-          let err = RenderFailure::NoSoundEffectsConfiguration;
-          ImportError::with_no_context(err.into())
-        })?;
-        let ogg = &tpse.get().custom_sounds.as_ref().ok_or_else(|| {
-          let err = RenderFailure::NoSoundEffectsConfiguration;
-          ImportError::with_no_context(err.into())
-        })?;
-        let ext = mime_guess::get_mime_extensions_str(&ogg.mime)
-          .and_then(|mime| mime.first())
-          .map(Deref::deref);
-        TetrioAtlasDecoder
-          ::decode((*atlas).clone(), &ogg.binary, ext)
-          .map_err(ImportError::with_no_context)?
-      });
+      let decoded = TetrioAtlasDecoder
+        ::decode_from_tpse(tpse.get())
+        .map_err(ImportError::with_no_context)?;
+      tpse.cached_tetrio_atlas_decoder = Some(decoded);
     }
     let decoder = tpse.cached_tetrio_atlas_decoder.as_ref().unwrap();
     Ok(decoder.lookup(sound).map(|slice| slice.to_vec()))

@@ -1,6 +1,7 @@
 use std::ffi::{CStr, CString};
 use std::io::Cursor;
 use std::io::ErrorKind::UnexpectedEof;
+use std::ops::Deref;
 use std::os::raw::c_char;
 use std::ptr::{null, null_mut};
 use symphonia::core::audio::SampleBuffer;
@@ -10,19 +11,38 @@ use symphonia::core::io::MediaSourceStream;
 use symphonia::core::probe::Hint;
 use symphonia::default::{get_codecs, get_probe};
 use crate::import::import_task::SoundEffect;
-use crate::import::ImportErrorType;
+use crate::import::{ImportErrorType, RenderFailure};
 use crate::import::LoadError::{NoSupportedAudioTrack, SymphoniaError};
-use crate::tpse::CustomSoundAtlas;
+use crate::tpse::{CustomSoundAtlas, TPSE};
 
 pub struct TetrioAtlasDecoder {
   pub atlas: CustomSoundAtlas,
   pub decoded: Vec<f32>
 }
 
+const DEFAULT_TETRIO_SFX_LENGTH_SAMPLES: usize = (9*60 + 6) * 44100 * 2;
+
 impl TetrioAtlasDecoder {
   pub fn decode(atlas: CustomSoundAtlas, bytes: &[u8], extension: Option<&str>) -> Result<Self, ImportErrorType> {
-    let mut decoded = Vec::with_capacity(546 * 44100 * 2);
-    decode(bytes, Some("ogg"), |samples| {
+    let mut decoded = Vec::with_capacity(DEFAULT_TETRIO_SFX_LENGTH_SAMPLES);
+    decode(bytes, extension, |samples| {
+      decoded.extend_from_slice(samples);
+    })?;
+    Ok(TetrioAtlasDecoder { atlas, decoded })
+  }
+
+  pub fn decode_from_tpse(tpse: &TPSE) -> Result<Self, ImportErrorType> {
+    let atlas = tpse.custom_sound_atlas.as_ref().ok_or_else(|| {
+      RenderFailure::NoSoundEffectsConfiguration
+    })?.clone();
+    let ogg = tpse.custom_sounds.as_ref().ok_or_else(|| {
+      RenderFailure::NoSoundEffectsConfiguration
+    })?;
+    let ext = mime_guess::get_mime_extensions_str(&ogg.mime)
+      .and_then(|mime| mime.first())
+      .map(Deref::deref);
+    let mut decoded = Vec::with_capacity(DEFAULT_TETRIO_SFX_LENGTH_SAMPLES);
+    decode(&ogg.binary, ext, |samples| {
       decoded.extend_from_slice(samples);
     })?;
     Ok(TetrioAtlasDecoder { atlas, decoded })

@@ -17,7 +17,7 @@ mod tests {
     use simple_logger::SimpleLogger;
     use crate::import::{Asset, AssetProvider, DefaultAssetProvider, import, ImportContext, ImportType};
     use crate::import::skin_splicer::Piece;
-    use crate::render::{BoardElement, render, RenderOptions};
+    use crate::render::{BoardElement, render_frames, render_sound_effects, RenderOptions, VideoContext};
 
     // todo: automated tests should eventually be moved to a separate repository
     // the actual testdata dir is gitignored because it'd be messy to keep in this repository
@@ -60,10 +60,16 @@ mod tests {
         //     std::fs::write(format!("./testdata/render_parts/part_{:?}.bmp", part), &bytes).unwrap();
         // }
 
-        let frames = render(&tpse, RenderOptions {
-            debug_grid: true,
-            ..RenderOptions::default()
-        }).unwrap();
+        let frames = todo!();
+        let ctx = VideoContext { frame_rate: 30.0 };
+        let mut frames = Vec::with_capacity(150);
+        for i in 0..150 {
+            frames.push(RenderOptions {
+                debug_grid: true,
+                ..RenderOptions::default()
+            });
+        }
+        let frames = render_frames(&ctx, &tpse, frames.into_iter()).unwrap();
         for (i, frame) in frames.enumerate() {
             let frame = frame.expect("there should be renderable assets");
             let filename = format!("./testdata/render_parts/{:04}_full_render.bmp", i);
@@ -71,6 +77,10 @@ mod tests {
             frame.write_to(&mut Cursor::new(&mut bytes), ImageOutputFormat::Bmp);
             std::fs::write(filename, &bytes).unwrap();
         }
+        let audio = render_sound_effects(&ctx, &tpse, &[
+
+        ]).unwrap();
+        std::fs::write("./testdata/render_parts/audio.wav", audio.binary);
 
         //
         // log::info!("--- Test: animated skin --- ({:?})", start.elapsed());
