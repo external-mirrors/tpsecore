@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::collections::HashSet;
+use std::error::Error;
 use std::fmt::{Display, Formatter};
 use image::ImageError;
 use itertools::Itertools;
@@ -13,6 +14,7 @@ pub struct ImportError {
   pub context: Vec<ImportContextEntry>,
   pub error: ImportErrorType
 }
+impl Error for ImportError {}
 impl Display for ImportError {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
     write!(f, "import error at {}: {}", self.context.iter().format(" "), self.error)
