@@ -22,7 +22,7 @@ impl Display for Asset {
   }
 }
 
-pub trait AssetProvider {
+pub trait AssetProvider: Send {
   fn provide(&self, asset: Asset) -> Result<&[u8], ImportErrorType>;
 }
 
