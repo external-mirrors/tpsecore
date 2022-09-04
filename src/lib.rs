@@ -3,6 +3,7 @@
 pub mod tpse;
 pub mod import;
 pub mod render;
+#[cfg(target_arch = "wasm32")]
 mod wasm_entrypoint;
 
 // library cleanup todos:

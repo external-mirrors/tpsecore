@@ -10,17 +10,17 @@ use crate::import::{ImportContextEntry, ImportError, ImportErrorType};
 #[derive(Clone)]
 pub struct ImportContext<'a> {
   /// The asset provider providing `Asset`s for the importer
-  pub asset_source: &'a dyn AssetProvider + Send + Sync,
+  pub asset_source: &'a (dyn AssetProvider + Send + Sync),
   /// The maximum depth the context stack is allowed to reach before bailing
   pub depth_limit: u8,
   /// A stack of context describing the current item the importer is working on
   pub context: Vec<ImportContextEntry>,
   /// An outlet for diagnostic/progress messages
-  pub logger: Option<&'a dyn Fn(Level, Arguments) + Send + Sync>
+  pub logger: Option<&'a (dyn Fn(Level, Arguments) + Send + Sync)>
 }
 
 impl<'a> ImportContext<'a> {
-  pub fn new(asset_source: &'a dyn AssetProvider + Send + Sync, depth_limit: u8) -> ImportContext<'a> {
+  pub fn new(asset_source: &'a (dyn AssetProvider + Send + Sync), depth_limit: u8) -> ImportContext<'a> {
     Self {
       depth_limit,
       asset_source,
@@ -29,7 +29,7 @@ impl<'a> ImportContext<'a> {
     }
   }
 
-  pub fn with_logger(self, logger: &'a dyn Fn(Level, Arguments) + Send + Sync) -> Self {
+  pub fn with_logger(self, logger: &'a (dyn Fn(Level, Arguments) + Send + Sync)) -> Self {
     Self { logger: Some(logger), ..self }
   }
 
