@@ -1,0 +1,17 @@
+image: "rust:latest"
+
+build:
+  stage: build
+  cache:
+    key: rust-build
+    paths:
+      - target
+  script:
+      - rustc --version && cargo --version
+      - curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | bash
+      - wasm-pack build --target web
+  artifacts:
+    paths:
+      - pkg/tpsecore_bg.wasm
+      - pkg/tpsecore.js
+  environment: production
