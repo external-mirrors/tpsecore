@@ -228,3 +228,15 @@ pub fn render_default_sound_effect(sound: &str) -> Result<Vec<f32>, JsError> {
     .to_vec();
   Ok(samples)
 }
+
+#[wasm_bindgen]
+pub fn version() -> String {
+  format!(
+    "tpsecore-v{}-{}",
+    std::env!("CARGO_PKG_VERSION"), // set by cargo
+    match std::option_env!("CI_COMMIT_SHA") { // set by gitlab ci
+      Some(env) => env,
+      None => "dev"
+    }
+  )
+}
