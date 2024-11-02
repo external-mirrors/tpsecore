@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::fmt::Display;
+use std::fmt::{Arguments, Display};
 use std::io::Cursor;
 use std::ops::{Deref, DerefMut};
 use std::sync::Mutex;
@@ -13,6 +13,7 @@ use crate::import::{Asset, AssetProvider, DefaultAssetProvider, import, ImportEr
 use crate::import::decode_helper::{decode, TetrioAtlasDecoder};
 use crate::import::skin_splicer::Piece;
 use crate::import::tetriojs::custom_sound_atlas;
+use crate::log::ImportLogger;
 use crate::render::{BoardElement, BoardMap, Frame, render_frames, render_sound_effects, RenderOptions, SoundEffectInfo, VideoContext};
 use crate::tpse::TPSE;
 
@@ -74,6 +75,16 @@ pub fn create_tpse() -> u32 {
   id
 }
 
+struct JsLogger<'a> {
+  logger: Mutex<&'a js_sys::Function>
+}
+impl ImportLogger for JsLogger<'_> {
+  fn log(&self, level: Level, msg: Arguments) {
+    let internal = self.logger.lock().unwrap();
+    internal.call2(&JsValue::null(), &JsValue::from(level.as_str()), &JsValue::from(format!("{msg}"))).unwrap();
+  }
+}
+
 #[wasm_bindgen]
 pub fn import_file
   (tpse: u32, import_type: JsValue, filename: String, bytes: &[u8], js_logger: &js_sys::Function)
@@ -82,13 +93,7 @@ pub fn import_file
   let import_type = import_type.into_serde().map_err(stringify_error)?;
   log::debug!("[TPSE {}] Importing file {} as {:?}", tpse, filename, import_type);
   with_tpse(tpse, |tpse, provider| {
-    let logger = |level: Level, msg: std::fmt::Arguments<'_>| {
-      js_logger.call2(
-        &JsValue::null(),
-        &JsValue::from(level.as_str()),
-        &JsValue::from(format!("{}", msg))
-      ).unwrap();
-    };
+    let logger = JsLogger { logger: Mutex::new(js_logger) };
     let options = ImportContext::new(provider, 5).with_logger(&logger);
     let new_tpse = import(vec![(import_type, &filename, bytes)], options)?;
     tpse.get_mut().merge(new_tpse);

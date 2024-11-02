@@ -3,6 +3,7 @@
 pub mod tpse;
 pub mod import;
 pub mod render;
+pub mod log;
 #[cfg(target_arch = "wasm32")]
 mod wasm_entrypoint;
 

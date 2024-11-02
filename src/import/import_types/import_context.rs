@@ -4,6 +4,7 @@ use itertools::Itertools;
 use log::Level;
 use crate::import::asset_provider::AssetProvider;
 use crate::import::{ImportContextEntry, ImportError, ImportErrorType};
+use crate::log::ImportLogger;
 
 /// Stores metadata and context associated with an import process, tracking the stack location
 /// (e.g. nested zip files) and base game asset provider.
@@ -16,7 +17,7 @@ pub struct ImportContext<'a> {
   /// A stack of context describing the current item the importer is working on
   pub context: Vec<ImportContextEntry>,
   /// An outlet for diagnostic/progress messages
-  pub logger: Option<&'a (dyn Fn(Level, Arguments) + Send + Sync)>
+  pub logger: Option<&'a dyn ImportLogger>
 }
 
 impl<'a> ImportContext<'a> {
@@ -29,13 +30,13 @@ impl<'a> ImportContext<'a> {
     }
   }
 
-  pub fn with_logger(self, logger: &'a (dyn Fn(Level, Arguments) + Send + Sync)) -> Self {
+  pub fn with_logger(self, logger: &'a dyn ImportLogger) -> Self {
     Self { logger: Some(logger), ..self }
   }
 
   pub fn log(&self, level: Level, message: Arguments) {
     if let Some(logger) = self.logger {
-      (logger)(level, format_args!("[{:?}] {}", self.context.iter().format(" "), message));
+      logger.log(level, format_args!("[{:?}] {}", self.context.iter().format(" "), message));
     }
   }
 
