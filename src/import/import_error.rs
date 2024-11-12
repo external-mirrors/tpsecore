@@ -55,7 +55,7 @@ pub enum ImportErrorType {
 pub enum AssetParseFailure {
   #[error("Tried to parse non-UTF8 data as UTF8")]
   UTF8Error,
-  #[error("failed to extract sound effects regex")]
+  #[error("regex failed to extract sound effects atlas")]
   SoundEffectsAtlasRegex,
   #[error("failed to parse sound effects atlas")]
   SoundEffectsAtlasParse,

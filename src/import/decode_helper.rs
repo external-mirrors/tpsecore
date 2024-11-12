@@ -48,11 +48,12 @@ impl TetrioAtlasDecoder {
     Ok(TetrioAtlasDecoder { atlas, decoded })
   }
 
+  /// Looks up an atlas entry by name and returns the associated samples
   pub fn lookup(&self, sfx_name: &str) -> Option<&[f32]> {
     let (offset, duration) = self.atlas.get(sfx_name)?;
     // todo throw on overflow (and all the other places we do unchecked casts)
-    let offset_samples = (offset * 44100.0/1000.0 * 2.0) as usize;
-    let offset_duration = (duration * 44100.0/1000.0 * 2.0) as usize;
+    let offset_samples = (offset/1000.0 * 44100.0 * 2.0) as usize;
+    let offset_duration = (duration/1000.0 * 44100.0 * 2.0) as usize;
     log::trace!("lookup {}: {} {} -> {} {}", sfx_name, offset, duration, offset_samples, offset_duration);
     Some(&self.decoded[offset_samples..offset_samples + offset_duration])
   }

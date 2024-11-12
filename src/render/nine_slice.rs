@@ -25,6 +25,11 @@ pub fn nine_slice_resize
   (tex: &DynamicImage, w: u32, h: u32, pad_top: u32, pad_right: u32, pad_bottom: u32, pad_left: u32)
   -> DynamicImage
 {
+  if w > 10_000 || h > 10_000 || w*h > 10_000_000 {
+    log::warn!("nine_slice_resize: creating huge texture of {w}*{h}");
+    #[cfg(test)]
+    panic!("excessive texture size requested");
+  }
   let sources = nine_slice(tex.width(), tex.height(), pad_top, pad_right, pad_bottom, pad_left);
   let dests = nine_slice(w, h, pad_top, pad_right, pad_bottom, pad_left);
   let mut dest = DynamicImage::new_rgba8(w, h);

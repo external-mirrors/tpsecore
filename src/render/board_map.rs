@@ -1,6 +1,7 @@
+use std::iter::from_fn;
+use std::slice::Iter;
 use std::str::FromStr;
 use crate::import::skin_splicer::Piece;
-use itertools::Itertools;
 
 #[derive(Debug, Clone)]
 pub struct BoardMap {
@@ -9,12 +10,9 @@ pub struct BoardMap {
 }
 
 impl BoardMap {
-  /// ~~Iterates the contents of the map, yielding (row, col, Option<(piece, connections)>) tuples~~
-  /// Note: actually just returns a Vec<(row, col, Option<(piece, connection)>)> because ownership is
-  /// being bothersome. Will fix eventually.
-  pub fn iter(&self) -> Vec<(usize, usize, Option<(Piece, u8)>)> {
+  /// Iterates the contents of the map, yielding (row, col, Option<(piece, connections)>) tuples
+  pub fn iter(&self) -> impl Iterator<Item = (usize, usize, Option<(Piece, u8)>)> + '_ {
     self.contents
-      .iter()
       .chunks(self.width)
       .into_iter()
       .enumerate()
@@ -23,7 +21,6 @@ impl BoardMap {
           .enumerate()
           .map(move |(col, piece)| (row, col, piece.clone()))
       })
-      .collect()
   }
 
   pub fn width(&self) -> usize {

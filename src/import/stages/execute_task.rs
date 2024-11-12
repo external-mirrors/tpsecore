@@ -144,70 +144,74 @@ pub fn execute_task(task: ImportTask, ctx: ImportContext<'_>) -> Result<TPSE, Im
       }
     },
     ImportTask::SoundEffects(sound_effects) => {
-      let tetrio_js = ctx.asset_source.provide(Asset::TetrioJS).map_err(|err| ctx.wrap(err))?;
-      let tetrio_ogg = ctx.asset_source.provide(Asset::TetrioOGG).map_err(|err| ctx.wrap(err))?;
-      let mut atlas = custom_sound_atlas(tetrio_js).map_err(|err| ctx.wrap(err.into()))?;
-
-      let mut encoded = vec![];
       // todo: probably not safe to assume 2 channel 44.1KHz audio
-      let channels = 2;
-      let sample_rate = 44100;
-      let bits_per_sample = 32;
+      let channels: usize = 2;
+      let sample_rate: usize = 44100;
+      let bits_per_sample: usize = 32;
+      // Atlas entries are in floating point milliseconds, but we primarily work in samples here.
+      // Multiply by this constant to get from atlas timings to sample timings.
+      let atlas_entry_to_sample_ratio: f64 = 1.0/1000.0 * sample_rate as f64 * channels as f64;
+
+      let tetrio_js = ctx.asset_source.provide(Asset::TetrioJS).map_err(|err| ctx.wrap(err))?;
+      let mut atlas = custom_sound_atlas(tetrio_js).map_err(|err| ctx.wrap(err.into()))?;
+      let mut unvisited = atlas.keys().cloned().collect::<HashSet<_>>();
+      let mut encoded = vec![];
       let mut cursor = Cursor::new(&mut encoded);
       // todo: this is a wav encoder, but I can't find a wasm-compatible rust ogg encoder.
       // hopefully tetrio won't care?
       let mut encoder = hound::WavWriter::new(&mut cursor, WavSpec {
-        channels: 2,
-        sample_rate: 44100,
-        bits_per_sample: 32,
+        channels: channels as u16,
+        sample_rate: sample_rate as u32,
+        bits_per_sample: bits_per_sample as u16,
         sample_format: SampleFormat::Float
       }).unwrap();
       let mut encoder_position = 0;
 
-      let tetrio = Hint::new().with_extension("ogg");
-      let mut stream = MediaSourceStream::new(Box::new(Cursor::new(tetrio_ogg.to_vec())), Default::default());
-      let mut unvisited = atlas.keys().cloned().collect::<HashSet<_>>();
-
       for sfx in sound_effects {
         let with_filekey_removed = sfx.name.replace(ImportType::SoundEffects.filekey(), "");
-        let entry = match atlas.get_mut(&with_filekey_removed) {
-          Some(entry) => entry,
-          None => {
-            ctx.log(Level::Warn, format_args!("Skipping unknown sound effect {}", sfx.name));
-            continue;
-          }
+        let Some((offset, duration)) = atlas.get_mut(&with_filekey_removed) else {
+          ctx.log(Level::Warn, format_args!("Skipping unknown sound effect {}", sfx.name));
+          continue;
         };
-        unvisited.remove(&sfx.name);
-        let mut new_duration: usize = 0;
+        unvisited.remove(&with_filekey_removed);
+
         ctx.log(Level::Trace, format_args!("Decoding {}: {} bytes", sfx.filename, sfx.file.binary.len()));
+
+        let mut sample_duration: usize = 0;
         decode(&sfx.file.binary, sfx.extension().as_ref().map(|el| el.as_str()), |samples| {
+          assert!(samples.len() % 2 == 0);
           for sample in samples { encoder.write_sample(*sample).unwrap(); }
-          new_duration += samples.len() / channels;
+          sample_duration += samples.len();
         }).map_err(|err| ctx.wrap(err))?;
-        entry.0 = encoder_position as f64 / 44100.0;
-        entry.1 = new_duration as f64 / 44100.0;
-        encoder_position += new_duration;
+        *offset = encoder_position as f64 / atlas_entry_to_sample_ratio;
+        *duration = sample_duration as f64 / atlas_entry_to_sample_ratio;
+        encoder_position += sample_duration;
       }
 
-      ctx.log(Level::Trace, format_args!("Decoding tetrio.ogg: {} bytes", tetrio_ogg.len()));
-      let mut decoded = Vec::with_capacity(546 * 44100 * 2);
-      decode(tetrio_ogg, Some("ogg"), |samples| {
-        decoded.extend_from_slice(samples);
-      }).map_err(|err| ctx.wrap(err))?;
+      if !unvisited.is_empty() {
+        let tetrio_ogg = ctx.asset_source.provide(Asset::TetrioOGG).map_err(|err| ctx.wrap(err))?;
 
-      ctx.log(Level::Trace, format_args!("Encoding..."));
-      for sfx_name in unvisited {
-        let (offset, duration) = atlas.get_mut(&sfx_name).unwrap();
-        let offset_samples = (*offset / 1000.0 * 44100.0) as usize;
-        let duration_samples = (*duration / 1000.0 * 44100.0) as usize;
-        let samples = &decoded[offset_samples..offset_samples + duration_samples];
-        for sample in samples { encoder.write_sample(*sample).unwrap(); }
-        *offset = encoder_position as f64 / 44100.0 * 1000.0;
-        *duration = samples.len() as f64 / 44100.0 * 1000.0;
-        encoder_position += samples.len() / channels;
+        ctx.log(Level::Trace, format_args!("Decoding tetrio.ogg: {} bytes", tetrio_ogg.len()));
+        let mut decoded = Vec::with_capacity(546 * sample_rate * channels);
+        decode(tetrio_ogg, Some("ogg"), |samples| decoded.extend_from_slice(samples)).map_err(|err| ctx.wrap(err))?;
+
+
+        ctx.log(Level::Trace, format_args!("Encoding..."));
+        for sfx_name in unvisited {
+          let (offset, duration) = atlas.get_mut(&sfx_name).unwrap();
+          let offset_samples = (*offset * atlas_entry_to_sample_ratio) as usize;
+          let duration_samples = (*duration * atlas_entry_to_sample_ratio) as usize;
+          let samples = &decoded[offset_samples..offset_samples + duration_samples];
+          for sample in samples { encoder.write_sample(*sample).unwrap(); }
+          *offset = encoder_position as f64 / atlas_entry_to_sample_ratio;
+          *duration = samples.len() as f64 / atlas_entry_to_sample_ratio;
+          encoder_position += samples.len();
+        }
       }
 
-      encoder.finalize().unwrap();
+      if let Err(err) = encoder.finalize() {
+        log::error!("non-fatal encoding error: {err}")
+      }
       tpse.custom_sounds = Some(File {
         binary: encoded,
         mime: "audio/wav".to_string()

@@ -45,12 +45,12 @@ pub struct Frame<T> {
 
 /// Renders a sequence of RenderOptions into a sequence of frames
 pub fn render_frames<'a>
-  (ctx: &'a VideoContext, tpse: &'a TPSE, opts: impl Iterator<Item = RenderOptions<'a>> + 'a)
+  (ctx: &'a VideoContext, tpse: &'a TPSE, opts: impl IntoIterator<Item = RenderOptions<'a>> + 'a)
   -> Result<impl Iterator<Item = Frame<DynamicImage>> + 'a, LoadError>
 {
   let mut fro = Rc::new(RenderContext::try_from_tpse(tpse)?);
   let mut sequence = 0;
-  let iter = opts.flat_map(move |(render_options)| {
+  let iter = opts.into_iter().flat_map(move |(render_options)| {
     let fro = fro.clone();
     let frames = (ctx.frame_rate/render_options.duration).min(1.0).ceil() as u32;
     let start_sequence = sequence;
@@ -90,17 +90,18 @@ pub fn render_sound_effects<'a>
 
   let atlas = TetrioAtlasDecoder::decode_from_tpse(tpse)?;
   let sample_rate = 44100;
-  let samples_per_frame = (1.0/ctx.frame_rate * sample_rate as f64) as usize;
+  let channels = 2;
+  let samples_per_frame = (1.0/ctx.frame_rate * sample_rate as f64) as usize * channels;
 
   let length: usize = opts.iter()
-    .filter_map(|el| Some((el.time * samples_per_frame) as usize + atlas.lookup(&el.name)?.len()))
+    .filter_map(|el| Some(el.time * samples_per_frame + atlas.lookup(&el.name)?.len()))
     .max_by(|a, b| a.partial_cmp(b).unwrap())
     .unwrap_or(0);
 
   let mut decoded = vec![0f32; length];
   for SoundEffectInfo { name, time } in opts {
     let sfx = atlas.lookup(name.as_ref()).ok_or_else(|| NoSuchSoundEffect(name.clone()))?;
-    let samples = (time * samples_per_frame) as usize;
+    let samples = time * samples_per_frame;
     let slice = &mut decoded[samples..samples+sfx.len()];
     for (a, b) in slice.iter_mut().zip(sfx.iter()) {
       *a += b;
@@ -179,16 +180,17 @@ impl<'a> RenderContext<'a> {
 
     for el in BoardElement::get_draw_order() {
       if !frame.render_options.board_elements.contains(el) { continue }
+
       let (texture_source, (x, y, w, h), (pt, pr, pb, pl), scale) = el.get_slice();
-      let texture = match texture_source {
+      let Some(texture) = (match texture_source {
         BoardTextureKind::Board => &self.board,
         BoardTextureKind::Queue => &self.queue,
         BoardTextureKind::Grid => &self.grid
-      };
-      let texture = if let Some(texture) = texture { texture } else { continue };
+      }) else { continue };
       let texture = clone_slice(&texture, x, y, w, h);
       let (x, y, mut w, mut h) = el.get_target(&frame.render_options);
       let texture = nine_slice_resize(&texture, w as u32 * scale, h as u32 * scale, pt, pr, pb, pl);
+
       let mut texture = texture.into_rgba8();
       for pixel in texture.pixels_mut() {
         pixel.0[0] = (((el.tint() >> 24) & 0xFF) as f64 / 0xFF as f64 * pixel.0[0] as f64) as u8;
@@ -196,6 +198,7 @@ impl<'a> RenderContext<'a> {
         pixel.0[2] = (((el.tint() >> 08) & 0xFF) as f64 / 0xFF as f64 * pixel.0[2] as f64) as u8;
         pixel.0[3] = (((el.tint() >> 00) & 0xFF) as f64 / 0xFF as f64 * pixel.0[3] as f64) as u8;
       }
+
       tasks.push((texture.into(), x, y, w, h))
     }
 
@@ -255,7 +258,16 @@ impl<'a> RenderContext<'a> {
       let min_y = tasks.iter().map(|(img, x, y, w, h)| *y).min().unwrap();
       let max_x = tasks.iter().map(|(img, x, y, w, h)| x + w).max().unwrap();
       let max_y = tasks.iter().map(|(img, x, y, w, h)| y + h).max().unwrap();
-      let mut canvas = DynamicImage::new_rgba8((max_x - min_x) as u32, (max_y - min_y) as u32);
+
+      let canvas_w: u32 = (max_x - min_x).try_into().expect("min_x > max_x or max_x - min_x overflow");
+      let canvas_h: u32 = (max_y - min_y).try_into().expect("min_y > max_y or max_y - min_y overflow");
+      if canvas_w > 10_000 || canvas_h > 10_000 || canvas_w*canvas_h > 10_000_000 {
+        log::warn!("render_frame: creating huge texture of {canvas_w}*{canvas_h} (extents {min_x} - {max_x} by {min_y} - {max_y})");
+        #[cfg(test)]
+        panic!("excessive texture size requested");
+      }
+      let mut canvas = DynamicImage::new_rgba8(canvas_w, canvas_h);
+
       for (img, x, y, w, h) in tasks {
         let mut resized = image::imageops::resize(&img, w as u32, h as u32, FilterType::CatmullRom);
         image::imageops::overlay(&mut canvas, &resized, x - min_x, y - min_y);

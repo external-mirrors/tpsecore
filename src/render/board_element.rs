@@ -24,9 +24,10 @@ pub enum BoardElement {
   ProgressBar,
   /// Board: Stock indicators (lives).
   Stock,
-  /// Board: Incoming garbage. Tinted red.
+  /// Board: Garbage meter; incoming garbage stored in the garbage bar. Tinted red.
   Garbage,
-  /// Board: Progress meter. Tinted orange. Lower half stretched to get the full bar.
+  /// Board: Progress meter; current objective progress stored in the progress bar.
+  /// Tinted orange. Lower half stretched to get the full bar.
   Progress,
   /// Board: Garbage cap. Small horizontal line that appears on the garbage bar.
   GarbageCap,
@@ -34,7 +35,7 @@ pub enum BoardElement {
   Warning,
   /// Board: Targeting marker, appears on other boards.
   Target,
-  /// Board: Pending garbage. Semitransparent. Tinted red.
+  /// Board: Pending garbage stored in the garbage bar above [BoardElement::Garbage]. Semitransparent. Tinted red.
   PendingGarbage,
   /// Board: Winter event compat: a texture that appears behind the grid, relatively high resolution
   MegaBackground,
@@ -119,10 +120,14 @@ impl BoardElement {
     let bar_width = 32;
     /// The garbage bar, located to the left of the board
     let mut garbage_bar = (border*-2 + bar_width*-1, 0, border*2 + bar_width, block*height + border);
-    if !opts.board_elements.contains(&BoardElement::GarbageBar) { garbage_bar.2 = 0; }
+    let has_garbage_bar = [BoardElement::GarbageBar, BoardElement::Garbage, BoardElement::PendingGarbage].iter()
+      .any(|x| opts.board_elements.contains(x));
+    if !has_garbage_bar { garbage_bar.2 = 0; }
     /// The progress bar, located to the right of the board
     let mut progress_bar = (block*width, 0, border*2 + bar_width, block*height + border);
-    if !opts.board_elements.contains(&BoardElement::ProgressBar) { progress_bar.2 = 0; }
+    let has_progress_bar = [BoardElement::ProgressBar, BoardElement::Progress].iter()
+      .any(|x| opts.board_elements.contains(x));
+    if !has_progress_bar { progress_bar.2 = 0; }
     /// How many pixels to bad the bar contents by
     let bar_pad = 4;
 

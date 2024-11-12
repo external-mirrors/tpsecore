@@ -274,6 +274,7 @@ impl TPSE {
     self.skin_anim_meta = other.skin_anim_meta.or(self.skin_anim_meta.take());
     self.ghost_anim_meta = other.ghost_anim_meta.or(self.ghost_anim_meta.take());
     self.custom_sound_atlas = other.custom_sound_atlas.or(self.custom_sound_atlas.take());
+    self.custom_sounds = other.custom_sounds.or(self.custom_sounds.take());
     match (self.backgrounds.is_some(), other.backgrounds.is_some()) {
       (true, true) => self.backgrounds.as_mut().unwrap().extend(other.backgrounds.unwrap()),
       (false, true) => self.backgrounds = other.backgrounds.take(),
@@ -285,7 +286,7 @@ impl TPSE {
       (false, true) => self.music = other.music.take(),
       (_, false) => {}
     }
-    match (self.music_graph_enabled.is_some(), other.music_graph.is_some()) {
+    match (self.music_graph.is_some(), other.music_graph.is_some()) {
       (true, true) => {
         let self_graph = self.music_graph.as_mut().unwrap();
         let mut other_graph = other.music_graph.unwrap();
