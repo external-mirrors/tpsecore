@@ -58,13 +58,13 @@ mod tests {
       let mut assets = HashMap::new();
       let files = [
         // Base TETR.IO content
-        (hex!("5ca73605da580be87b9ba16d3237f592f84ce0934ba2b9bcf97ec8069fc9b66b"), "tetrio.js"),
-        (hex!("fe44f88c0c023f674628f2a517bde8e0657b0aa50097cba2c2da26a8df863237"), "tetrio.ogg"),
-        (hex!("349a050d7c285230abf7b0ecf30892e7ce479cb7ee1ea7d3607aeb12203d53e5"), "vanilla/board.png"),
+        (hex!("f794282c44f599cf0da1309726af0eccfc3203f6627d14ed006e484f52f8007c"), "tetrio.js"),
+        (hex!("c4f55aa0a78417f568ced5872d1ebd1a55c17312a3a454fa318d66aef0744352"), "tetrio.opus.rsd"),
+        (hex!("1c144f1066efbd6ebffcfcf299d8b2a397a3a8d9fa19e63e3105d88ebff0536a"), "vanilla/board.png"),
         (hex!("7753c6562c5f53a09164dfff8ad58313453a8af8863958040d43c5473f74f115"), "vanilla/queue.png"),
         (hex!("ec4cc09305e0336806997094138e8f5fe20699d3a0eed37a3ae154a842f529dd"), "vanilla/grid.png"),
-        (hex!("00b580e42466adfdd407b9b94fa0815dc8ded2fb01d90534b6d072cbbfbc4bdf"), "vanilla/connected.png"),
-        (hex!("159b32e8a7985961fca6fd9f8f8951a9972aa65536250b532a26050c4f61701a"), "vanilla/connected_ghost.png"),
+        (hex!("be01c800db480c036acbbe0bb9cfe265fe93ecacb9a227393b4f1d200aa7c9ea"), "vanilla/connected.png"),
+        (hex!("0bc3ea3e1a358969d41d8deeb8d17b5acdcfd0834a1ee1a1f2aafe7727828bd6"), "vanilla/connected_ghost.png"),
         (hex!("a619506ea08107f09b282c02b292be3c00ac8d1d6ec5909f537618cbada0f96b"), "vanilla/unconnected.png"),
         (hex!("82ae7c26880c35b3a8558e4444b13d510dccb2971a44340c6974394210c706a2"), "vanilla/unconnected_ghost.png"),
 
@@ -76,7 +76,7 @@ mod tests {
 
         // Itsmega's Bejeweled Soundpack
         // Large soundpack with subfolder and a non-audio `1st_read_changelog.txt` file
-        (hex!("61dd29ac878ed9f2de2ddeeb3a2a2932512835018408e13359bc5c9626f8ec2f"), "yhf/BejeweledSR.zip"),
+        (hex!("0bbaef669dc21b65ccb96b74bd9b418740221f97c6e71cdca99161c48c62e122"), "yhf/BejeweledSR.zip"),
 
         // Sobsz's RGB Gamer Minos
         // Animated skin that expands to a _very_ large canvas
@@ -112,9 +112,9 @@ mod tests {
       let hash = sha256.finalize();
       let ok = hash[..] == asset.expected_hash;
       if !ok {
-        // tetrio.js and tetrio.ogg change frequently outside our control,
+        // tetrio.js and tetrio.opus.rsd change frequently outside our control,
         // so it's not a huge deal if their hash doesn't match
-        let soft = ["tetrio.js", "tetrio.ogg"].contains(&&asset.name[..]);
+        let soft = ["tetrio.js", "tetrio.opus.rsd"].contains(&&asset.name[..]);
         if !soft { soft_errors_only = false; }
         errors.push(format!(
           "{} hash mismatch\n    expected {} \n    but got  {}{}",

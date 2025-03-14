@@ -1,7 +1,7 @@
 mkdir testdata testdata/{vanilla,yhf,result} -p
 cd testdata
 curl --skip-existing https://tetr.io/js/tetrio.js -O
-curl --skip-existing https://tetr.io/sfx/tetrio.ogg -O
+curl --skip-existing https://tetr.io/sfx/tetrio.opus.rsd -O
 curl --skip-existing https://tetr.io/res/skins/board/generic/board.png -o vanilla/board.png
 curl --skip-existing https://tetr.io/res/skins/board/generic/queue.png -o vanilla/queue.png
 curl --skip-existing https://tetr.io/res/skins/board/generic/grid.png -o vanilla/grid.png
