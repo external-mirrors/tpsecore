@@ -26,9 +26,9 @@ pub fn decode_image(bytes: &[u8]) -> Result<DynamicImage, LoadError> {
 
 fn decode_svg(bytes: &[u8]) -> Option<Vec<u8>> {
   let opt = usvg::Options::default();
-  let rtree = usvg::Tree::from_data(bytes, &opt.to_ref()).ok()?;
-  let pixmap_size = rtree.svg_node().size.to_screen_size();
+  let rtree = usvg::Tree::from_data(bytes, &opt).ok()?;
+  let pixmap_size = rtree.size().to_int_size();
   let mut pixmap = Pixmap::new(pixmap_size.width(), pixmap_size.height())?;
-  resvg::render(&rtree, usvg::FitTo::Original, Transform::default().into(), pixmap.as_mut())?;
+  resvg::render(&rtree, Transform::default(), &mut pixmap.as_mut());
   pixmap.encode_png().ok()
 }

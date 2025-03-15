@@ -20,7 +20,6 @@ mod tests {
   use std::sync::OnceLock;
   use std::time::Instant;
   use hex_literal::hex;
-  use image::ImageOutputFormat;
   use log::{Level, LevelFilter};
   use serde_json::json;
   use sha2::{Digest, Sha256};
@@ -141,7 +140,7 @@ mod tests {
     let start = Instant::now();
     let mut provider = DefaultAssetProvider::default();
     provider.preload(Asset::TetrioJS, state.get("tetrio.js").content.clone());
-    provider.preload(Asset::TetrioOGG, state.get("tetrio.ogg").content.clone());
+    provider.preload(Asset::TetrioRSD, state.get("tetrio.opus.rsd").content.clone());
     log::info!("Preloaded assets ({:?})", start.elapsed());
 
     struct LogLogger;
@@ -220,7 +219,7 @@ mod tests {
 
         assert_eq!(frames.len(), 1);
         let mut bytes = vec![];
-        frames[0].image.write_to(&mut Cursor::new(&mut bytes), ImageOutputFormat::Bmp);
+        frames[0].image.write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::Bmp);
         std::fs::write(format!("./testdata/result/individual_part{board_name}_{:?}.bmp", part), &bytes).unwrap();
       }
     }
@@ -233,7 +232,7 @@ mod tests {
     }]).unwrap().collect::<Vec<_>>();
     assert_eq!(frames.len(), 1);
     let mut bytes = vec![];
-    frames[0].image.write_to(&mut Cursor::new(&mut bytes), ImageOutputFormat::Bmp);
+    frames[0].image.write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::Bmp);
     std::fs::write("./testdata/result/all_board_elements.bmp", &bytes).unwrap();
 
     // let frames = todo!();

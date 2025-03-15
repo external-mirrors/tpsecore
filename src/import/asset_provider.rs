@@ -6,18 +6,18 @@ use crate::import::ImportErrorType;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, serde::Deserialize)]
 pub enum Asset {
-  /// The main TETR.IO source code file, located at https://tetr.io/js/tetrio.js.
+  /// The main TETR.IO source code file, located at https://tetr.io/js/tetrio.js
   #[serde(alias = "tetrio.js")]
   TetrioJS,
-  /// The TETR.IO sound effects file, located at https://tetr.io/sfx/tetrio.ogg.
-  #[serde(alias = "tetrio.ogg")]
-  TetrioOGG
+  /// The TETR.IO sound effects file, located at https://tetr.io/sfx/tetrio.opus.rsd
+  #[serde(alias = "tetrio.opus.rsd")]
+  TetrioRSD
 }
 impl Display for Asset {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
     match self {
       Asset::TetrioJS => write!(f, "tetrio.js"),
-      Asset::TetrioOGG => write!(f, "tetrio.ogg")
+      Asset::TetrioRSD => write!(f, "tetrio.opus.rsd")
     }
   }
 }

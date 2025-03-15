@@ -1,7 +1,7 @@
 [package]
 name = "tpsecore"
 version = "0.1.1"
-edition = "2021"
+edition = "2024"
 authors = ["UniQMG"]
 
 [lib]
@@ -12,38 +12,38 @@ crate-type = ["cdylib", "rlib"]
 wasm-bindgen = { version = "0.2.95", features = ["serde-serialize"] }
 console_error_panic_hook = { version = "0.1.6" }
 #wee_alloc = { version = "0.4.5", optional = true }
-console_log = "0.2.0"
+console_log = "1.0.0"
 js-sys = "0.3.59"
 
 # Data utilities
-base64 = "0.13.0"
+base64 = "0.22.1"
 regex = "1.6.0"
-serde = "1.0.122"
+serde = { version = "1.0.122", features = ["derive"] }
 serde_json = "1.0.45"
-serde_with = "1.14.0"
-data-url = "0.1.1"
+serde_with = "3.12.0"
+data-url = "0.3.1"
 num-traits = "0.2.15"
 mime_guess = "2.0.4"
 mime = "0.3.16"
 sha2 = "0.10.2"
 hex = "0.4.3"
 hex-literal = "0.4.1"
-zip = { version = "0.6.2", default-features = false, features = ["deflate"] } # bzip + zstd busted for wasm?
-itertools = "0.10.3"
+zip = { version = "2.2.2", default-features = false, features = ["deflate"] } # bzip + zstd busted for wasm?
+itertools = "0.14.0"
 
 # Other utilities
 lazy_static = "1.4.0"
-thiserror = "1.0.31"
+thiserror = "2.0.11"
 log = "0.4.17"
-simple_logger = "2.2.0"
+simple_logger = "5.0.0"
 
 # Image
-image = "0.24.3"
-resvg = "0.23.0"
-usvg = "0.23.0"
-tiny-skia = "0.6"
-imageproc = "0.23.0"
-rusttype = "0.9.2"
+image = "0.25.5"
+resvg = "0.44.0"
+usvg = "0.44.0"
+tiny-skia = "0.11.4"
+imageproc = "0.25.0"
+ab_glyph = "0.2.29"
 
 # Audio
 symphonia = { version = "0.5.1", features = ["mp3", "isomp4", "aac"] } # various decoders

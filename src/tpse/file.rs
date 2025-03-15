@@ -3,7 +3,7 @@ use std::fmt::{Debug, Display, Formatter};
 use std::io::{BufWriter, Cursor};
 use std::str::FromStr;
 use data_url::{DataUrl, DataUrlError, forgiving_base64};
-use image::DynamicImage;
+use image::{DynamicImage, ImageFormat};
 use sha2::{Digest, Sha256};
 
 
@@ -69,7 +69,7 @@ impl From<DynamicImage> for File {
     // this value was chosen randomly and could use some empirical testing
     log::trace!("Encoding image...");
     let mut binary = Vec::with_capacity(img.as_bytes().len());
-    img.write_to(&mut Cursor::new(&mut binary), image::ImageOutputFormat::Png).unwrap();
+    img.write_to(&mut Cursor::new(&mut binary), ImageFormat::Png).unwrap();
     log::trace!("Done encoding image!");
     File { binary, mime: "image/png".to_string() }
   }

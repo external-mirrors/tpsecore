@@ -1,10 +1,10 @@
 use std::borrow::Cow;
 use std::io::Cursor;
 use std::rc::Rc;
+use ab_glyph::FontRef;
 use hound::{SampleFormat, WavSpec};
 use image::{DynamicImage, GenericImageView};
 use image::imageops::FilterType;
-use rusttype::{Font, Scale};
 use crate::import::{ImportErrorType, LoadError, SkinType};
 use crate::import::decode_helper::TetrioAtlasDecoder;
 use crate::import::skin_splicer::{decode_image, SkinSplicer};
@@ -275,7 +275,7 @@ impl<'a> RenderContext<'a> {
 
       if frame.render_options.debug_grid {
         let white = [255, 255, 255, 255].into();
-        let font = Font::try_from_bytes(include_bytes!("../../assets/pfw.ttf")).unwrap();
+        let font = FontRef::try_from_slice(include_bytes!("../../assets/pfw.ttf")).unwrap();
         for x in (min_x..max_x).filter(|el| el % 48 == 0 /* "performance"? */) {
           let height = canvas.height();
           imageproc::drawing::draw_line_segment_mut(
@@ -284,11 +284,12 @@ impl<'a> RenderContext<'a> {
             ((x - min_x) as f32, height as f32),
             white
           );
+
           imageproc::drawing::draw_text_mut(
             &mut canvas,
             white,
             (x - min_x) as i32 + 2, 2,
-            Scale::uniform(16.0),
+            16.0,
             &font,
             &format!("X{}", x)
           );
@@ -305,7 +306,7 @@ impl<'a> RenderContext<'a> {
             &mut canvas,
             white,
             2, (y - min_y) as i32 + if y == min_y { 16 } else { 2 },
-            Scale::uniform(16.0),
+            16.0,
             &font,
             &format!("Y{}", y)
           );

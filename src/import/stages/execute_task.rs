@@ -189,7 +189,7 @@ pub fn execute_task(task: ImportTask, ctx: ImportContext<'_>) -> Result<TPSE, Im
       }
 
       if !unvisited.is_empty() {
-        let tetrio_ogg = ctx.asset_source.provide(Asset::TetrioOGG).map_err(|err| ctx.wrap(err))?;
+        let tetrio_ogg = ctx.asset_source.provide(Asset::TetrioRSD).map_err(|err| ctx.wrap(err))?;
 
         ctx.log(Level::Trace, format_args!("Decoding tetrio.ogg: {} bytes", tetrio_ogg.len()));
         let mut decoded = Vec::with_capacity(546 * sample_rate * channels);

@@ -3,7 +3,6 @@ use std::fmt::{Arguments, Display};
 use std::io::Cursor;
 use std::ops::{Deref, DerefMut};
 use std::sync::Mutex;
-use image::ImageOutputFormat;
 use lazy_static::lazy_static;
 use log::Level;
 use mime::Mime;
@@ -189,7 +188,7 @@ pub fn render_video(tpse: u32, args: JsValue) -> Result<JsValue, JsError> {
         include_bytes!("../assets/empty.png").to_vec()
       } else {
         let mut output = vec![];
-        el.image.write_to(&mut Cursor::new(&mut output), ImageOutputFormat::Png).unwrap();
+        el.image.write_to(&mut Cursor::new(&mut output), image::ImageFormat::Png).unwrap();
         output
       };
       Frame { image: encoded, min_x: el.min_x, min_y: el.min_y, max_x: el.max_x, max_y: el.max_y }
@@ -221,7 +220,7 @@ pub fn render_default_sound_effect(sound: &str) -> Result<Vec<f32>, JsError> {
   if state.default_context.cached_tetrio_atlas_decoder.is_none() {
     state.default_context.cached_tetrio_atlas_decoder = Some({
       let tetrio_js = state.provider.provide(Asset::TetrioJS)?;
-      let tetrio_ogg = state.provider.provide(Asset::TetrioOGG)?;
+      let tetrio_ogg = state.provider.provide(Asset::TetrioRSD)?;
       let atlas = custom_sound_atlas(tetrio_js).map_err(|err| ImportErrorType::AssetParseFailure(err))?;
       TetrioAtlasDecoder::decode(atlas.clone(), tetrio_ogg, Some("ogg"))?
     });
