@@ -46,8 +46,8 @@ imageproc = "0.25.0"
 ab_glyph = "0.2.29"
 
 # Audio
-symphonia = { version = "0.5.1", features = ["mp3", "isomp4", "aac"] } # various decoders
-hound = "3.4.0" # wav encoder
+symphonia = { version = "0.5.4", features = ["mp3", "isomp4", "aac"] } # various decoders
+hound = "3.5.1" # wav encoder
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.13"

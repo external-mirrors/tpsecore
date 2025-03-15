@@ -4,8 +4,7 @@ use std::str::FromStr;
 use log::Level;
 use crate::import::{ImportErrorType, ImportResult, ImportType, SkinType, FileType, SpecificImportType as SIT, ImportContext, Asset, BackgroundType, ImportContextEntry, ImportError};
 use crate::import::skin_splicer::{decode_image};
-use crate::import::tetriojs::custom_sound_atlas;
-
+use crate::import::radiance::parse_radiance_sound_definition;
 
 /// Prepares a single file for import.
 pub fn decide_specific_type<'c>
@@ -41,8 +40,9 @@ pub fn decide_specific_type<'c>
           },
           FileType::Video => SIT::Background(BackgroundType::Video),
           FileType::Audio => {
-            let asset = ctx.asset_source.provide(Asset::TetrioJS).map_err(|err| ctx.wrap(err))?;
-            let atlas = custom_sound_atlas(asset).map_err(|err| ctx.wrap(err.into()))?;
+            let asset = ctx.asset_source.provide(Asset::TetrioRSD).map_err(|err| ctx.wrap(err))?;
+            let rsd = parse_radiance_sound_definition(asset).map_err(|err| ctx.wrap(err.into()))?;
+            let atlas = rsd.to_old_style_atlas();
             let sfx = PathBuf::from(filename).file_stem().and_then(|ext| atlas.get(filename));
             match sfx {
               Some(_) => SIT::SoundEffects,

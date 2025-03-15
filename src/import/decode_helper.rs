@@ -60,6 +60,8 @@ impl TetrioAtlasDecoder {
 }
 
 pub fn decode(bytes: &[u8], extension: Option<&str>, mut caller: impl FnMut(&[f32])) -> Result<(), ImportErrorType> {
+  debug_assert!(bytes.get(0..4) != Some(&[0x74, 0x52, 0x25, 0x44]), "decode was passed a tRSD file");
+
   let mut hint = Hint::new();
   if let Some(extension) = extension {
     hint.with_extension(extension);

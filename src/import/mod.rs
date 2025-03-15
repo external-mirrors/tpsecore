@@ -8,7 +8,7 @@ mod file_type;
 mod import_result;
 mod import;
 mod asset_provider;
-pub mod tetriojs;
+pub mod radiance;
 pub mod decode_helper;
 
 pub use import_types::*;

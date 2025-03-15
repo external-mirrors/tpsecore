@@ -22,8 +22,8 @@ use crate::import::import_task::ImportTask;
 use crate::import::{Asset, import, ImportErrorType, ImportContext, ImportType, LoadError, OtherSkinType, SkinType, SpecificImportType, ImportContextEntry, ImportError};
 use crate::import::decode_helper::decode;
 use crate::import::LoadError::{NoSupportedAudioTrack, SymphoniaError};
+use crate::import::radiance::parse_radiance_sound_definition;
 use crate::import::skin_splicer::{decode_image, SkinSplicer};
-use crate::import::tetriojs::custom_sound_atlas;
 use crate::tpse::{AnimMeta, Background, File, MiscTPSEValue, Song, SongMetadata, TPSE};
 
 /// Executes an import task
@@ -152,8 +152,9 @@ pub fn execute_task(task: ImportTask, ctx: ImportContext<'_>) -> Result<TPSE, Im
       // Multiply by this constant to get from atlas timings to sample timings.
       let atlas_entry_to_sample_ratio: f64 = 1.0/1000.0 * sample_rate as f64 * channels as f64;
 
-      let tetrio_js = ctx.asset_source.provide(Asset::TetrioJS).map_err(|err| ctx.wrap(err))?;
-      let mut atlas = custom_sound_atlas(tetrio_js).map_err(|err| ctx.wrap(err.into()))?;
+      let asset = ctx.asset_source.provide(Asset::TetrioRSD).map_err(|err| ctx.wrap(err))?;
+      let rsd = parse_radiance_sound_definition(asset).map_err(|err| ctx.wrap(err.into()))?;
+      let mut atlas = rsd.to_old_style_atlas();
       let mut unvisited = atlas.keys().cloned().collect::<HashSet<_>>();
       let mut encoded = vec![];
       let mut cursor = Cursor::new(&mut encoded);
@@ -189,12 +190,12 @@ pub fn execute_task(task: ImportTask, ctx: ImportContext<'_>) -> Result<TPSE, Im
       }
 
       if !unvisited.is_empty() {
-        let tetrio_ogg = ctx.asset_source.provide(Asset::TetrioRSD).map_err(|err| ctx.wrap(err))?;
+        let rsd_asset = ctx.asset_source.provide(Asset::TetrioRSD).map_err(|err| ctx.wrap(err))?;
+        let rsd = parse_radiance_sound_definition(rsd_asset).map_err(|err| ctx.wrap(err.into()))?;
 
-        ctx.log(Level::Trace, format_args!("Decoding tetrio.ogg: {} bytes", tetrio_ogg.len()));
+        ctx.log(Level::Trace, format_args!("Decoding {}: {} bytes", Asset::TetrioRSD, rsd_asset.len()));
         let mut decoded = Vec::with_capacity(546 * sample_rate * channels);
-        decode(tetrio_ogg, Some("ogg"), |samples| decoded.extend_from_slice(samples)).map_err(|err| ctx.wrap(err))?;
-
+        decode(rsd.audio_buffer, Some("ogg"), |samples| decoded.extend_from_slice(samples)).map_err(|err| ctx.wrap(err))?;
 
         ctx.log(Level::Trace, format_args!("Encoding..."));
         for sfx_name in unvisited {

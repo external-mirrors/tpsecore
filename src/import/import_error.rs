@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::collections::HashSet;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use std::str::Utf8Error;
 use image::ImageError;
 use itertools::Itertools;
 
@@ -59,6 +60,14 @@ pub enum AssetParseFailure {
   SoundEffectsAtlasRegex,
   #[error("failed to parse sound effects atlas")]
   SoundEffectsAtlasParse,
+  #[error("unexpected EOF while parsing sound effects atlas")]
+  SoundEffectsAtlasEOF,
+  #[error("expected EOF while parsing sound effects atlas at position {position}, but buffer length is {length}")]
+  SoundEffectsAtlasExpectedEOF { position: usize, length: usize },
+  #[error("found invalid UTF-8 in name of sprite {sprite}: {error}")]
+  SoundEffectsAtlasSpriteNameUTF8Error { sprite: usize, error: Utf8Error },
+  #[error("name of sprite {sprite} beyond sane limits: {length} bytes")]
+  SoundEffectsAtlasNameTooLong { sprite: usize, length: u32 }
 }
 
 /// An error indicating failure to parse a media file

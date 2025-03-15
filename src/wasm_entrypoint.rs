@@ -9,9 +9,9 @@ use mime::Mime;
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::*;
 use crate::import::{Asset, AssetProvider, DefaultAssetProvider, import, ImportErrorType, ImportContext, RenderFailure, ImportError, ImportType, SkinType};
+pub use crate::import::radiance::parse_radiance_sound_definition;
 use crate::import::decode_helper::{decode, TetrioAtlasDecoder};
 use crate::import::skin_splicer::Piece;
-use crate::import::tetriojs::custom_sound_atlas;
 use crate::log::ImportLogger;
 use crate::render::{BoardElement, BoardMap, Frame, render_frames, render_sound_effects, RenderOptions, SoundEffectInfo, VideoContext};
 use crate::tpse::TPSE;
@@ -137,8 +137,11 @@ pub fn get_atlas(tpse: u32) -> Result<JsValue, JsError> {
 pub fn get_default_atlas() -> Result<JsValue, JsError> {
   log::debug!("[TPSE] Get default atlas");
   let state = GLOBAL_STATE.lock().unwrap();
-  let tetriojs = state.provider.provide(Asset::TetrioJS).map_err(stringify_error)?;
-  let atlas = custom_sound_atlas(tetriojs).map_err(stringify_error)?;
+
+  let asset = state.provider.provide(Asset::TetrioRSD).map_err(stringify_error)?;
+  let rsd = parse_radiance_sound_definition(asset).map_err(stringify_error)?;
+  let atlas = rsd.to_old_style_atlas();
+
   Ok(JsValue::from_serde(&atlas).unwrap())
 }
 
@@ -217,14 +220,16 @@ pub fn render_sound_effect(tpse: u32, sound: &str) -> Result<Option<Vec<f32>>, J
 pub fn render_default_sound_effect(sound: &str) -> Result<Vec<f32>, JsError> {
   log::debug!("[TPSE] Render default sound effect");
   let mut state = GLOBAL_STATE.lock().unwrap();
+
   if state.default_context.cached_tetrio_atlas_decoder.is_none() {
     state.default_context.cached_tetrio_atlas_decoder = Some({
-      let tetrio_js = state.provider.provide(Asset::TetrioJS)?;
-      let tetrio_ogg = state.provider.provide(Asset::TetrioRSD)?;
-      let atlas = custom_sound_atlas(tetrio_js).map_err(|err| ImportErrorType::AssetParseFailure(err))?;
-      TetrioAtlasDecoder::decode(atlas.clone(), tetrio_ogg, Some("ogg"))?
+      let asset = state.provider.provide(Asset::TetrioRSD)?;
+      let rsd = parse_radiance_sound_definition(asset)?;
+      let atlas = rsd.to_old_style_atlas();
+      TetrioAtlasDecoder::decode(atlas.clone(), rsd.audio_buffer, Some("ogg"))?
     });
   }
+
   let decoder = state.default_context.cached_tetrio_atlas_decoder.as_ref().unwrap();
   let samples = decoder.lookup(sound)
     .ok_or_else(|| RenderFailure::NoSoundSoundEffect(sound.to_string()))

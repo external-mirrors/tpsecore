@@ -136,6 +136,7 @@ pub struct TPSE {
   pub other: HashMap<String, MiscTPSEValue>
 }
 
+/// A map of sprite name to (offset_milliseconds, duration_milliseconds)
 pub type CustomSoundAtlas = HashMap<String, (f64, f64)>;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
