@@ -1,20 +1,13 @@
 [package]
 name = "tpsecore"
 version = "0.1.1"
-edition = "2021"
+edition = "2024"
 authors = ["UniQMG"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-# Wasm stuff
-wasm-bindgen = { version = "0.2.95", features = ["serde-serialize"] }
-console_error_panic_hook = { version = "0.1.6" }
-#wee_alloc = { version = "0.4.5", optional = true }
-console_log = "0.2.0"
-js-sys = "0.3.59"
-
 # Data utilities
 base64 = "0.13.0"
 regex = "1.6.0"
@@ -31,13 +24,11 @@ zip = { version = "0.6.2", default-features = false, features = ["deflate"] } # 
 itertools = "0.10.3"
 
 # Other utilities
-lazy_static = "1.4.0"
 thiserror = "1.0.31"
 log = "0.4.17"
-simple_logger = "2.2.0"
 
 # Image
-image = "0.24.3"
+image = { version = "0.24.3", default-features = false, features = ["bmp", "dds", "dxt", "farbfeld", "gif", "hdr", "ico", "jpeg", "png", "pnm", "tga", "tiff", "webp"] } # all of the defaults except openexr, which transiently depends on wasm-bindgen for randomness
 resvg = "0.23.0"
 usvg = "0.23.0"
 tiny-skia = "0.6"
@@ -49,15 +40,12 @@ symphonia = { version = "0.5.1", features = ["mp3", "isomp4", "aac"] } # various
 hound = "3.4.0" # wav encoder
 
 [dev-dependencies]
-wasm-bindgen-test = "0.3.13"
+simple_logger = "2.2.0" # for logging in tests
 
 [profile.test]
-opt-level = 1 # Turn up to 3 to get ~30x speedups in tests
+opt-level = 1
 
 [profile.release]
-# Tell `rustc` to optimize for small code size.
-opt-level = "s"
-# opt-level = 3
-
-[package.metadata.wasm-pack.profile.release]
-wasm-opt = false # it's s l o w
+# opt-level = "s" # small code size
+opt-level = 3 # speed
+lto = true
