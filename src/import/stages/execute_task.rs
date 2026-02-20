@@ -27,7 +27,7 @@ use crate::import::tetriojs::custom_sound_atlas;
 use crate::tpse::{AnimMeta, Background, File, MiscTPSEValue, Song, SongMetadata, TPSE};
 
 /// Executes an import task
-pub fn execute_task(task: ImportTask, ctx: ImportContext<'_>) -> Result<TPSE, ImportError> {
+pub async fn execute_task(task: ImportTask, ctx: ImportContext<'_>) -> Result<TPSE, ImportError> {
   ctx.log(Level::Info, format_args!("Executing import task {:?}", task));
   let mut tpse = TPSE::default();
   match task {
@@ -144,9 +144,9 @@ pub fn execute_task(task: ImportTask, ctx: ImportContext<'_>) -> Result<TPSE, Im
       }
     },
     ImportTask::SoundEffects(sound_effects) => {
-      let tetrio_js = ctx.asset_source.provide(Asset::TetrioJS).map_err(|err| ctx.wrap(err))?;
-      let tetrio_ogg = ctx.asset_source.provide(Asset::TetrioOGG).map_err(|err| ctx.wrap(err))?;
-      let mut atlas = custom_sound_atlas(tetrio_js).map_err(|err| ctx.wrap(err.into()))?;
+      let tetrio_js = ctx.asset_source.provide(Asset::TetrioJS).await.map_err(|err| ctx.wrap(err))?;
+      let tetrio_ogg = ctx.asset_source.provide(Asset::TetrioOGG).await.map_err(|err| ctx.wrap(err))?;
+      let mut atlas = custom_sound_atlas(&tetrio_js).map_err(|err| ctx.wrap(err.into()))?;
 
       let mut encoded = vec![];
       // todo: probably not safe to assume 2 channel 44.1KHz audio
@@ -191,7 +191,7 @@ pub fn execute_task(task: ImportTask, ctx: ImportContext<'_>) -> Result<TPSE, Im
 
       ctx.log(Level::Trace, format_args!("Decoding tetrio.ogg: {} bytes", tetrio_ogg.len()));
       let mut decoded = Vec::with_capacity(546 * 44100 * 2);
-      decode(tetrio_ogg, Some("ogg"), |samples| {
+      decode(&tetrio_ogg, Some("ogg"), |samples| {
         decoded.extend_from_slice(samples);
       }).map_err(|err| ctx.wrap(err))?;
 
@@ -245,7 +245,7 @@ pub fn execute_task(task: ImportTask, ctx: ImportContext<'_>) -> Result<TPSE, Im
               .map(|(it, name, bytes)| (*it, name.as_ref(), bytes.as_ref()))
               .collect::<Vec<_>>();
             let context = ctx.with_context(ImportContextEntry::ZipFolder(folder));
-            let new_tpse = import(files, context)?;
+            let new_tpse = Box::pin(import(files, context)).await?;
             tpse.merge(new_tpse);
           }
         },

@@ -8,7 +8,7 @@ use crate::import::tetriojs::custom_sound_atlas;
 
 
 /// Prepares a single file for import.
-pub fn decide_specific_type<'c>
+pub async fn decide_specific_type<'c>
   (import_type: ImportType, filename: &str, bytes: &[u8], ctx: ImportContext<'c>)
    -> Result<ImportResult<'c>, ImportError>
 {
@@ -21,7 +21,7 @@ pub fn decide_specific_type<'c>
     ImportType::Automatic => {
       if let Some(filekey) = ImportType::parse_filekey(filename) {
         let context = ctx.with_context(ImportContextEntry::WithFilekey(filekey));
-        return decide_specific_type(filekey, filename, bytes, context);
+        return Box::pin(decide_specific_type(filekey, filename, bytes, context)).await;
       } else if let Some(guess) = FileType::from_extension(filename) {
         match guess {
           FileType::Zip => SIT::Zip,
@@ -31,7 +31,7 @@ pub fn decide_specific_type<'c>
             if let Some(format) = SkinType::guess_format(filename, image.width(), image.height(), &ctx) {
               let format = ImportType::Skin { subtype: format };
               let context = ctx.with_context(ImportContextEntry::WithGuessedType(format));
-              return decide_specific_type(format, filename, bytes, context)
+              return Box::pin(decide_specific_type(format, filename, bytes, context)).await
             } else {
               match Path::new(&filename).extension().map(|ext| ext.to_string_lossy()) {
                 Some(str) if str == "gif" => SIT::Background(BackgroundType::Video),
@@ -41,8 +41,8 @@ pub fn decide_specific_type<'c>
           },
           FileType::Video => SIT::Background(BackgroundType::Video),
           FileType::Audio => {
-            let asset = ctx.asset_source.provide(Asset::TetrioJS).map_err(|err| ctx.wrap(err))?;
-            let atlas = custom_sound_atlas(asset).map_err(|err| ctx.wrap(err.into()))?;
+            let asset = ctx.asset_source.provide(Asset::TetrioJS).await.map_err(|err| ctx.wrap(err))?;
+            let atlas = custom_sound_atlas(&asset).map_err(|err| ctx.wrap(err.into()))?;
             let sfx = PathBuf::from(filename).file_stem().and_then(|ext| atlas.get(filename));
             match sfx {
               Some(_) => SIT::SoundEffects,
