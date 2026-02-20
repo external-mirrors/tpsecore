@@ -5,7 +5,7 @@ pub mod import;
 pub mod render;
 pub mod log;
 #[cfg(target_arch = "wasm32")]
-mod wasm_entrypoint;
+mod wasm;
 
 // library cleanup todos:
 // - Reintroduce lifetimes into the tpse management to reduce memory overhead

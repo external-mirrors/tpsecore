@@ -1,6 +1,6 @@
-use lazy_static::lazy_static;
 use crate::import::skin_splicer::Piece;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
 use num_traits::cast::ToPrimitive;
 
@@ -168,97 +168,95 @@ impl ConnectionSubmap {
   }
 }
 
-lazy_static! {
-  pub static ref tetrio_connections_submap: ConnectionSubmap = {
-    // Include all garbage sides, plus some extra ones.
-    let mut map = tetrio_garbage_connections_submap.clone();
-    // Corner/elbow sides
-    map.insert(0b00000110, &[(0, 4)]);
-    map.insert(0b00000011, &[(1, 4)]);
-    map.insert(0b00001101, &[(2, 4)]);
-    map.insert(0b00001110, &[(3, 4)]);
-    map.insert(0b00001100, &[(0, 5)]);
-    map.insert(0b00001001, &[(1, 5)]);
-    map.insert(0b00000111, &[(2, 5)]);
-    map.insert(0b00001011, &[(3, 5)]);
-    return map;
-  };
-  pub static ref tetrio_garbage_connections_submap: ConnectionSubmap = {
-    let mut map = ConnectionSubmap::new(0b00000000, &[(0, 3)]);
-    // key = corners (top left, top right, bottom right, bottom left), sides (top, right, bottom, left)
-    // (1=open,0=closed)
-    map.insert(0b00000010, &[(0, 0)]);
-    map.insert(0b00100110, &[(1, 0)]);
-    map.insert(0b00110111, &[(2, 0)]);
-    map.insert(0b00010011, &[(3, 0)]);
-    map.insert(0b00001010, &[(0, 1)]);
-    map.insert(0b01101110, &[(1, 1)]);
-    map.insert(0b11111111, &[(2, 1)]);
-    map.insert(0b10011011, &[(3, 1)]);
-    map.insert(0b00001000, &[(0, 2)]);
-    map.insert(0b01001100, &[(1, 2)]);
-    map.insert(0b11001101, &[(2, 2)]);
-    map.insert(0b10001001, &[(3, 2)]);
-    // map.insert(0b00000000, &[(0, 3)]); // inserted as default
-    map.insert(0b00000100, &[(1, 3)]);
-    map.insert(0b00000101, &[(2, 3)]);
-    map.insert(0b00000001, &[(3, 3)]);
-    return map;
-  };
-  pub static ref jstris_connections_submap: ConnectionSubmap = {
-    use jstris_dimples::*;
-    let mut map = ConnectionSubmap::new(0b00000000, &[(0, 0)]);
-    // map.insert(0b00000000, &[(0,  0)]); // inserted as default
-    map.insert(0b00001000, &[(0,  1)]);
-    map.insert(0b00000010, &[(0,  2)]);
-    map.insert(0b00001010, &[(0,  3)]);
-    map.insert(0b00000001, &[(0,  4)]);
-    map.insert(0b00001001, &[(0,  5)]);
-    map.insert(0b00000011, &[(0,  6)]);
-    map.insert(0b00001011, &[(0,  7)]);
-    map.insert(0b00000100, &[(0,  8)]);
-    map.insert(0b00001100, &[(0,  9)]);
-    map.insert(0b00000110, &[(0, 10)]);
-    map.insert(0b00001110, &[(0, 11)]);
-    map.insert(0b00000101, &[(0, 12)]);
-    map.insert(0b00001101, &[(0, 13)]);
-    map.insert(0b00000111, &[(0, 14)]);
-    map.insert(0b00001111, &[(0, 15)]);
+pub static tetrio_connections_submap: LazyLock<ConnectionSubmap> = LazyLock::new(|| {
+  // Include all garbage sides, plus some extra ones.
+  let mut map = tetrio_garbage_connections_submap.clone();
+  // Corner/elbow sides
+  map.insert(0b00000110, &[(0, 4)]);
+  map.insert(0b00000011, &[(1, 4)]);
+  map.insert(0b00001101, &[(2, 4)]);
+  map.insert(0b00001110, &[(3, 4)]);
+  map.insert(0b00001100, &[(0, 5)]);
+  map.insert(0b00001001, &[(1, 5)]);
+  map.insert(0b00000111, &[(2, 5)]);
+  map.insert(0b00001011, &[(3, 5)]);
+  return map;
+});
+pub static tetrio_garbage_connections_submap: LazyLock<ConnectionSubmap> = LazyLock::new(|| {
+  let mut map = ConnectionSubmap::new(0b00000000, &[(0, 3)]);
+  // key = corners (top left, top right, bottom right, bottom left), sides (top, right, bottom, left)
+  // (1=open,0=closed)
+  map.insert(0b00000010, &[(0, 0)]);
+  map.insert(0b00100110, &[(1, 0)]);
+  map.insert(0b00110111, &[(2, 0)]);
+  map.insert(0b00010011, &[(3, 0)]);
+  map.insert(0b00001010, &[(0, 1)]);
+  map.insert(0b01101110, &[(1, 1)]);
+  map.insert(0b11111111, &[(2, 1)]);
+  map.insert(0b10011011, &[(3, 1)]);
+  map.insert(0b00001000, &[(0, 2)]);
+  map.insert(0b01001100, &[(1, 2)]);
+  map.insert(0b11001101, &[(2, 2)]);
+  map.insert(0b10001001, &[(3, 2)]);
+  // map.insert(0b00000000, &[(0, 3)]); // inserted as default
+  map.insert(0b00000100, &[(1, 3)]);
+  map.insert(0b00000101, &[(2, 3)]);
+  map.insert(0b00000001, &[(3, 3)]);
+  return map;
+});
+pub static jstris_connections_submap: LazyLock<ConnectionSubmap> = LazyLock::new(|| {
+  use jstris_dimples::*;
+  let mut map = ConnectionSubmap::new(0b00000000, &[(0, 0)]);
+  // map.insert(0b00000000, &[(0,  0)]); // inserted as default
+  map.insert(0b00001000, &[(0,  1)]);
+  map.insert(0b00000010, &[(0,  2)]);
+  map.insert(0b00001010, &[(0,  3)]);
+  map.insert(0b00000001, &[(0,  4)]);
+  map.insert(0b00001001, &[(0,  5)]);
+  map.insert(0b00000011, &[(0,  6)]);
+  map.insert(0b00001011, &[(0,  7)]);
+  map.insert(0b00000100, &[(0,  8)]);
+  map.insert(0b00001100, &[(0,  9)]);
+  map.insert(0b00000110, &[(0, 10)]);
+  map.insert(0b00001110, &[(0, 11)]);
+  map.insert(0b00000101, &[(0, 12)]);
+  map.insert(0b00001101, &[(0, 13)]);
+  map.insert(0b00000111, &[(0, 14)]);
+  map.insert(0b00001111, &[(0, 15)]);
 
-    let to_dimple = map.connections.keys().copied().collect::<Vec<_>>();
-    for i in 0..16 {
-      let sets = [
-        if (i & 0b1000) == 0 { None } else { Some(TOP_LEFT) },
-        if (i & 0b0100) == 0 { None } else { Some(TOP_RIGHT) },
-        if (i & 0b0010) == 0 { None } else { Some(BOTTOM_RIGHT) },
-        if (i & 0b0001) == 0 { None } else { Some(BOTTOM_LEFT) }
-      ];
-      for el in sets {
-        for connection in &to_dimple {
-          let mut sets = map.connections.get(connection).iter()
-            .flat_map(|v| **v)
-            .chain(sets.iter().filter_map(|el| el.as_ref()))
-            .copied()
-            .collect::<Vec<_>>();
-          map.insert(*connection | (i << 4), sets.leak());
-        }
+  let to_dimple = map.connections.keys().copied().collect::<Vec<_>>();
+  for i in 0..16 {
+    let sets = [
+      if (i & 0b1000) == 0 { None } else { Some(TOP_LEFT) },
+      if (i & 0b0100) == 0 { None } else { Some(TOP_RIGHT) },
+      if (i & 0b0010) == 0 { None } else { Some(BOTTOM_RIGHT) },
+      if (i & 0b0001) == 0 { None } else { Some(BOTTOM_LEFT) }
+    ];
+    for el in sets {
+      for connection in &to_dimple {
+        let mut sets = map.connections.get(connection).iter()
+          .flat_map(|v| **v)
+          .chain(sets.iter().filter_map(|el| el.as_ref()))
+          .copied()
+          .collect::<Vec<_>>();
+        map.insert(*connection | (i << 4), sets.leak());
       }
     }
-    // map.insert(0b01001100, &[(0,  9), TOP_RIGHT]);
-    // map.insert(0b00100110, &[(0, 10), BOTTOM_RIGHT]);
-    // map.insert(0b00010011, &[(0,  6), BOTTOM_LEFT]);
-    // map.insert(0b10001001, &[(0,  5), TOP_LEFT]);
-    // map.insert(0b00110111, &[(0, 14), BOTTOM_RIGHT, BOTTOM_LEFT]);
-    // map.insert(0b00001011, &[(0,  7), TOP_LEFT, BOTTOM_LEFT]);
-    // map.insert(0b00001101, &[(0, 13), TOP_LEFT, TOP_RIGHT]);
-    // map.insert(0b00001110, &[(0, 11), BOTTOM_RIGHT, TOP_RIGHT]);
-    // map.insert(0b00001111, &[(0, 15), TOP_RIGHT, BOTTOM_RIGHT, BOTTOM_LEFT, TOP_LEFT]);
-    return map
-  };
-  pub static ref no_conn_submap: ConnectionSubmap = {
-    ConnectionSubmap::new(0b00000, &[(0, 0)])
-  };
-}
+  }
+  // map.insert(0b01001100, &[(0,  9), TOP_RIGHT]);
+  // map.insert(0b00100110, &[(0, 10), BOTTOM_RIGHT]);
+  // map.insert(0b00010011, &[(0,  6), BOTTOM_LEFT]);
+  // map.insert(0b10001001, &[(0,  5), TOP_LEFT]);
+  // map.insert(0b00110111, &[(0, 14), BOTTOM_RIGHT, BOTTOM_LEFT]);
+  // map.insert(0b00001011, &[(0,  7), TOP_LEFT, BOTTOM_LEFT]);
+  // map.insert(0b00001101, &[(0, 13), TOP_LEFT, TOP_RIGHT]);
+  // map.insert(0b00001110, &[(0, 11), BOTTOM_RIGHT, TOP_RIGHT]);
+  // map.insert(0b00001111, &[(0, 15), TOP_RIGHT, BOTTOM_RIGHT, BOTTOM_LEFT, TOP_LEFT]);
+  return map
+});
+pub static no_conn_submap: LazyLock<ConnectionSubmap> = LazyLock::new(|| {
+  ConnectionSubmap::new(0b00000, &[(0, 0)])
+});
 
 pub mod jstris_dimples {
   pub const TOP_RIGHT:    (u8, u8) = (0, 16);

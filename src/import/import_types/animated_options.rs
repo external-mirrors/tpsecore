@@ -1,5 +1,5 @@
 use std::fmt::{Display, Formatter};
-use lazy_static::lazy_static;
+use std::sync::LazyLock;
 use regex::Regex;
 
 #[derive(Default, Debug, Hash, Eq, PartialEq, Copy, Clone, serde::Serialize, serde::Deserialize)]
@@ -36,10 +36,10 @@ impl Display for AnimatedOptions {
 
 impl From<&str> for AnimatedOptions {
   fn from(filename: &str) -> Self {
-    lazy_static! {
-      static ref DELAY_REGEX: Regex = Regex::new(r"_delay=(\d+)").unwrap();
-      static ref COMBINE_REGEX: Regex = Regex::new(r"_combine=(true|false)").unwrap();
-    }
+    const DELAY_REGEX_STR: &str = r"_delay=(\d+)";
+    const COMBINE_REGEX_STR: &str = r"_combine=(true|false)";
+    static DELAY_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(DELAY_REGEX_STR).unwrap());
+    static COMBINE_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(COMBINE_REGEX_STR).unwrap());
 
     AnimatedOptions {
       delay: DELAY_REGEX.captures(filename).and_then(|matches| {

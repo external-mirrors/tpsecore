@@ -32,6 +32,8 @@ pub struct TPSE {
   pub enable_touch_controls: Option<bool>,
   #[serde(rename = "enableEmoteTab")]
   pub enable_emote_tab: Option<bool>,
+  #[serde(rename = "watermarkEnabled")]
+  pub watermark_enabled: Option<bool>,
   #[serde(rename = "transparentBgEnabled")]
   pub transparent_bg_enabled: Option<bool>,
   #[serde(rename = "opaqueTransparentBackground")]
@@ -216,6 +218,7 @@ impl TPSE {
     self.animated_bg_enabled = other.animated_bg_enabled.or(self.animated_bg_enabled.take());
     self.enable_touch_controls = other.enable_touch_controls.or(self.enable_touch_controls.take());
     self.enable_emote_tab = other.enable_emote_tab.or(self.enable_emote_tab.take());
+    self.watermark_enabled = other.watermark_enabled.or(self.watermark_enabled.take());
     self.transparent_bg_enabled = other.transparent_bg_enabled.or(self.transparent_bg_enabled.take());
     self.opaque_transparent_background = other.opaque_transparent_background.or(self.opaque_transparent_background.take());
     self.open_devtools_on_start = other.open_devtools_on_start.or(self.open_devtools_on_start.take());
