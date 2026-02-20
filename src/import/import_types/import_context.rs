@@ -17,7 +17,7 @@ pub struct ImportContext<'a> {
   /// A stack of context describing the current item the importer is working on
   pub context: Vec<ImportContextEntry>,
   /// An outlet for diagnostic/progress messages
-  pub logger: Option<&'a dyn ImportLogger>
+  pub logger: Option<&'a (dyn ImportLogger + Send + Sync)>
 }
 
 impl<'a> ImportContext<'a> {
@@ -30,7 +30,7 @@ impl<'a> ImportContext<'a> {
     }
   }
 
-  pub fn with_logger(self, logger: &'a dyn ImportLogger) -> Self {
+  pub fn with_logger(self, logger: &'a (dyn ImportLogger + Send + Sync)) -> Self {
     Self { logger: Some(logger), ..self }
   }
 

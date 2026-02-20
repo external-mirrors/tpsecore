@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::fmt::{Arguments, Display};
 use std::io::Cursor;
 use std::ops::{Deref, DerefMut};
-use std::sync::{LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 use log::Level;
 use mime::Mime;
 use crate::import::{Asset, AssetProvider, DefaultAssetProvider, import, ImportErrorType, ImportContext, RenderFailure, ImportError, ImportType, SkinType};
@@ -15,11 +15,25 @@ use crate::tpse::TPSE;
 
 mod tpse;
 mod render;
+mod asynch;
+mod provide_asset;
 
 #[link(wasm_import_module="tpsecore")]
 unsafe extern "C" {
+  /// Reports that an import has completed and that the results are now visible to `export_tpse`.  
+  /// Code values: 0=success 1=failure 2=tpse disappeared before completion
+  unsafe fn report_import_done(tpse: u32, code: u32);
+  /// Controls whether `tick_async` is called
+  unsafe fn set_runtime_sleeping(sleep: bool);
+  /// Requests an external asset be fetched and provided back asynchronously to `provide_asset`
+  unsafe fn fetch_asset(asset_id: u32);
+  /// Called when a panic occurrs. Logs with additional details will be printed to accompany
   unsafe fn report_panic();
+  /// Prints a log not associated with any specific tpse instance  
+  /// Level is 1=error 2=warn 3=info 4=debug 5=trace
   unsafe fn log(level: u8, ptr: *const u8, len: usize);
+  /// Prints a log associated with a specific tpse instance  
+  /// Level is 1=error 2=warn 3=info 4=debug 5=trace
   unsafe fn import_log(level: u8, tpse: u32, ptr: *const u8, len: usize);
 }
 
@@ -32,13 +46,20 @@ static STATE: LazyLock<Mutex<State>> = LazyLock::new(|| {
 struct State {
   id_counter: u32,
   tpses: HashMap<u32, TPSEContext>,
-  buffers: HashMap<u32, Vec<u8>>
+  buffers: HashMap<u32, Arc<[u8]>>
 }
 
 #[derive(Default)]
 struct TPSEContext {
   tpse: TPSE,
+  import_status: ImportStatus,
   staged_files: Vec<StagedFile>
+}
+#[derive(Default)]
+enum ImportStatus {
+  #[default]
+  Idle,
+  Running
 }
 
 #[derive(Default)]
@@ -52,6 +73,10 @@ impl State {
     // realistically we should never reach this; tpsecore is initialized,
     // user manually drops files, then closes the window. If you actually
     // manage to drag-and-drop 2 billion files in one session, lol.
+    // also note that right now, we slightly rely on IDs not being reused:
+    // `queue_import` expects the same TPSE to be in the same place and
+    // if IDs are reused will blindly use the new object. More of the caller's
+    // fault for deallocating it before the import finishes, though.
     let Some(new_id) = self.id_counter.checked_add(1)
       else { panic!("out of IDs") };
     std::mem::replace(&mut self.id_counter, new_id)

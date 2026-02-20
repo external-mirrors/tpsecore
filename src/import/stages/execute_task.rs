@@ -27,7 +27,7 @@ use crate::import::skin_splicer::{decode_image, SkinSplicer};
 use crate::tpse::{AnimMeta, Background, File, MiscTPSEValue, Song, SongMetadata, TPSE};
 
 /// Executes an import task
-pub fn execute_task(task: ImportTask, ctx: ImportContext<'_>) -> Result<TPSE, ImportError> {
+pub async fn execute_task(task: ImportTask, ctx: ImportContext<'_>) -> Result<TPSE, ImportError> {
   ctx.log(Level::Info, format_args!("Executing import task {:?}", task));
   let mut tpse = TPSE::default();
   match task {
@@ -152,8 +152,8 @@ pub fn execute_task(task: ImportTask, ctx: ImportContext<'_>) -> Result<TPSE, Im
       // Multiply by this constant to get from atlas timings to sample timings.
       let atlas_entry_to_sample_ratio: f64 = 1.0/1000.0 * sample_rate as f64 * channels as f64;
 
-      let asset = ctx.asset_source.provide(Asset::TetrioRSD).map_err(|err| ctx.wrap(err))?;
-      let rsd = parse_radiance_sound_definition(asset).map_err(|err| ctx.wrap(err.into()))?;
+      let asset = ctx.asset_source.provide(Asset::TetrioRSD).await.map_err(|err| ctx.wrap(err))?;
+      let rsd = parse_radiance_sound_definition(&asset).map_err(|err| ctx.wrap(err.into()))?;
       let mut atlas = rsd.to_old_style_atlas();
       let mut unvisited = atlas.keys().cloned().collect::<HashSet<_>>();
       let mut encoded = vec![];
@@ -188,10 +188,10 @@ pub fn execute_task(task: ImportTask, ctx: ImportContext<'_>) -> Result<TPSE, Im
         *duration = sample_duration as f64 / atlas_entry_to_sample_ratio;
         encoder_position += sample_duration;
       }
-
+      
       if !unvisited.is_empty() {
-        let rsd_asset = ctx.asset_source.provide(Asset::TetrioRSD).map_err(|err| ctx.wrap(err))?;
-        let rsd = parse_radiance_sound_definition(rsd_asset).map_err(|err| ctx.wrap(err.into()))?;
+        let rsd_asset = ctx.asset_source.provide(Asset::TetrioRSD).await.map_err(|err| ctx.wrap(err))?;
+        let rsd = parse_radiance_sound_definition(&rsd_asset).map_err(|err| ctx.wrap(err.into()))?;
 
         ctx.log(Level::Trace, format_args!("Decoding {}: {} bytes", Asset::TetrioRSD, rsd_asset.len()));
         let mut decoded = Vec::with_capacity(546 * sample_rate * channels);
@@ -250,7 +250,7 @@ pub fn execute_task(task: ImportTask, ctx: ImportContext<'_>) -> Result<TPSE, Im
               .map(|(it, name, bytes)| (*it, name.as_ref(), bytes.as_ref()))
               .collect::<Vec<_>>();
             let context = ctx.with_context(ImportContextEntry::ZipFolder(folder));
-            let new_tpse = import(files, context)?;
+            let new_tpse = Box::pin(import(files, context)).await?;
             tpse.merge(new_tpse);
           }
         },
