@@ -1,44 +1,150 @@
 // todo: finish rewrites of the below
 
-// #[wasm_bindgen]
-// pub fn get_atlas(tpse: u32) -> Result<JsValue, JsError> {
-//   log::debug!("[TPSE {}] Get atlas", tpse);
-//   with_tpse(tpse, |tpse, _| Ok(JsValue::from_serde(&tpse.get().custom_sound_atlas).unwrap()))
-// }
-// 
-// #[wasm_bindgen]
-// pub fn get_default_atlas() -> Result<JsValue, JsError> {
-//   log::debug!("[TPSE] Get default atlas");
-//   let state = GLOBAL_STATE.lock().unwrap();
-//   let tetriojs = state.provider.provide(Asset::TetrioJS).map_err(stringify_error)?;
-//   let atlas = custom_sound_atlas(tetriojs).map_err(stringify_error)?;
-//   Ok(JsValue::from_serde(&atlas).unwrap())
-// }
-// 
-// const fn default_frame_rate() -> f64 { 60.0 }
-// const fn default_skyline() -> usize { 20 }
-// const fn default_block_size() -> i64 { 48 }
-// fn default_board_elements() -> Vec<BoardElement> {
-//   BoardElement::get_draw_order().to_vec()
-// }
-// #[derive(Debug, serde::Deserialize)]
-// struct RenderArgs {
-//   frames: Vec<Vec<Vec<Option<(Piece, u8)>>>>,
-//   #[serde(default)]
-//   frame_duration: f64,
-//   #[serde(default = "default_frame_rate")]
-//   frame_rate: f64,
-//   #[serde(default = "default_board_elements")]
-//   board_elements: Vec<BoardElement>,
-//   #[serde(default)]
-//   debug_grid: bool,
-//   #[serde(default = "default_skyline")]
-//   skyline: usize,
-//   #[serde(default = "default_block_size")]
-//   block_size: i64,
-//   #[serde(default)]
-//   sound_effects: Vec<SoundEffectInfo<'static>>
-// }
+use std::io::Cursor;
+use std::ptr::null;
+
+use image::ImageFormat;
+
+use crate::import::radiance::parse_radiance_sound_definition;
+use crate::import::skin_splicer::Piece;
+use crate::render::{BoardElement, FrameInfo, RenderContext, RenderOptions, SoundEffectInfo};
+use crate::wasm::{STATE, State};
+
+/// Returns the sound effect atlas from the given tpse slot
+///
+/// Return value: null if no such tpse, otherwise buffer containing serialized atlas
+/// The returned buffer should be deallocated via [deallocate_buffer].
+#[unsafe(no_mangle)]
+pub extern fn get_atlas(tpse: u32) -> *const u8 {
+  let mut state = STATE.lock().unwrap();
+  let Some(tpse) = state.tpses.get(&tpse) else { return null() };
+  let buffer = serde_json::to_vec(&tpse.tpse.custom_sound_atlas).unwrap();
+  
+  let id = state.next_id();
+  state.buffers.insert(id, buffer.into());
+  state.buffers.get(&id).unwrap().as_ptr()
+}
+
+/// Parses the atlas out of an rsd file
+///
+/// Return value: null if no such buffer or if parsing fails (see logs), otherwise buffer containing serialized atlas
+/// The returned buffer should be deallocated via [deallocate_buffer].
+#[unsafe(no_mangle)]
+pub extern fn parse_radiance_atlas(rsd_buffer: *mut u8) -> *const u8 {
+  let mut state = STATE.lock().unwrap();
+  let Some(id) = state.lookup_buffer(rsd_buffer) else { return null() };
+  let rsd_buffer = state.buffers.get(&id).unwrap();
+  
+  let atlas = match parse_radiance_sound_definition(&rsd_buffer[..]) {
+    Ok(atlas) => atlas,
+    Err(err) => {
+      log::error!("failed to parse radiance file: {err}");
+      return null();
+    }
+  };
+  
+  let parsed_buffer = serde_json::to_vec(&atlas.to_old_style_atlas()).unwrap();
+  
+  let id = state.next_id();
+  state.buffers.insert(id, parsed_buffer.into());
+  state.buffers.get(&id).unwrap().as_ptr()
+}
+
+
+/// Prepares render data for a given tpse, which involves decoding assets into directly useable buffers.
+/// When no longer necessary, data can be discarded with [discard_render_data]. Data is also freed when
+/// the TPSE is deallocated.
+/// Return codes: 0=ok, 1=no such tpse, 2=loading failed
+#[unsafe(no_mangle)]
+pub extern fn prepare_render_data(tpse_id: u32) -> u32 {
+  let mut state = STATE.lock().unwrap();
+  let State { tpses, buffers, .. } = &mut *state;
+  let Some(tpse) = tpses.get_mut(&tpse_id) else { return 1 };
+  match RenderContext::try_from_tpse(&tpse.tpse) {
+    Err(_err) => {
+      // todo: report error text
+      2
+    }
+    Ok(ctx) => {
+      tpse.render_data = Some(ctx);
+      0
+    }
+  }
+}
+
+/// Throws away decoded buffers to free up memory
+/// Return codes: 0=ok, 1=no such tpse
+#[unsafe(no_mangle)]
+pub extern fn discard_render_data(tpse_id: u32) -> u32 {
+  let mut state = STATE.lock().unwrap();
+  let State { tpses, buffers, .. } = &mut *state;
+  let Some(tpse) = tpses.get_mut(&tpse_id) else { return 1 };
+  tpse.render_data = None;
+  0
+}
+
+const fn default_skyline() -> usize { 20 }
+const fn default_block_size() -> i64 { 48 }
+fn default_board_elements() -> Vec<BoardElement> {
+  BoardElement::get_draw_order().to_vec()
+}
+#[derive(Debug, serde::Deserialize)]
+struct RenderFrameArgs {
+  #[serde(default)]
+  real_time: f32,
+  board_state: Vec<Vec<Option<(Piece, u8)>>>,
+  #[serde(default = "default_board_elements")]
+  board_elements: Vec<BoardElement>,
+  #[serde(default)]
+  debug_grid: bool,
+  #[serde(default = "default_skyline")]
+  skyline: usize,
+  #[serde(default = "default_block_size")]
+  block_size: i64
+}
+
+#[unsafe(no_mangle)]
+pub extern fn render_frame(tpse: u32, argument_buffer: *mut u8) -> *const u8 {
+  let mut state = STATE.lock().unwrap();
+  let Some(id) = state.lookup_buffer(argument_buffer) else { return null() };
+  let argument_buffer = state.buffers.get(&id).unwrap();
+  let args: RenderFrameArgs = match serde_json::from_slice(&argument_buffer) {
+    Ok(res) => res,
+    Err(err) => {
+      log::error!("failed to parse render_video arguments: {err:?}");
+      return null();
+    }
+  };
+  let Some(tpse) = state.tpses.get(&tpse) else {
+    log::error!("Rendering video failed: no such tpse");
+    return null()
+  };
+  let Some(ctx) = &tpse.render_data else {
+    log::error!("rendering video failed: tpse lacks render data");
+    return null()
+  };
+  
+  let frame = ctx.render_frame(&FrameInfo {
+    real_time: 0.0, // todo
+    render_options: &RenderOptions {
+      board_elements: &args.board_elements,
+      debug_grid: args.debug_grid,
+      board: args.board_state.into(),
+      skyline: args.skyline,
+      block_size: args.block_size
+    }
+  });
+  
+  let mut buffer = vec![];
+  if let Err(err) = frame.image.write_to(Cursor::new(&mut buffer), ImageFormat::Png) {
+    log::error!("rendering video failed: failed to encode frame: {err}");
+    return null();
+  }
+  
+  let id = state.next_id();
+  state.buffers.insert(id, buffer.into());
+  state.buffers.get_mut(&id).unwrap().as_ptr()
+}
 // 
 // #[wasm_bindgen]
 // pub fn render_video(tpse: u32, args: JsValue) -> Result<JsValue, JsError> {

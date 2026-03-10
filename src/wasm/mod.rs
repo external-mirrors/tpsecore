@@ -10,7 +10,7 @@ use crate::import::{Asset, AssetProvider, DefaultAssetProvider, import, ImportEr
 use crate::import::decode_helper::{decode, TetrioAtlasDecoder};
 use crate::import::skin_splicer::Piece;
 use crate::log::ImportLogger;
-use crate::render::{BoardElement, BoardMap, Frame, render_frames, render_sound_effects, RenderOptions, SoundEffectInfo, VideoContext};
+use crate::render::{BoardElement, BoardMap, Frame, RenderContext, RenderOptions, SoundEffectInfo, render_sound_effects};
 use crate::tpse::TPSE;
 
 mod tpse;
@@ -52,17 +52,18 @@ struct State {
 #[derive(Default)]
 struct TPSEContext {
   tpse: TPSE,
+  render_data: Option<RenderContext>,
   import_status: ImportStatus,
   staged_files: Vec<StagedFile>
 }
-#[derive(Default)]
+#[derive(Default, Debug)]
 enum ImportStatus {
   #[default]
   Idle,
   Running
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct StagedFile {
   filename: u32,
   content: u32
@@ -89,7 +90,7 @@ impl State {
 }
 
 fn other_initialization() {
-  log::set_logger(&WasmLogger).map(|()| log::set_max_level(log::LevelFilter::Info)).unwrap();
+  log::set_logger(&WasmLogger).map(|()| log::set_max_level(log::LevelFilter::Debug)).unwrap();
   std::panic::set_hook(Box::new(|info| {
     log::error!("panic: {info}");
     unsafe { report_panic(); }

@@ -12,8 +12,7 @@ use crate::render::{BoardElement, clone_slice, nine_slice_resize, RenderOptions}
 use crate::render::board_element::BoardTextureKind;
 use crate::tpse::{AnimMeta, File, TPSE};
 
-struct RenderContext<'a> {
-  tpse: &'a TPSE,
+pub struct RenderContext {
   skin: Option<DynamicImage>,
   ghost: Option<DynamicImage>,
   skin_anim: Option<(DynamicImage, AnimMeta)>,
@@ -21,11 +20,6 @@ struct RenderContext<'a> {
   board: Option<DynamicImage>,
   queue: Option<DynamicImage>,
   grid: Option<DynamicImage>
-}
-
-pub struct VideoContext {
-  /// The frame rate of the video, in frames per second
-  pub frame_rate: f64
 }
 
 /// A rendered frame
@@ -43,30 +37,6 @@ pub struct Frame<T> {
   pub max_y: i64
 }
 
-/// Renders a sequence of RenderOptions into a sequence of frames
-pub fn render_frames<'a>
-  (ctx: &'a VideoContext, tpse: &'a TPSE, opts: impl IntoIterator<Item = RenderOptions<'a>> + 'a)
-  -> Result<impl Iterator<Item = Frame<DynamicImage>> + 'a, LoadError>
-{
-  let mut fro = Rc::new(RenderContext::try_from_tpse(tpse)?);
-  let mut sequence = 0;
-  let iter = opts.into_iter().flat_map(move |(render_options)| {
-    let fro = fro.clone();
-    let frames = (ctx.frame_rate/render_options.duration).min(1.0).ceil() as u32;
-    let start_sequence = sequence;
-    sequence += frames;
-    (0..frames).map(move |frame| {
-      let fi = FrameInfo {
-        sequence: (start_sequence + frame) as usize,
-        render_options: &render_options
-      };
-      log::trace!("Rendering frame {:?}", fi);
-      fro.render_frame(ctx, &fi)
-    })
-  });
-  Ok(iter)
-}
-
 #[derive(Debug, thiserror::Error)]
 pub enum SoundEffectRenderError<'a> {
   #[error("no such sound effect: {0}")]
@@ -77,7 +47,7 @@ pub enum SoundEffectRenderError<'a> {
 
 /// Renders a sequence of sound effects to a continuous buffer
 pub fn render_sound_effects<'a>
-  (ctx: &'a VideoContext, tpse: &'a TPSE, opts: &'a [SoundEffectInfo])
+  (tpse: &'a TPSE, opts: &'a [SoundEffectInfo])
   -> Result<File, SoundEffectRenderError<'a>>
 {
   if opts.is_empty() {
@@ -91,7 +61,8 @@ pub fn render_sound_effects<'a>
   let atlas = TetrioAtlasDecoder::decode_from_tpse(tpse)?;
   let sample_rate = 44100;
   let channels = 2;
-  let samples_per_frame = (1.0/ctx.frame_rate * sample_rate as f64) as usize * channels;
+  // let samples_per_frame = (1.0/ctx.frame_rate * sample_rate as f64) as usize * channels;
+  let samples_per_frame: usize = todo!();
 
   let length: usize = opts.iter()
     .filter_map(|el| Some(el.time * samples_per_frame + atlas.lookup(&el.name)?.len()))
@@ -142,11 +113,13 @@ impl<'a> SoundEffectInfo<'a> {
 
 #[derive(Debug)]
 pub struct FrameInfo<'a> {
-  pub sequence: usize,
+  /// The time the frame is being rendered for.
+  /// Used for picking animated skin frame.
+  pub real_time: f64,
   pub render_options: &'a RenderOptions<'a>,
 }
-impl<'a> RenderContext<'a> {
-  pub fn try_from_tpse(tpse: &'a TPSE) -> Result<Self, LoadError> {
+impl RenderContext {
+  pub fn try_from_tpse(tpse: &TPSE) -> Result<Self, LoadError> {
     let load_transpose = |file: &Option<File>| {
       file.as_ref().map(|file| decode_image(&file.binary)).transpose()
     };
@@ -159,7 +132,7 @@ impl<'a> RenderContext<'a> {
     let board = load_transpose(&tpse.board)?;
     let queue = load_transpose(&tpse.queue)?;
     let grid = load_transpose(&tpse.grid)?;
-    Ok(Self { tpse, skin, ghost, skin_anim, ghost_anim, board, queue, grid })
+    Ok(Self { skin, ghost, skin_anim, ghost_anim, board, queue, grid })
   }
 
   pub fn max_skin_frames(&self) -> u32 {
@@ -174,7 +147,7 @@ impl<'a> RenderContext<'a> {
     [skin, ghost].iter().filter_map(|el| *el).min().unwrap_or(1)
   }
 
-  pub fn render_frame(&self, ctx: &VideoContext, frame: &FrameInfo) -> Frame<DynamicImage> {
+  pub fn render_frame(&self, frame: &FrameInfo) -> Frame<DynamicImage> {
     /// A list of drawing tasks to perform. Units are in pixels.
     let mut tasks: Vec<(DynamicImage, i64, i64, i64, i64)> = vec![];
 
@@ -203,10 +176,7 @@ impl<'a> RenderContext<'a> {
     }
 
     let load_frame = |img: &DynamicImage, meta: &AnimMeta| -> DynamicImage {
-      // frame / (frame/second) = frame * second/frame = second
-      let real_time = frame.sequence as f64 / ctx.frame_rate;
-      // second * frame/second = frame
-      let frame = (real_time * 60.0 / meta.delay as f64) as u32 % meta.frames;
+      let frame = (frame.real_time * 60.0 / meta.delay as f64) as u32 % meta.frames;
       let x = (frame % 16) * 1024;
       let y = (frame / 16) * 1024;
       let tex = img.view(x, y, 1024, 1024);

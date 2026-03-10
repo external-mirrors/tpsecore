@@ -18,10 +18,10 @@ impl Display for Piece {
 }
 
 
-pub struct PieceStringFailure;
+pub struct PieceStringFailure(String);
 impl Display for PieceStringFailure {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-    write!(f, "unknown piece")
+    write!(f, "unknown piece: {:?}", self.0)
   }
 }
 impl FromStr for Piece {
@@ -36,11 +36,11 @@ impl FromStr for Piece {
       "j" | "J" => Ok(Self::J),
       "t" | "T" => Ok(Self::T),
       "hold" => Ok(Self::HoldDisabled),
-      "gb" | "#" => Ok(Self::Garbage),
-      "dgb" | "@" => Ok(Self::DarkGarbage),
+      "garbage" | "gb" | "#" => Ok(Self::Garbage),
+      "dark garbage" | "darkgarbage" | "dgb" | "@" => Ok(Self::DarkGarbage),
       "ghost" => Ok(Self::Ghost),
       "topout" => Ok(Self::Topout),
-      _ => Err(PieceStringFailure)
+      other => Err(PieceStringFailure(other.to_string()))
     }
   }
 }

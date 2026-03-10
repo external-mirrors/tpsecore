@@ -4,9 +4,6 @@ use crate::render::{BoardElement, BoardMap, example_maps};
 
 #[derive(Debug, Clone)]
 pub struct RenderOptions<'a> {
-  /// How long this render should be shown, in seconds.
-  /// Note that animation frames are rounded up, and must last at least one video frame.
-  pub duration: f64,
   /// What parts of the board to render and in what order
   pub board_elements: &'a [BoardElement],
   /// Whether to draw the coordinate debug grid overlay
@@ -23,7 +20,6 @@ pub struct RenderOptions<'a> {
 impl Default for RenderOptions<'static> {
   fn default() -> Self {
     RenderOptions {
-      duration: 0.0,
       board_elements: BoardElement::get_draw_order(),
       debug_grid: false,
       board: BoardMap::from(example_maps::EMPTY_MAP),

@@ -29,11 +29,11 @@ thiserror = "2.0.11"
 log = "0.4.17"
 
 # Image
-image = "0.25.5"
+image = { version = "0.25.5", default-features = false, features = ["bmp","dds","exr","ff","gif","hdr","ico","jpeg","png","pnm","qoi","tga","tiff","webp"] } # all the defaults except avif, which has a transitive relationship on wasm-bindgen
 resvg = "0.44.0"
 usvg = "0.44.0"
 tiny-skia = "0.11.4"
-imageproc = "0.25.0"
+imageproc = { version = "0.25.0", default-features = false, features = [] }
 ab_glyph = "0.2.29"
 
 # Audio
@@ -42,6 +42,9 @@ hound = "3.5.1" # wav encoder
 
 [dev-dependencies]
 simple_logger = "5.0.0" # for logging in tests
+
+[patch.crates-io]
+getrandom = { path = "./overrides/getrandom" }
 
 [profile.test]
 opt-level = 1

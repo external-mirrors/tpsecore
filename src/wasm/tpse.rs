@@ -11,6 +11,19 @@ use crate::tpse::TPSE;
 use crate::wasm::provide_asset::WasmAssetProvider;
 use crate::wasm::{fetch_asset, import_log, report_import_done, ImportStatus, StagedFile, State, TPSEContext, STATE};
 
+
+#[unsafe(no_mangle)]
+pub extern fn dump_loaded_asset_debug() {
+  let mut state = STATE.lock().unwrap();
+  log::info!("dump_loaded_asset_debug()");
+  for (id, tpse) in &state.tpses {
+    log::info!("tpse {id} status={:?} render_data={} staged_files={:?}", tpse.import_status, tpse.render_data.is_some(), tpse.staged_files);
+  }
+  for (id, buf) in &state.buffers {
+    log::info!("buffer {id} len={} head={:?}", buf.len(), &buf[0..16.min(buf.len())]);
+  }
+}
+
 #[unsafe(no_mangle)]
 pub extern fn allocate_tpse() -> u32 {
   let mut state = STATE.lock().unwrap();

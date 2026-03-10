@@ -1,0 +1,11 @@
+[package]
+name = "getrandom"
+version = "0.2.17"
+edition = "2024"
+
+[lib]
+crate-type = ["lib"]
+
+[features]
+js = []
+std = []
