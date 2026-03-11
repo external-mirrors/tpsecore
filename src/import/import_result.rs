@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::import::{ImportContext, SpecificImportType};
 use crate::tpse::File;
 
@@ -12,14 +14,14 @@ pub struct ImportResult<'c> {
 impl<'c> ImportResult<'c> {
   pub fn new(
     filename: &str,
-    bytes: &[u8],
+    bytes: Arc<[u8]>,
     mime_type: &str,
     options: ImportContext<'c>,
     specific_import_type: SpecificImportType
   ) -> Self {
     Self {
       filename: filename.to_string(),
-      file: File { binary: bytes.to_owned(), mime: mime_type.to_string() },
+      file: File { binary: bytes, mime: mime_type.to_string() },
       specific_import_type,
       options
     }

@@ -50,7 +50,7 @@ pub fn render_sound_effects<'a>
 {
   if opts.is_empty() {
     return Ok(File {
-      binary: include_bytes!("../../assets/empty_2c.wav").to_vec(),
+      binary: include_bytes!("../../assets/empty_2c.wav").to_vec().into(),
       mime: "audio/wav".to_string()
     });
   }
@@ -91,7 +91,7 @@ pub fn render_sound_effects<'a>
   encoder.finalize().unwrap();
 
   Ok(File {
-    binary: encoded,
+    binary: encoded.into(),
     mime: "audio/wav".to_string()
   })
 }
@@ -119,7 +119,7 @@ pub struct FrameInfo<'a> {
 impl<T: TPSEAccelerator> RenderContext<T> {
   pub fn try_from_tpse(tpse: &TPSE) -> Result<Self, T::DecodeError> {
     let load_transpose = |file: &Option<File>| {
-      file.as_ref().map(|file| T::decode_texture(&file.binary)).transpose()
+      file.as_ref().map(|file| T::decode_texture(file.binary.clone())).transpose()
     };
     let skin = load_transpose(&tpse.skin)?;
     let ghost = load_transpose(&tpse.ghost)?;

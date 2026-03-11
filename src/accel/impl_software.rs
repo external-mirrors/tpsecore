@@ -24,7 +24,7 @@ impl TPSEAccelerator for SoftwareRendering {
     SoftwareTextureHandle::new(DynamicImage::new_rgba8(width, height))
   }
 
-  fn decode_texture(buffer: &[u8]) -> Result<Self::Texture, Self::DecodeError> {
+  fn decode_texture(buffer: Arc<[u8]>) -> Result<Self::Texture, Self::DecodeError> {
     fn decode_svg(bytes: &[u8]) -> Option<Vec<u8>> {
       let opt = usvg::Options::default();
       let rtree = usvg::Tree::from_data(bytes, &opt).ok()?;
@@ -34,9 +34,9 @@ impl TPSEAccelerator for SoftwareRendering {
       pixmap.encode_png().ok()
     }
     
-    let transcoded = decode_svg(buffer);
-    let buffer = match transcoded.as_ref() {
-      Some(transcoded) => transcoded,
+    let transcoded = decode_svg(&buffer);
+    let buffer = match transcoded {
+      Some(transcoded) => transcoded.into(),
       None => buffer
     };
 

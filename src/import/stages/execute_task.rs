@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::io::{Cursor, Read, Seek};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 use hound::{SampleFormat, WavSpec};
 use log::Level;
@@ -37,7 +38,7 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: ImportConte
           #[cfg(feature = "extra_software_decoders")]
           "image/webp" => crate::accel::impl_software_extra_decoders::decode_webp::<T>(&frame.file.binary),
           // other single frame image
-          _ => T::decode_texture(&frame.file.binary)
+          _ => T::decode_texture(frame.file.binary)
             .map(|frame| vec![(frame, Duration::from_secs(1))])
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
         };
@@ -186,7 +187,7 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: ImportConte
         log::error!("non-fatal encoding error: {err}")
       }
       tpse.custom_sounds = Some(File {
-        binary: encoded,
+        binary: encoded.into(),
         mime: "audio/wav".to_string()
       });
       tpse.custom_sound_atlas = Some(atlas);
@@ -196,7 +197,7 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: ImportConte
         SpecificImportType::Zip => {
           // todo: optimeiz
 
-          let mut groups: HashMap<String, Vec<(ImportType, String, Vec<u8>)>> = HashMap::new();
+          let mut groups: HashMap<String, Vec<(ImportType, String, Arc<[u8]>)>> = HashMap::new();
           let zip = ZipArchive::new(Cursor::new(&file.binary))
             .map_err(LoadError::from)
             .map_err(|err| ctx.wrap(err.into()))?;
@@ -213,13 +214,13 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: ImportConte
               {
                 let mut bytes = Vec::new();
                 file.read_to_end(&mut bytes);
-                bytes
+                bytes.into()
               }
             ));
           }
           for (folder, files) in groups {
             let files = files.iter()
-              .map(|(it, name, bytes)| (*it, name.as_ref(), bytes.as_ref()))
+              .map(|(it, name, bytes)| (*it, name.as_ref(), bytes.clone()))
               .collect::<Vec<_>>();
             let context = ctx.with_context(ImportContextEntry::ZipFolder(folder));
             let new_tpse = Box::pin(import::<T>(files, context)).await?;
@@ -232,7 +233,8 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: ImportConte
           }).map_err(|err| ctx.wrap(err))?);
         },
         SpecificImportType::Skin(skin_type) => {
-          let (minos, ghost) = splice_to_t61::<T>(skin_type, &file.binary).map_err(|err| ctx.wrap(err))?;
+          let (minos, ghost) = splice_to_t61::<T>(skin_type, file.binary.clone())
+            .map_err(|err| ctx.wrap(err))?;
           if let Some(minos) = minos {
             tpse.skin = Some(File {
               binary: minos.encode_png().unwrap(),
@@ -279,7 +281,7 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: ImportConte
   Ok(tpse)
 }
 
-fn splice_to_t61<T: TPSEAccelerator>(skin_type: SkinType, bytes: &[u8])
+fn splice_to_t61<T: TPSEAccelerator>(skin_type: SkinType, bytes: Arc<[u8]>)
   -> Result<(Option<T::Texture>, Option<T::Texture>), ImportErrorType>
 {
   let target_resolution = 96;

@@ -127,7 +127,7 @@ pub extern fn queue_import(tpse_id: u32) -> usize {
     let files = cloned.iter().map(|(filename, content)| (
       ImportType::Automatic,
       str::from_utf8(&filename).unwrap(),
-      &content[..]
+      content.clone()
     )).collect::<Vec<_>>();
   
     let source = WasmAssetProvider;

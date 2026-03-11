@@ -1,5 +1,6 @@
 use std::io::Cursor;
 use std::ops::{Deref, DerefMut};
+use std::sync::Arc;
 use crate::accel::traits::{TPSEAccelerator, TextureHandle};
 use crate::import::skin_splicer::{lookup_skin, Piece};
 use crate::import::skin_splicer::maps::*;
@@ -15,7 +16,7 @@ impl<T: TPSEAccelerator> Default for SkinSplicer<T> {
 }
 impl<T: TPSEAccelerator> SkinSplicer<T> {
   /// Loads an image into the SkinSplicer, putting it at the end of the queue
-  pub fn load(&mut self, format: SkinType, file: &[u8]) -> Result<(), T::DecodeError> {
+  pub fn load(&mut self, format: SkinType, file: Arc<[u8]>) -> Result<(), T::DecodeError> {
     let image = T::decode_texture(file)?;
     self.images.push((format, image));
     Ok(())

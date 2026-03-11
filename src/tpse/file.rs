@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::fmt::{Debug, Display, Formatter};
 use std::io::{BufWriter, Cursor};
 use std::str::FromStr;
+use std::sync::Arc;
 use data_url::{DataUrl, DataUrlError, forgiving_base64};
 use sha2::{Digest, Sha256};
 
@@ -10,7 +11,7 @@ use sha2::{Digest, Sha256};
 #[derive(serde_with::SerializeDisplay, serde_with::DeserializeFromStr, Clone, Eq, PartialEq)]
 pub struct File {
   /// The raw contents of the file
-  pub binary: Vec<u8>,
+  pub binary: Arc<[u8]>,
   /// The MIME type of the file
   pub mime: String
 }
@@ -58,6 +59,7 @@ impl FromStr for File {
     let url = DataUrl::process(value).map_err(|err| FileParseError::InvalidDataURI(err))?;
     let mime = url.mime_type().to_string();
     let (binary, _) = url.decode_to_vec().map_err(|err| FileParseError::UnparsableBase64(err))?;
+    let binary = binary.into();
     Ok(File { binary, mime })
   }
 }

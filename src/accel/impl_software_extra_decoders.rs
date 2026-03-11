@@ -31,7 +31,7 @@ fn decode<'a, T: TPSEAccelerator>
     frame.buffer()
       .write_to(&mut Cursor::new(&mut buffer), ImageFormat::Bmp)
       .map_err(Box::new)?;
-    let decoded = T::decode_texture(&buffer).map_err(Box::new)?;
+    let decoded = T::decode_texture(buffer.into()).map_err(Box::new)?;
     textures.push((decoded, duration));
   }
   

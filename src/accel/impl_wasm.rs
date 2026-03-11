@@ -8,7 +8,8 @@ use crate::wasm::STATE as TPSE_STATE;
 #[derive(Default)]
 struct WasmAcceleratorState {
   id_counter: u64,
-  command_buffer: Vec<u8>
+  command_buffer: Vec<u8>,
+  arcs_in_command_buffer: Vec<Arc<[u8]>>
 }
 impl WasmAcceleratorState {
   pub fn new_handle(&mut self, init_dimension: Option<(u32, u32)>) -> WasmTextureHandle {
@@ -22,6 +23,17 @@ impl WasmAcceleratorState {
     }));
     self.id_counter += 1;
     handle
+  }
+  /// Flushes, clears, and if necessary shrinks the command buffer
+  fn flush_command_buffer(&mut self) {
+    unsafe { flush_command_buffer(self.command_buffer.as_ptr(), self.command_buffer.len()); }
+    self.command_buffer.clear();
+    // Command buffer contains a few dozen bytes at most per command,
+    // and theoretically there should never be enough image operations
+    // to reach anywhere near this, but put a cap on it anyway just in case
+    // so we don't waste tons of memory.
+    self.command_buffer.shrink_to(8*1024); // 8KiB
+    self.arcs_in_command_buffer.clear();
   }
 }
 
@@ -60,23 +72,24 @@ impl TPSEAccelerator for WasmAccelerator {
     handle
   }
 
-  fn decode_texture(buffer: &[u8]) -> Result<Self::Texture, Self::DecodeError> {
+  fn decode_texture(buffer: Arc<[u8]>) -> Result<Self::Texture, Self::DecodeError> {
     let mut state = STATE.lock().unwrap();
     let handle = state.new_handle(None);
-    encode!(state, handle, 1, [buffer.len() as u64]);
-    state.command_buffer.extend_from_slice(buffer);
+    encode!(state, handle, 1, [buffer.len() as u64, buffer.as_ptr() as u64]);
+    state.arcs_in_command_buffer.push(buffer);
     Ok(handle)
   }
 }
 
 #[link(wasm_import_module="wasm_accelerator")]
 unsafe extern "C" {
+  /// Processes all commands in the command buffer
+  /// This needs to be called before other methods to ensure the state they query is actually available
+  unsafe fn flush_command_buffer(command_buffer: *const u8, len: usize);
   /// Returns dimensions for the given handle, as two u32 (width, height) packed into a u64
-  /// Flushes the command buffer first, if it's not empty
-  unsafe fn fetch_dimensions(command_buffer: *const u8, cmdbuflen: usize, id: u64) -> u64;
+  unsafe fn fetch_dimensions(id: u64) -> u64;
   /// Encodes the given handle into a buffer managed by the TPSE buffer infastructure
-  /// Flushes the command buffer first, if it's not empty
-  unsafe fn encode_png(command_buffer: *const u8, cmdbuflen: usize, id: u64) -> *const u8;
+  unsafe fn encode_png(id: u64) -> *const u8;
   /// Drops a handle by ID
   unsafe fn drop_handle(id: u64);
 }
@@ -99,9 +112,11 @@ impl WasmTextureHandle {
   fn dimensions(&self) -> (u32, u32) {
     *self.0.dimensions.get_or_init(|| {
       let mut state = STATE.lock().unwrap();
-      let bytes = unsafe { fetch_dimensions(state.command_buffer.as_ptr(), state.command_buffer.len(), self.0.id) };
-      state.command_buffer.clear();
-      state.command_buffer.shrink_to(8*1024*1024); // 8MiB
+      state.flush_command_buffer();
+      let bytes = unsafe {
+        fetch_dimensions(self.0.id)
+      };
+      
       let [a, b, c, d, e, f, g, h] = bytes.to_be_bytes();
       let width = u32::from_be_bytes([a, b, c, d]);
       let height = u32::from_be_bytes([e, f, g, h]);
@@ -120,9 +135,8 @@ impl TextureHandle for WasmTextureHandle {
 
   fn encode_png(&self) -> Result<Arc<[u8]>, ()> {
     let mut state = STATE.lock().unwrap();
-    let ptr = unsafe { encode_png(state.command_buffer.as_ptr(), state.command_buffer.len(), self.0.id) };
-    state.command_buffer.clear();
-    state.command_buffer.shrink_to(8*1024*1024); // 8MiB
+    state.flush_command_buffer();
+    let ptr = unsafe { encode_png(self.0.id) };
     drop(state);
     
     // todo: error message routing

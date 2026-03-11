@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::accel::traits::TPSEAccelerator;
 use crate::import::{ImportContextEntry, ImportError, ImportErrorType, ImportTaskContextEntry, ImportType};
 
@@ -6,7 +8,7 @@ use crate::import::stages::{decide_specific_type, execute_task, reduce_types};
 use crate::tpse::TPSE;
 
 pub async fn import<T: TPSEAccelerator>
-  (files: impl IntoIterator<Item = (ImportType, &str, &[u8])>, context: ImportContext<'_>)
+  (files: impl IntoIterator<Item = (ImportType, &str, Arc<[u8]>)>, context: ImportContext<'_>)
   -> Result<TPSE, ImportError>
 {
   let files = files.into_iter();

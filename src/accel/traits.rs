@@ -8,7 +8,7 @@ pub trait TPSEAccelerator {
   
   /// Creates a new texture of the given size, filled with transparency
   fn new_texture(width: u32, height: u32) -> Self::Texture;
-  fn decode_texture(buffer: &[u8]) -> Result<Self::Texture, Self::DecodeError>;
+  fn decode_texture(buffer: Arc<[u8]>) -> Result<Self::Texture, Self::DecodeError>;
 }
 
 /// A handle to a texture.

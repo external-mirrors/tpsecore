@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::sync::Arc;
 use log::Level;
 use crate::accel::traits::{TPSEAccelerator, TextureHandle};
 use crate::import::{Asset, BackgroundType, FileType, ImportContext, ImportContextEntry, ImportError, ImportErrorType, ImportResult, ImportType, LoadError, SkinType, SpecificImportType as SIT};
@@ -8,7 +9,7 @@ use crate::import::radiance::parse_radiance_sound_definition;
 
 /// Prepares a single file for import.
 pub async fn decide_specific_type<'c, T: TPSEAccelerator>
-  (import_type: ImportType, filename: &str, bytes: &[u8], ctx: ImportContext<'c>)
+  (import_type: ImportType, filename: &str, bytes: Arc<[u8]>, ctx: ImportContext<'c>)
    -> Result<ImportResult<'c>, ImportError>
 {
   ctx.log(Level::Debug, format_args!("Deciding import type for {:?} {}", import_type, filename));
@@ -26,7 +27,7 @@ pub async fn decide_specific_type<'c, T: TPSEAccelerator>
           FileType::Zip => SIT::Zip,
           FileType::TPSE => SIT::TPSE,
           FileType::Image => {
-            let image = T::decode_texture(bytes)
+            let image = T::decode_texture(bytes.clone())
               .map_err(|err| ctx.wrap(LoadError::ErasedError(Box::new(err)).into()))?;
             if let Some(format) = SkinType::guess_format(filename, image.width(), image.height(), &ctx) {
               let format = ImportType::Skin { subtype: format };
