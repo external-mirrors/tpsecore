@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::sync::Arc;
 
 
 pub trait TPSEAccelerator {
@@ -16,7 +17,7 @@ pub trait TPSEAccelerator {
 pub trait TextureHandle: Clone {
   fn width(&self) -> u32;
   fn height(&self) -> u32;
-  fn encode_png(&self) -> Result<Vec<u8>, ()>;
+  fn encode_png(&self) -> Result<Arc<[u8]>, ()>;
   /// Creates a standalone copy of the underlying texture
   fn create_copy(&self) -> Self;
   /// Creates a view of the texture. Modifying the view with in-place methods will modify the original texture.

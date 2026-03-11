@@ -107,7 +107,7 @@ impl TextureHandle for SoftwareTextureHandle {
       imageproc::drawing::draw_text_mut(image.inner_mut(), color.into(), x, y, scale, &*FONT, text);
     });
   }
-  fn encode_png(&self) -> Result<Vec<u8>, ()> {    
+  fn encode_png(&self) -> Result<Arc<[u8]>, ()> {    
     self.get(|image| {
       let mut buffer = vec![];
       match image.inner().write_to(Cursor::new(&mut buffer), ImageFormat::Png) {
@@ -115,7 +115,7 @@ impl TextureHandle for SoftwareTextureHandle {
           log::error!("failed to encode frame: {err}");
           Err(())
         }
-        Ok(()) => Ok(buffer),
+        Ok(()) => Ok(buffer.into()),
       }
     })
   }

@@ -38,18 +38,18 @@ unsafe extern "C" {
   unsafe fn import_log(level: u8, tpse: u32, ptr: *const u8, len: usize);
 }
 
-pub type WasmGlobalAccelerator = SoftwareRendering;
+pub(in crate) type WasmGlobalAccelerator = SoftwareRendering;
 
-static STATE: LazyLock<Mutex<State>> = LazyLock::new(|| {
+pub(in crate) static STATE: LazyLock<Mutex<State>> = LazyLock::new(|| {
   other_initialization();
   Default::default()
 });
 
 #[derive(Default)]
-struct State {
+pub(in crate) struct State {
   id_counter: u32,
   tpses: HashMap<u32, TPSEContext>,
-  buffers: HashMap<u32, Arc<[u8]>>
+  pub(in crate) buffers: HashMap<u32, Arc<[u8]>>
 }
 
 #[derive(Default)]
@@ -73,7 +73,7 @@ struct StagedFile {
 }
 
 impl State {
-  pub fn next_id(&mut self) -> u32 {
+  pub(in crate) fn next_id(&mut self) -> u32 {
     // realistically we should never reach this; tpsecore is initialized,
     // user manually drops files, then closes the window. If you actually
     // manage to drag-and-drop 2 billion files in one session, lol.
@@ -85,7 +85,7 @@ impl State {
       else { panic!("out of IDs") };
     std::mem::replace(&mut self.id_counter, new_id)
   }
-  pub fn lookup_buffer(&self, ptr: *mut u8) -> Option<u32> {
+  pub(in crate) fn lookup_buffer(&self, ptr: *mut u8) -> Option<u32> {
     self.buffers.iter()
       .find(|(_, v)| v.as_ptr() == ptr)
       .map(|(k, _)| *k)
