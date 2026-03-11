@@ -1,30 +1,28 @@
 use std::borrow::Cow;
 use std::io::Cursor;
 use std::rc::Rc;
-use ab_glyph::FontRef;
 use hound::{SampleFormat, WavSpec};
-use image::{DynamicImage, GenericImageView};
-use image::imageops::FilterType;
+use crate::accel::traits::{TPSEAccelerator, TextureHandle};
 use crate::import::{ImportErrorType, LoadError, SkinType};
 use crate::import::decode_helper::TetrioAtlasDecoder;
-use crate::import::skin_splicer::{decode_image, SkinSplicer};
+use crate::import::skin_splicer::SkinSplicer;
 use crate::render::{BoardElement, clone_slice, nine_slice_resize, RenderOptions};
 use crate::render::board_element::BoardTextureKind;
 use crate::tpse::{AnimMeta, File, TPSE};
 
-pub struct RenderContext {
-  skin: Option<DynamicImage>,
-  ghost: Option<DynamicImage>,
-  skin_anim: Option<(DynamicImage, AnimMeta)>,
-  ghost_anim: Option<(DynamicImage, AnimMeta)>,
-  board: Option<DynamicImage>,
-  queue: Option<DynamicImage>,
-  grid: Option<DynamicImage>
+pub struct RenderContext<T: TPSEAccelerator> {
+  skin: Option<T::Texture>,
+  ghost: Option<T::Texture>,
+  skin_anim: Option<(T::Texture, AnimMeta)>,
+  ghost_anim: Option<(T::Texture, AnimMeta)>,
+  board: Option<T::Texture>,
+  queue: Option<T::Texture>,
+  grid: Option<T::Texture>
 }
 
 /// A rendered frame
 #[derive(Debug, serde::Serialize)]
-pub struct Frame<T> {
+pub struct RenderedFrame<T> {
   /// The rendered image
   pub image: T,
   /// The logical render coordinate of the left border of the image
@@ -118,10 +116,10 @@ pub struct FrameInfo<'a> {
   pub real_time: f64,
   pub render_options: &'a RenderOptions<'a>,
 }
-impl RenderContext {
-  pub fn try_from_tpse(tpse: &TPSE) -> Result<Self, LoadError> {
+impl<T: TPSEAccelerator> RenderContext<T> {
+  pub fn try_from_tpse(tpse: &TPSE) -> Result<Self, T::DecodeError> {
     let load_transpose = |file: &Option<File>| {
-      file.as_ref().map(|file| decode_image(&file.binary)).transpose()
+      file.as_ref().map(|file| T::decode_texture(&file.binary)).transpose()
     };
     let skin = load_transpose(&tpse.skin)?;
     let ghost = load_transpose(&tpse.ghost)?;
@@ -147,9 +145,9 @@ impl RenderContext {
     [skin, ghost].iter().filter_map(|el| *el).min().unwrap_or(1)
   }
 
-  pub fn render_frame(&self, frame: &FrameInfo) -> Frame<DynamicImage> {
+  pub fn render_frame(&self, frame: &FrameInfo) -> RenderedFrame<T::Texture> {
     /// A list of drawing tasks to perform. Units are in pixels.
-    let mut tasks: Vec<(DynamicImage, i64, i64, i64, i64)> = vec![];
+    let mut tasks: Vec<(T::Texture, i64, i64, i64, i64)> = vec![];
 
     for el in BoardElement::get_draw_order() {
       if !frame.render_options.board_elements.contains(el) { continue }
@@ -160,41 +158,32 @@ impl RenderContext {
         BoardTextureKind::Queue => &self.queue,
         BoardTextureKind::Grid => &self.grid
       }) else { continue };
-      let texture = clone_slice(&texture, x, y, w, h);
+      let texture = clone_slice::<T>(&texture, x, y, w, h);
       let (x, y, mut w, mut h) = el.get_target(&frame.render_options);
-      let texture = nine_slice_resize(&texture, w as u32 * scale, h as u32 * scale, pt, pr, pb, pl);
-
-      let mut texture = texture.into_rgba8();
-      for pixel in texture.pixels_mut() {
-        pixel.0[0] = (((el.tint() >> 24) & 0xFF) as f64 / 0xFF as f64 * pixel.0[0] as f64) as u8;
-        pixel.0[1] = (((el.tint() >> 16) & 0xFF) as f64 / 0xFF as f64 * pixel.0[1] as f64) as u8;
-        pixel.0[2] = (((el.tint() >> 08) & 0xFF) as f64 / 0xFF as f64 * pixel.0[2] as f64) as u8;
-        pixel.0[3] = (((el.tint() >> 00) & 0xFF) as f64 / 0xFF as f64 * pixel.0[3] as f64) as u8;
-      }
-
-      tasks.push((texture.into(), x, y, w, h))
+      let texture = nine_slice_resize::<T>(&texture, w as u32 * scale, h as u32 * scale, pt, pr, pb, pl);
+      let texture = texture.tinted(el.tint());
+      tasks.push((texture, x, y, w, h))
     }
 
-    let load_frame = |img: &DynamicImage, meta: &AnimMeta| -> DynamicImage {
+    let load_frame = |img: &T::Texture, meta: &AnimMeta| -> T::Texture {
       let frame = (frame.real_time * 60.0 / meta.delay as f64) as u32 % meta.frames;
       let x = (frame % 16) * 1024;
       let y = (frame / 16) * 1024;
-      let tex = img.view(x, y, 1024, 1024);
-      DynamicImage::from(tex.to_image())
+      img.slice(x, y, 1024, 1024)
     };
 
-    let mut splicer = SkinSplicer::default();
+    let mut splicer: SkinSplicer<T> = Default::default();
 
     if let Some((skin, opts)) = &self.skin_anim {
       splicer.load_decoded(SkinType::Tetrio61Connected, load_frame(skin, opts))
     } else if let Some(skin) = &self.skin {
-      splicer.load_decoded(SkinType::Tetrio61Connected, skin.clone())
+      splicer.load_decoded(SkinType::Tetrio61Connected, skin.create_copy())
     }
 
     if let Some((ghost, opts)) = &self.ghost_anim {
       splicer.load_decoded(SkinType::Tetrio61ConnectedGhost, load_frame(ghost, opts))
     } else if let Some(ghost) = &self.ghost {
-      splicer.load_decoded(SkinType::Tetrio61ConnectedGhost, ghost.clone());
+      splicer.load_decoded(SkinType::Tetrio61ConnectedGhost, ghost.create_copy());
     }
 
     if splicer.len() > 0 {
@@ -205,7 +194,7 @@ impl RenderContext {
         });
         if let Some(tex) = tex {
           tasks.push((
-            tex.into(),
+            tex,
             col as i64 * frame.render_options.block_size,
             (row as i64 - skyline_size) * frame.render_options.block_size,
             frame.render_options.block_size, frame.render_options.block_size
@@ -216,8 +205,8 @@ impl RenderContext {
 
     if tasks.is_empty() {
       log::trace!("No render tasks!");
-      Frame {
-        image: DynamicImage::new_rgba8(0, 0),
+      RenderedFrame {
+        image: T::new_texture(0, 0),
         min_x: 0,
         min_y: 0,
         max_x: 0,
@@ -236,54 +225,46 @@ impl RenderContext {
         #[cfg(test)]
         panic!("excessive texture size requested");
       }
-      let mut canvas = DynamicImage::new_rgba8(canvas_w, canvas_h);
+      let mut canvas = T::new_texture(canvas_w, canvas_h);
 
       for (img, x, y, w, h) in tasks {
-        let mut resized = image::imageops::resize(&img, w as u32, h as u32, FilterType::CatmullRom);
-        image::imageops::overlay(&mut canvas, &resized, x - min_x, y - min_y);
+        canvas.overlay(&img.resized(w as u32, h as u32), x - min_x, y - min_y);
       }
 
       if frame.render_options.debug_grid {
-        let white = [255, 255, 255, 255].into();
-        let font = FontRef::try_from_slice(include_bytes!("../../assets/pfw.ttf")).unwrap();
-        for x in (min_x..max_x).filter(|el| el % 48 == 0 /* "performance"? */) {
+        let white = [255, 255, 255, 255];
+        for x in (min_x..max_x).filter(|el| el % 48 == 0) {
           let height = canvas.height();
-          imageproc::drawing::draw_line_segment_mut(
-            &mut canvas,
+          canvas.draw_line(
             ((x - min_x) as f32, 0.0),
             ((x - min_x) as f32, height as f32),
             white
           );
 
-          imageproc::drawing::draw_text_mut(
-            &mut canvas,
+          canvas.draw_text(
             white,
             (x - min_x) as i32 + 2, 2,
             16.0,
-            &font,
             &format!("X{}", x)
           );
         }
         for y in (min_y..max_y).filter(|el| el % 48 == 0) {
           let width = canvas.width();
-          imageproc::drawing::draw_line_segment_mut(
-            &mut canvas,
+          canvas.draw_line(
             (0.0, (y - min_y) as f32),
             (width as f32, (y - min_y) as f32),
             white
           );
-          imageproc::drawing::draw_text_mut(
-            &mut canvas,
+          canvas.draw_text(
             white,
             2, (y - min_y) as i32 + if y == min_y { 16 } else { 2 },
             16.0,
-            &font,
             &format!("Y{}", y)
           );
         }
       }
 
-      Frame { image: canvas, min_x, min_y, max_x, max_y }
+      RenderedFrame { image: canvas, min_x, min_y, max_x, max_y }
     }
   }
 }

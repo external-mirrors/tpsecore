@@ -1,6 +1,6 @@
 use std::ops::Deref;
-use image::{DynamicImage, GenericImageView};
-use image::imageops::FilterType;
+
+use crate::accel::traits::{TPSEAccelerator, TextureHandle};
 
 pub fn nine_slice
   (w: u32, h: u32, pad_top: u32, pad_right: u32, pad_bottom: u32, pad_left: u32)
@@ -21,9 +21,9 @@ pub fn nine_slice
   ]
 }
 
-pub fn nine_slice_resize
-  (tex: &DynamicImage, w: u32, h: u32, pad_top: u32, pad_right: u32, pad_bottom: u32, pad_left: u32)
-  -> DynamicImage
+pub fn nine_slice_resize<T: TPSEAccelerator>
+  (tex: &T::Texture, w: u32, h: u32, pad_top: u32, pad_right: u32, pad_bottom: u32, pad_left: u32)
+  -> T::Texture
 {
   if w > 10_000 || h > 10_000 || w*h > 10_000_000 {
     log::warn!("nine_slice_resize: creating huge texture of {w}*{h}");
@@ -32,12 +32,12 @@ pub fn nine_slice_resize
   }
   let sources = nine_slice(tex.width(), tex.height(), pad_top, pad_right, pad_bottom, pad_left);
   let dests = nine_slice(w, h, pad_top, pad_right, pad_bottom, pad_left);
-  let mut dest = DynamicImage::new_rgba8(w, h);
+  let mut dest = T::new_texture(w, h);
   for ((sx, sy, sw, sh), (dx, dy, dw, dh)) in sources.iter().copied().zip(dests.iter().copied()) {
     if sw == 0 || sh == 0 { continue; }
-    let slice = tex.view(sx, sy, sw, sh);
-    let resized = image::imageops::resize(slice.deref(), dw, dh, FilterType::CatmullRom);
-    image::imageops::overlay(&mut dest, &resized, dx as i64, dy as i64);
+    let slice = tex.slice(sx, sy, sw, sh);
+    let resized = slice.resized(dw, dh);
+    dest.overlay(&resized, dx as i64, dy as i64);
   }
   dest
 }

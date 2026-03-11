@@ -1,26 +1,28 @@
 use std::io::Cursor;
 use std::ops::{Deref, DerefMut};
-use image::{DynamicImage, GenericImage, GenericImageView, ImageBuffer, Rgba, SubImage};
-use image::imageops::FilterType;
-use image::io::Reader;
-use crate::import::skin_splicer::{decode_image, lookup_skin, Piece};
+use crate::accel::traits::{TPSEAccelerator, TextureHandle};
+use crate::import::skin_splicer::{lookup_skin, Piece};
 use crate::import::skin_splicer::maps::*;
 use crate::import::{LoadError, SkinType};
 
-#[derive(Default)]
-pub struct SkinSplicer {
-  images: Vec<(SkinType, DynamicImage)>
+pub struct SkinSplicer<T: TPSEAccelerator> {
+  images: Vec<(SkinType, T::Texture)>
 }
-impl SkinSplicer {
+impl<T: TPSEAccelerator> Default for SkinSplicer<T> {
+  fn default() -> Self {
+    Self { images: vec![] }
+  }
+}
+impl<T: TPSEAccelerator> SkinSplicer<T> {
   /// Loads an image into the SkinSplicer, putting it at the end of the queue
-  pub fn load(&mut self, format: SkinType, file: &[u8]) -> Result<(), LoadError> {
-    let image = decode_image(file)?;
+  pub fn load(&mut self, format: SkinType, file: &[u8]) -> Result<(), T::DecodeError> {
+    let image = T::decode_texture(file)?;
     self.images.push((format, image));
     Ok(())
   }
 
   /// Loads a pre-decoded image into the SkinSplicer, putting it at the end of the queue
-  pub fn load_decoded(&mut self, format: SkinType, image: DynamicImage) {
+  pub fn load_decoded(&mut self, format: SkinType, image: T::Texture) {
     self.images.push((format, image))
   }
 
@@ -32,80 +34,57 @@ impl SkinSplicer {
     }
     let width = (image_width_ratio * block_size as f64) as u32;
     let height = (image_height_ratio * block_size as f64) as u32;
-    self.images.push((format, DynamicImage::new_rgba8(width, height)))
+    self.images.push((format, T::new_texture(width, height)))
   }
 
   /// Draws a block, combining all available pieces. If no resolution is provided, the
   /// first available image size is used instead. If the connection or piece isn't supported
   /// by the loaded skins, None will be returned.
   pub fn get(&self, piece: Piece, connection: u8, resolution: Option<u32>)
-    -> Option<ImageBuffer<Rgba<u8>, Vec<u8>>>
+    -> Option<<T as TPSEAccelerator>::Texture>
   {
-    let mut iter = self.lookup(piece, connection)
-      .filter_map(|(skin_type, slices)| slices.map(|slices| (skin_type, slices)))
-      .flat_map(|(skin_type, slices)| slices.map(move |slice| (skin_type, slice)));
-    let (_, canvas) = iter.next()?;
-    let mut buffer = canvas.to_image();
+    let (texture, skin_slice) = self.images.iter()
+      .filter_map(|(skin_type, tex)| Some((tex, lookup_skin(*skin_type, piece)?)))
+      .next()?;
+    let mut slice_iter = skin_slice.slices(connection, texture.width(), texture.height())?;
+    let (x, y, w, h) = slice_iter.next()?;
+    let mut canvas = texture.slice(x, y, w, h).create_copy();
+    
     if let Some(resolution) = resolution {
-      buffer = image::imageops::resize(canvas.deref(), resolution, resolution, FilterType::CatmullRom);
+      canvas = canvas.resized(resolution, resolution);
     }
-    for (_, canvas) in iter {
-      let resized = image::imageops::resize(canvas.deref(), buffer.width(), buffer.height(), FilterType::CatmullRom);
-      image::imageops::overlay(&mut buffer, &resized, 0, 0);
+    for (x, y, w, h) in slice_iter {
+      let next_canvas = texture.slice(x, y, w, h).resized(canvas.width(), canvas.height());
+      canvas.overlay(&next_canvas, 0, 0);
     }
-    Some(buffer.into())
+    Some(canvas)
   }
 
   /// Draws a buffer to the first available slice for a block
   /// Returns `Some(())` if a slice was found and written to
-  pub fn set(&mut self, piece: Piece, connection: u8, buffer: &DynamicImage) -> Option<()> {
-    for mut slicer in self.lookup_mut(piece, connection) {
-      let mut canvas = slicer.next_mut()?;
-      log::trace!("Resizing image: {} {} -> {} {}", buffer.width(), buffer.height(), canvas.width(), canvas.height());
-      let buffer = image::imageops::resize(buffer, canvas.width(), canvas.height(), FilterType::CatmullRom);
-      log::trace!("Overlaying image");
-      image::imageops::overlay(canvas.deref_mut(), &buffer, 0, 0);
-      return Some(());
-    }
-    None
-  }
-
-  /// Looks up slices matching the given piece and connection in all images
-  pub fn lookup(&self, piece: Piece, connection: u8)
-    -> impl Iterator<Item = (SkinType, Option<impl Iterator<Item = SubImage<&DynamicImage>>>)>
-  {
-    self.images.iter().map(move |(skin_type, image)| {
-      let slices = lookup_skin(*skin_type, piece)
-        .and_then(|skin_slice| skin_slice.slices(connection, image.width(), image.height()))
-        .map(|iter| iter.map(|(x, y, w, h)| traced_view(image, x, y, w, h)));
-      (*skin_type,  slices)
-    })
-  }
-
-  /// Looks up mutable slices matching the given piece and connections in all images
-  pub fn lookup_mut(&mut self, piece: Piece, connection: u8)
-    -> impl Iterator<Item = SliceLookup<&mut DynamicImage, impl Iterator<Item = (u32, u32, u32, u32)>>>
-  {
-    self.images.iter_mut().map(move |(skin_type, image)| {
-      let skin_type = *skin_type;
-      let w = image.width();
-      let h = image.height();
-      let iter = lookup_skin(skin_type, piece).and_then(|el| el.slices(connection, w, h));
-      SliceLookup { skin_type, image, iter }
-    })
+  pub fn set(&mut self, piece: Piece, connection: u8, buffer: &<T as TPSEAccelerator>::Texture) -> Option<()> {
+    let (texture, skin_slice) = self.images.iter()
+      .filter_map(|(skin_type, tex)| Some((tex, lookup_skin(*skin_type, piece)?)))
+      .next()?;
+    let mut slices = skin_slice.slices(connection, texture.width(), texture.height())?;
+    let (x, y, w, h) = slices.next()?;
+    let sliced = texture.slice(x, y, w, h);
+    log::trace!("Resizing image: {} {} -> {} {}", buffer.width(), buffer.height(), w, h);
+    sliced.overlay(&buffer.resized(w, h), 0, 0);
+    Some(())
   }
 
   /// Creates a skin of the given output type, returning None if no blocks were
   /// available to draw to it.
   pub fn convert(&self, target_type: SkinType, block_size_override: Option<u32>)
-    -> Option<DynamicImage>
+    -> Option<<T as TPSEAccelerator>::Texture>
   {
     log::trace!(
       "Converting splicer of {:?} to {:?}",
       self.images.iter().map(|el| el.0).collect::<Vec<_>>(),
       target_type
     );
-    let mut target = SkinSplicer::default();
+    let mut target = Self::default();
     target.create_empty(target_type, block_size_override);
     let mut valid = false;
 
@@ -116,7 +95,7 @@ impl SkinSplicer {
           .or_else(|| self.get(*piece, default_conn, block_size_override));
 
         if let Some(texture) = texture {
-          if let Some(()) = target.set(*piece, *conn, &DynamicImage::from(texture)) {
+          if let Some(()) = target.set(*piece, *conn, &texture) {
             valid = true;
           }
         }
@@ -130,33 +109,5 @@ impl SkinSplicer {
   /// Returns the number of loaded iamges
   pub fn len(&self) -> usize {
     self.images.len()
-  }
-}
-
-fn traced_view(image: &DynamicImage, x: u32, y: u32, w: u32, h: u32) -> SubImage<&DynamicImage> {
-  log::trace!("Creating view of {}x{} image: {} {} {} {}", image.width(), image.height(), x, y, w, h);
-  image.view(x, y, w, h)
-}
-fn traced_view_mut(image: &mut DynamicImage, x: u32, y: u32, w: u32, h: u32) -> SubImage<&mut DynamicImage> {
-  log::trace!("Creating mutable view of {}x{} image: {} {} {} {}", image.width(), image.height(), x, y, w, h);
-  image.sub_image(x, y, w, h)
-}
-
-/// exists because lifetime limitations, need lending iterators :/
-struct SliceLookup<T, IT> {
-  pub skin_type: SkinType,
-  pub image: T,
-  pub iter: Option<IT>
-}
-impl<T, IT> SliceLookup<T, IT> where T: Deref<Target = DynamicImage>, IT: Iterator<Item = (u32, u32, u32, u32)> {
-  fn next(&mut self) -> Option<SubImage<&DynamicImage>> {
-    let (x, y, w, h) = self.iter.as_mut()?.next()?;
-    Some(traced_view(&self.image, x, y, w, h))
-  }
-}
-impl<T, IT> SliceLookup<T, IT> where T: DerefMut<Target = DynamicImage>, IT: Iterator<Item = (u32, u32, u32, u32)> {
-  fn next_mut(&mut self) -> Option<SubImage<&mut DynamicImage>> {
-    let (x, y, w, h) = self.iter.as_mut()?.next()?;
-    Some(traced_view_mut(&mut self.image, x, y, w, h))
   }
 }

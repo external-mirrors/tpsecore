@@ -1664,6 +1664,7 @@ dependencies = [
  "serde_with",
  "sha2",
  "simple_logger",
+ "slotmap",
  "symphonia",
  "thiserror",
  "tiny-skia",

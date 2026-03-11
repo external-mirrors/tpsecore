@@ -7,6 +7,14 @@ authors = ["UniQMG"]
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[features]
+default = ["software_rendering", "extra_software_decoders"]
+# Software rendering implementation of image manipulation primitives
+software_rendering = ["dep:image", "dep:imageproc", "dep:resvg", "dep:usvg", "dep:tiny-skia", "dep:ab_glyph"]
+# Software decoding for multi-frame trickier formats like gifs and animated webps
+# Required for importing animated skins from animated formats
+extra_software_decoders = ["dep:image"]
+
 [dependencies]
 # Data utilities
 base64 = "0.22.1"
@@ -23,18 +31,19 @@ hex = "0.4.3"
 hex-literal = "0.4.1"
 zip = { version = "2.2.2", default-features = false, features = ["deflate"] } # bzip + zstd busted for wasm?
 itertools = "0.14.0"
+slotmap = "1.1.1"
 
 # Other utilities
 thiserror = "2.0.11"
 log = "0.4.17"
 
 # Image
-image = { version = "0.25.5", default-features = false, features = ["bmp","dds","exr","ff","gif","hdr","ico","jpeg","png","pnm","qoi","tga","tiff","webp"] } # all the defaults except avif, which has a transitive relationship on wasm-bindgen
-resvg = "0.44.0"
-usvg = "0.44.0"
-tiny-skia = "0.11.4"
-imageproc = { version = "0.25.0", default-features = false, features = [] }
-ab_glyph = "0.2.29"
+image = { optional = true, version = "0.25.5", default-features = false, features = ["bmp","dds","exr","ff","gif","hdr","ico","jpeg","png","pnm","qoi","tga","tiff","webp"] } # all the defaults except avif, which has a transitive relationship on wasm-bindgen
+imageproc = { optional = true, version = "0.25.0", default-features = false, features = [] }
+resvg = { optional = true, version = "0.44.0" }
+usvg = { optional = true, version = "0.44.0" }
+tiny-skia = { optional = true, version = "0.11.4" }
+ab_glyph = { optional = true, version = "0.2.29" }
 
 # Audio
 symphonia = { version = "0.5.4", features = ["mp3", "isomp4", "aac"] } # various decoders

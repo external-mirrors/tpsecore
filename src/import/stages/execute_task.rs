@@ -3,11 +3,6 @@ use std::io::{Cursor, Read, Seek};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use hound::{SampleFormat, WavSpec};
-use image::codecs::gif::GifDecoder;
-use image::{AnimationDecoder, Delay, DynamicImage, Frame};
-use image::codecs::png::PngDecoder;
-use image::codecs::webp::WebPDecoder;
-use image::imageops::FilterType;
 use log::Level;
 use symphonia::core::audio::{AudioBufferRef, SampleBuffer};
 use symphonia::core::codecs::{CODEC_TYPE_NULL, DecoderOptions};
@@ -18,66 +13,40 @@ use symphonia::core::probe::Hint;
 use symphonia::default::{get_codecs, get_probe};
 use zip::read::ZipFile;
 use zip::ZipArchive;
+use crate::accel::traits::{TPSEAccelerator, TextureHandle};
 use crate::import::import_task::ImportTask;
 use crate::import::{Asset, import, ImportErrorType, ImportContext, ImportType, LoadError, OtherSkinType, SkinType, SpecificImportType, ImportContextEntry, ImportError};
 use crate::import::decode_helper::decode;
 use crate::import::LoadError::{NoSupportedAudioTrack, SymphoniaError};
 use crate::import::radiance::parse_radiance_sound_definition;
-use crate::import::skin_splicer::{decode_image, SkinSplicer};
+use crate::import::skin_splicer::{SkinSplicer};
 use crate::tpse::{AnimMeta, Background, File, MiscTPSEValue, Song, SongMetadata, TPSE};
 
 /// Executes an import task
-pub async fn execute_task(task: ImportTask, ctx: ImportContext<'_>) -> Result<TPSE, ImportError> {
+pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: ImportContext<'_>) -> Result<TPSE, ImportError> {
   ctx.log(Level::Info, format_args!("Executing import task {:?}", task));
   let mut tpse = TPSE::default();
   match task {
     ImportTask::AnimatedSkinFrames(skin_type, frames) => {
-      let frames = frames
-        .into_iter()
-        .enumerate()
-        .flat_map(|(i, frame)| {
-          let ctx = ctx.with_context(ImportContextEntry::FrameSource(i, frame.filename));
-          let ctx2 = ctx.clone();
-          let img = match decode_image(&frame.file.binary) {
-            Err(err) => {
-              let res = Err(ctx.wrap(err.into()));
-              return Box::new(std::iter::once(res)) as Box<dyn Iterator<Item = _>>
-            },
-            Ok(img) => img
-          };
-          let iter = match frame.file.mime.as_str() {
-            "image/gif" => {
-              GifDecoder::new(Cursor::new(frame.file.binary))
-                .map_err(Into::into)
-                .map(move |decoder| decoder.into_frames().map(move |r| {
-                  r.map_err(|e| ctx.wrap(LoadError::ImageError(e).into()))
-                }))
-                .map(|iter| Box::new(iter) as Box<dyn Iterator<Item = _>>)
-            }
-            "image/webp" => {
-              WebPDecoder::new(Cursor::new(frame.file.binary))
-                .map_err(Into::into)
-                .map(move |decoder| decoder.into_frames().map(move |r| {
-                  r.map_err(|e| ctx.wrap(LoadError::ImageError(e).into()))
-                }))
-                .map(|iter| Box::new(iter) as Box<dyn Iterator<Item = _>>)
-            },
-            _ => { // other single frame image
-              let res = decode_image(&frame.file.binary)
-                .map(|res| {
-                  let delay = Delay::from_saturating_duration(Duration::from_millis(1000/30));
-                  Frame::from_parts(res.into_rgba8(), 0, 0, delay)
-                })
-                .map_err(|err| ctx2.wrap(err.into()));
-              Ok(Box::new(std::iter::once(res)) as Box<dyn Iterator<Item = _>>)
-            }
-          };
-          match iter {
-            Err(err) => Box::new(std::iter::once(Err(ctx2.wrap(err)))),
-            Ok(iter) => iter
-          }
-        })
-        .collect::<Result<Vec<Frame>, ImportError>>()?;
+      let mut decoded_frames = vec![];
+      for (i, frame) in frames.into_iter().enumerate() {
+        let ctx = ctx.with_context(ImportContextEntry::FrameSource(i, frame.filename));
+        let decoded = match frame.file.mime.as_str() {
+          #[cfg(feature = "extra_software_decoders")]
+          "image/gif" => crate::accel::impl_software_extra_decoders::decode_gif::<T>(&frame.file.binary),
+          #[cfg(feature = "extra_software_decoders")]
+          "image/webp" => crate::accel::impl_software_extra_decoders::decode_webp::<T>(&frame.file.binary),
+          // other single frame image
+          _ => T::decode_texture(&frame.file.binary)
+            .map(|frame| vec![(frame, Duration::from_secs(1))])
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+        };
+        match decoded {
+          Err(err) => return Err(ctx.wrap(LoadError::ErasedError(err).into())),
+          Ok(decoded) => decoded_frames.extend(decoded)
+        }
+      };
+      let frames = decoded_frames;
 
       // Yay, no more arbitrary canvas size restrictions!
       // Note: tetrio plus forces non-UHD HD texture res when using animated skins just because
@@ -87,60 +56,63 @@ pub async fn execute_task(task: ImportTask, ctx: ImportContext<'_>) -> Result<TP
       let width = 1024 * (frame_count as u32).min(16);
       let height = 1024 * ((frame_count + 15) / 16) as u32; // ceiling division
       let block_size = 48; // at HD/1024x1024 resolution
-      let mut mino_canvas: Option<DynamicImage> = None;
-      let mut ghost_canvas: Option<DynamicImage> = None;
-      for (i, frame) in frames.iter().enumerate() {
-        let mut source = SkinSplicer::default();
-        source.load_decoded(skin_type, frame.buffer().clone().into());
+      let mut mino_canvas: Option<T::Texture> = None;
+      let mut ghost_canvas: Option<T::Texture> = None;
+      for (i, (texture, duration)) in frames.iter().enumerate() {
+        let mut source = SkinSplicer::<T>::default();
+        source.load_decoded(skin_type, texture.create_copy());
         let groups = [
           (source.convert(SkinType::Tetrio61Connected, Some(block_size)), &mut mino_canvas),
           (source.convert(SkinType::Tetrio61ConnectedGhost, Some(block_size)), &mut ghost_canvas)
         ];
         for (frame, canvas) in groups {
           if let Some(frame) = frame {
-            let canvas = canvas.get_or_insert_with(|| DynamicImage::new_rgb8(width, height));
+            let canvas = canvas.get_or_insert_with(|| T::new_texture(width, height));
             let x = (i % 16) as i64 * 1024;
             let y = (i / 16) as i64 * 1024;
-            image::imageops::overlay(canvas, &frame, x, y);
+            canvas.overlay(&frame, x, y);
           }
         }
       }
       let delay = skin_type.get_anim_options().delay.unwrap_or_else(|| {
-        let milliseconds_per_image_frame = frames.iter()
-          .map(|frame| {
-            let (num, denom) = frame.delay().numer_denom_ms();
-            return num as f64 / denom as f64;
+        frames.iter()
+          .map(|(_, delay)| {
+            let milliseconds_per_image_frame = delay.as_secs_f64() * 1000.0;
+            let milliseconds_per_game_frame = 1000.0 / 60.0;
+            let game_frame_per_image_frame = milliseconds_per_image_frame / milliseconds_per_game_frame;
+            game_frame_per_image_frame as u32
           })
-          .min_by(|left, right| left.partial_cmp(right).expect("float comparison failed"))
-          .expect("There should be at least one frame");
-        let milliseconds_per_game_frame = 1000.0 / 60.0;
-        let game_frame_per_image_frame = milliseconds_per_image_frame / milliseconds_per_game_frame;
-        game_frame_per_image_frame as u32
+          .min()
+          .expect("There should be at least one frame")
       });
 
       // Back to normal 96px blocks for non-animated skin fallback
 
       let uhd_block_size = 96;
-      if let Some(mino_canvas) = mino_canvas {
-        tpse.skin_anim = Some(mino_canvas.into());
-        tpse.skin_anim_meta = Some(AnimMeta { frames: frames.len() as u32, delay });
+      let instances = [
+        (mino_canvas, &mut tpse.skin_anim, &mut tpse.skin_anim_meta, &mut tpse.skin, SkinType::Tetrio61Connected),
+        (ghost_canvas, &mut tpse.ghost_anim, &mut tpse.ghost_anim_meta, &mut tpse.ghost, SkinType::Tetrio61Ghost),
+      ];
+      
+      for (canvas, skin_anim, skin_anim_meta, skin, skin_type) in instances {
+        if let Some(canvas) = canvas {
+          *skin_anim = Some(File {
+            binary: canvas.encode_png().map_err(|_| ctx.wrap(ImportErrorType::EncodeFailed))?,
+            mime: "image/png".to_string()
+          });
+          *skin_anim_meta = Some(AnimMeta { frames: frames.len() as u32, delay });
 
-        let mut source = SkinSplicer::default();
-        let first_frame = frames.first().expect("There should be at least one frame");
-        source.load_decoded(skin_type, first_frame.buffer().clone().into());
-        let skin = source.convert(SkinType::Tetrio61Connected, Some(uhd_block_size));
-        tpse.skin = Some(skin.expect("Skin should exist if animated buffer was created").into());
-      }
-
-      if let Some(ghost_canvas) = ghost_canvas {
-        tpse.ghost_anim = Some(ghost_canvas.into());
-        tpse.ghost_anim_meta = Some(AnimMeta { frames: frames.len() as u32, delay });
-
-        let mut source = SkinSplicer::default();
-        let first_frame = frames.first().expect("There should be at least one frame");
-        source.load_decoded(skin_type, first_frame.buffer().clone().into());
-        let ghost = source.convert(SkinType::Tetrio61ConnectedGhost, Some(uhd_block_size));
-        tpse.ghost = Some(ghost.expect("Skin should exist if animated buffer was created").into());
+          let mut source = SkinSplicer::<T>::default();
+          let (first_frame, _) = frames.first().expect("There should be at least one frame");
+          source.load_decoded(skin_type, first_frame.clone());
+          let first_frame_skin = source
+            .convert(skin_type, Some(uhd_block_size))
+            .expect("Skin should exist if animated buffer was created");
+          *skin = Some(File {
+            binary: first_frame_skin.encode_png().map_err(|_| ctx.wrap(ImportErrorType::EncodeFailed))?,
+            mime: "image/png".to_string()
+          });
+        }
       }
     },
     ImportTask::SoundEffects(sound_effects) => {
@@ -250,7 +222,7 @@ pub async fn execute_task(task: ImportTask, ctx: ImportContext<'_>) -> Result<TP
               .map(|(it, name, bytes)| (*it, name.as_ref(), bytes.as_ref()))
               .collect::<Vec<_>>();
             let context = ctx.with_context(ImportContextEntry::ZipFolder(folder));
-            let new_tpse = Box::pin(import(files, context)).await?;
+            let new_tpse = Box::pin(import::<T>(files, context)).await?;
             tpse.merge(new_tpse);
           }
         },
@@ -260,9 +232,19 @@ pub async fn execute_task(task: ImportTask, ctx: ImportContext<'_>) -> Result<TP
           }).map_err(|err| ctx.wrap(err))?);
         },
         SpecificImportType::Skin(skin_type) => {
-          let (minos, ghost) = splice_to_t61(skin_type, &file.binary).map_err(|err| ctx.wrap(err))?;
-          if let Some(minos) = minos { tpse.skin = Some(minos.into()); }
-          if let Some(ghost) = ghost { tpse.ghost = Some(ghost.into()); }
+          let (minos, ghost) = splice_to_t61::<T>(skin_type, &file.binary).map_err(|err| ctx.wrap(err))?;
+          if let Some(minos) = minos {
+            tpse.skin = Some(File {
+              binary: minos.encode_png().unwrap(),
+              mime: "image/png".to_string()
+            });
+          }
+          if let Some(ghost) = ghost {
+            tpse.ghost = Some(File {
+              binary: ghost.encode_png().unwrap(),
+              mime: "image/png".to_string()
+            });
+          }
         },
         SpecificImportType::OtherSkin(skin_type) => {
           skin_type.tpse_field(&mut tpse).replace(file);
@@ -297,12 +279,12 @@ pub async fn execute_task(task: ImportTask, ctx: ImportContext<'_>) -> Result<TP
   Ok(tpse)
 }
 
-fn splice_to_t61(skin_type: SkinType, bytes: &[u8])
-  -> Result<(Option<DynamicImage>, Option<DynamicImage>), ImportErrorType>
+fn splice_to_t61<T: TPSEAccelerator>(skin_type: SkinType, bytes: &[u8])
+  -> Result<(Option<T::Texture>, Option<T::Texture>), ImportErrorType>
 {
   let target_resolution = 96;
-  let mut source = SkinSplicer::default();
-  source.load(skin_type, bytes)?;
+  let mut source = SkinSplicer::<T>::default();
+  source.load(skin_type, bytes).map_err(|err| LoadError::ErasedError(Box::new(err)))?;
   let minos = source.convert(SkinType::Tetrio61Connected, Some(target_resolution));
   let ghost = source.convert(SkinType::Tetrio61ConnectedGhost, Some(target_resolution));
   Ok((minos, ghost))

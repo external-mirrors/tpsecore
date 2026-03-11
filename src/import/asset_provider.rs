@@ -60,11 +60,10 @@ impl AssetProvider for DefaultAssetProvider {
 
   #[cfg(not(target_arch = "wasm32"))]
   fn provide(&self, asset: Asset) -> Pin<Box<dyn Future<Output = Result<Arc<[u8]>, ImportErrorType>> + Send + Sync + '_>> {
-    Box::pin(async {
-      match self.cache.get(&asset) {
-        Some(cached) => Ok(cached.as_slice()),
-        None => todo!()
-      }
-    })
+    let asset = match self.cache.get(&asset) {
+      Some(cached) => cached.clone(),
+      None => todo!()
+    };
+    Box::pin(async move { Ok(asset) })
   }
 }

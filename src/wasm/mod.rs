@@ -6,11 +6,12 @@ use std::ops::{Deref, DerefMut};
 use std::sync::{Arc, LazyLock, Mutex};
 use log::Level;
 use mime::Mime;
+use crate::accel::impl_software::SoftwareRendering;
 use crate::import::{Asset, AssetProvider, DefaultAssetProvider, import, ImportErrorType, ImportContext, RenderFailure, ImportError, ImportType, SkinType};
 use crate::import::decode_helper::{decode, TetrioAtlasDecoder};
 use crate::import::skin_splicer::Piece;
 use crate::log::ImportLogger;
-use crate::render::{BoardElement, BoardMap, Frame, RenderContext, RenderOptions, SoundEffectInfo, render_sound_effects};
+use crate::render::{BoardElement, BoardMap, RenderedFrame, RenderContext, RenderOptions, SoundEffectInfo, render_sound_effects};
 use crate::tpse::TPSE;
 
 mod tpse;
@@ -37,6 +38,8 @@ unsafe extern "C" {
   unsafe fn import_log(level: u8, tpse: u32, ptr: *const u8, len: usize);
 }
 
+pub type WasmGlobalAccelerator = SoftwareRendering;
+
 static STATE: LazyLock<Mutex<State>> = LazyLock::new(|| {
   other_initialization();
   Default::default()
@@ -52,7 +55,7 @@ struct State {
 #[derive(Default)]
 struct TPSEContext {
   tpse: TPSE,
-  render_data: Option<RenderContext>,
+  render_data: Option<RenderContext<WasmGlobalAccelerator>>,
   import_status: ImportStatus,
   staged_files: Vec<StagedFile>
 }

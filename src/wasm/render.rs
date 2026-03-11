@@ -3,8 +3,7 @@
 use std::io::Cursor;
 use std::ptr::null;
 
-use image::ImageFormat;
-
+use crate::accel::traits::TextureHandle;
 use crate::import::radiance::parse_radiance_sound_definition;
 use crate::import::skin_splicer::Piece;
 use crate::render::{BoardElement, FrameInfo, RenderContext, RenderOptions, SoundEffectInfo};
@@ -135,11 +134,7 @@ pub extern fn render_frame(tpse: u32, argument_buffer: *mut u8) -> *const u8 {
     }
   });
   
-  let mut buffer = vec![];
-  if let Err(err) = frame.image.write_to(Cursor::new(&mut buffer), ImageFormat::Png) {
-    log::error!("rendering video failed: failed to encode frame: {err}");
-    return null();
-  }
+  let Ok(buffer) = frame.image.encode_png() else { return null() };
   
   let id = state.next_id();
   state.buffers.insert(id, buffer.into());

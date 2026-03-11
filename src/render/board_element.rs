@@ -92,12 +92,12 @@ impl BoardElement {
     ]
   }
 
-  pub fn tint(&self) -> u32 {
+  pub fn tint(&self) -> [u8; 4] {
     match self {
       BoardElement::Garbage => 0xF71700FF,
       BoardElement::Progress => 0xB84E07FF,
-      _ => 0xFFFFFFFF
-    }
+      _ => 0xFFFFFFFFu32
+    }.to_be_bytes()
   }
 
   /// Gets the relative location the texture should be drawn to in a rendered board.

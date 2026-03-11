@@ -2,12 +2,12 @@ use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use log::Level;
-use crate::import::{ImportErrorType, ImportResult, ImportType, SkinType, FileType, SpecificImportType as SIT, ImportContext, Asset, BackgroundType, ImportContextEntry, ImportError};
-use crate::import::skin_splicer::{decode_image};
+use crate::accel::traits::{TPSEAccelerator, TextureHandle};
+use crate::import::{Asset, BackgroundType, FileType, ImportContext, ImportContextEntry, ImportError, ImportErrorType, ImportResult, ImportType, LoadError, SkinType, SpecificImportType as SIT};
 use crate::import::radiance::parse_radiance_sound_definition;
 
 /// Prepares a single file for import.
-pub async fn decide_specific_type<'c>
+pub async fn decide_specific_type<'c, T: TPSEAccelerator>
   (import_type: ImportType, filename: &str, bytes: &[u8], ctx: ImportContext<'c>)
    -> Result<ImportResult<'c>, ImportError>
 {
@@ -20,17 +20,18 @@ pub async fn decide_specific_type<'c>
     ImportType::Automatic => {
       if let Some(filekey) = ImportType::parse_filekey(filename) {
         let context = ctx.with_context(ImportContextEntry::WithFilekey(filekey));
-        return Box::pin(decide_specific_type(filekey, filename, bytes, context)).await;
+        return Box::pin(decide_specific_type::<T>(filekey, filename, bytes, context)).await;
       } else if let Some(guess) = FileType::from_extension(filename) {
         match guess {
           FileType::Zip => SIT::Zip,
           FileType::TPSE => SIT::TPSE,
           FileType::Image => {
-            let image = decode_image(bytes).map_err(|err| ctx.wrap(err.into()))?;
+            let image = T::decode_texture(bytes)
+              .map_err(|err| ctx.wrap(LoadError::ErasedError(Box::new(err)).into()))?;
             if let Some(format) = SkinType::guess_format(filename, image.width(), image.height(), &ctx) {
               let format = ImportType::Skin { subtype: format };
               let context = ctx.with_context(ImportContextEntry::WithGuessedType(format));
-              return Box::pin(decide_specific_type(format, filename, bytes, context)).await
+              return Box::pin(decide_specific_type::<T>(format, filename, bytes, context)).await
             } else {
               match Path::new(&filename).extension().map(|ext| ext.to_string_lossy()) {
                 Some(str) if str == "gif" => SIT::Background(BackgroundType::Video),

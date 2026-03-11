@@ -3,7 +3,6 @@ use std::collections::HashSet;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::str::Utf8Error;
-use image::ImageError;
 use itertools::Itertools;
 
 use crate::import::asset_provider::Asset;
@@ -48,7 +47,9 @@ pub enum ImportErrorType {
   #[error("asset parse failure: {0}")]
   AssetParseFailure(#[from] AssetParseFailure),
   #[error("rendering failure: {0}")]
-  RenderFailure(#[from] RenderFailure)
+  RenderFailure(#[from] RenderFailure),
+  #[error("encoding image failed")]
+  EncodeFailed
 }
 
 /// An error indicating failure to parse base game assets
@@ -73,9 +74,9 @@ pub enum AssetParseFailure {
 /// An error indicating failure to parse a media file
 #[derive(Debug, thiserror::Error)]
 pub enum LoadError {
-  #[error("failed to load image: {0}")]
-  ImageError(#[from] image::ImageError),
-  #[error("the image decoder we're using is broken as hell and panicked")]
+  #[error("failed to load asset: {0}")]
+  ErasedError(#[from] Box<dyn Error>),
+  #[error("failed to load image: image decoder implementation panicked")]
   ImageLoadPanic,
   #[error("failed to decode audio: {0}")]
   SymphoniaError(#[from] symphonia::core::errors::Error),
@@ -91,10 +92,4 @@ pub enum RenderFailure {
   NoSoundEffectsConfiguration,
   #[error("tpse has no such sound effect {0}")]
   NoSoundSoundEffect(String)
-}
-
-impl From<ImageError> for ImportErrorType {
-  fn from(err: ImageError) -> Self {
-    Self::LoadError(LoadError::ImageError(err))
-  }
 }

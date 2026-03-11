@@ -11,12 +11,12 @@ pub use render_options::RenderOptions;
 pub use render::*;
 pub use board_map::BoardMap;
 
-use image::DynamicImage;
+use crate::accel::traits::{TPSEAccelerator, TextureHandle};
 
-/// Clones a slice of the given DynamicImage, filling overflow regions with transparency
-pub fn clone_slice(tex: &DynamicImage, x: u32, y: u32, w: u32, h: u32) -> DynamicImage {
-  let mut target = DynamicImage::new_rgba8(w, h);
-  image::imageops::overlay(&mut target, tex, -(x as i64), -(y as i64));
+/// Clones a slice of the given T::Texture, filling overflow regions with transparency
+pub fn clone_slice<T: TPSEAccelerator>(tex: &T::Texture, x: u32, y: u32, w: u32, h: u32) -> T::Texture {
+  let target = T::new_texture(w, h);
+  target.overlay(tex, -(x as i64), -(y as i64));
   target
 }
 

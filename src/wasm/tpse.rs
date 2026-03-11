@@ -9,7 +9,7 @@ use crate::log::ImportLogger;
 use crate::tpse::validate::AssetType;
 use crate::tpse::TPSE;
 use crate::wasm::provide_asset::WasmAssetProvider;
-use crate::wasm::{fetch_asset, import_log, report_import_done, ImportStatus, StagedFile, State, TPSEContext, STATE};
+use crate::wasm::{ImportStatus, STATE, StagedFile, State, TPSEContext, WasmGlobalAccelerator, fetch_asset, import_log, report_import_done};
 
 
 #[unsafe(no_mangle)]
@@ -134,7 +134,7 @@ pub extern fn queue_import(tpse_id: u32) -> usize {
     let logger = WasmImportLogger { tpse_id };
     let options = ImportContext::new(&source, 5).with_logger(&logger);
   
-    let result = import(files, options).await;
+    let result = import::<WasmGlobalAccelerator>(files, options).await;
     match &result {
       Err(error) => logger.log(log::Level::Error, format_args!("import failed: {error}")),
       Ok(_) => logger.log(log::Level::Info, format_args!("import finished"))

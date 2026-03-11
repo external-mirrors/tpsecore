@@ -9,7 +9,10 @@ use num_traits::cast::ToPrimitive;
 /// connections map, which returns a sub-slice with the requested connections.
 #[derive(Debug, Copy, Clone)]
 pub struct SkinSlice {
-  pub x: f64, pub y: f64, pub w: f64, pub h: f64,
+  pub x: f64,
+  pub y: f64,
+  pub w: f64,
+  pub h: f64,
   pub connections: &'static ConnectionSubmap
 }
 impl SkinSlice {
