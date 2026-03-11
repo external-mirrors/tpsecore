@@ -32,6 +32,7 @@ impl WasmAcceleratorState {
     // and theoretically there should never be enough image operations
     // to reach anywhere near this, but put a cap on it anyway just in case
     // so we don't waste tons of memory.
+    // Worst case scenario, someone tries to draw a _really long_ string
     self.command_buffer.shrink_to(8*1024); // 8KiB
     self.arcs_in_command_buffer.clear();
   }
@@ -75,7 +76,7 @@ impl TPSEAccelerator for WasmAccelerator {
   fn decode_texture(buffer: Arc<[u8]>) -> Result<Self::Texture, Self::DecodeError> {
     let mut state = STATE.lock().unwrap();
     let handle = state.new_handle(None);
-    encode!(state, handle, 1, [buffer.len() as u64, buffer.as_ptr() as u64]);
+    encode!(state, handle, 1, [buffer.as_ptr() as u64, buffer.len() as u64]);
     state.arcs_in_command_buffer.push(buffer);
     Ok(handle)
   }
@@ -156,7 +157,7 @@ impl TextureHandle for WasmTextureHandle {
   }
 
   fn slice(&self, x: u32, y: u32, width: u32, height: u32) -> Self {
-    encode!(auto, self, 3, new(self.0.dimensions.get().copied()), [])
+    encode!(auto, self, 3, new(self.0.dimensions.get().copied()), [x, y, width, height])
   }
 
   fn resized(&self, width: u32, height: u32) -> Self {
@@ -177,7 +178,7 @@ impl TextureHandle for WasmTextureHandle {
 
   fn draw_text(&self, [r, g, b, a]: [u8; 4], x: i32, y: i32, scale: f32, text: &str) {
     let mut state = STATE.lock().unwrap();
-    encode!(state, self, 8, [r, g, b, a, x, y, scale, text.len() as u64]);
+    encode!(state, self, 8, [r, g, b, a, x, y, scale, text.as_ptr() as u64, text.len() as u64]);
     state.command_buffer.extend_from_slice(text.as_bytes());
   }
 }

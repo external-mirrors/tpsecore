@@ -7,6 +7,7 @@ use std::sync::{Arc, LazyLock, Mutex};
 use log::Level;
 use mime::Mime;
 use crate::accel::impl_software::SoftwareRendering;
+use crate::accel::impl_wasm::WasmAccelerator;
 use crate::import::{Asset, AssetProvider, DefaultAssetProvider, import, ImportErrorType, ImportContext, RenderFailure, ImportError, ImportType, SkinType};
 use crate::import::decode_helper::{decode, TetrioAtlasDecoder};
 use crate::import::skin_splicer::Piece;
@@ -38,7 +39,7 @@ unsafe extern "C" {
   unsafe fn import_log(level: u8, tpse: u32, ptr: *const u8, len: usize);
 }
 
-pub(in crate) type WasmGlobalAccelerator = SoftwareRendering;
+pub(in crate) type WasmGlobalAccelerator = WasmAccelerator;
 
 pub(in crate) static STATE: LazyLock<Mutex<State>> = LazyLock::new(|| {
   other_initialization();
