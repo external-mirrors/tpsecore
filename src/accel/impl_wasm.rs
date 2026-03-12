@@ -9,7 +9,7 @@ use async_channel::Sender;
 use crate::accel::traits::{TPSEAccelerator, TextureHandle};
 use crate::import::LoadError;
 use crate::wasm::STATE as TPSE_STATE;
-use crate::wasm::wasm_wakeable::{WasmWakeable, provide_wakeable};
+use crate::wasm::wasm_wakeable::{WasmWakeable, WasmWakeableSize, provide_wakeable};
 
 #[derive(Default)]
 struct WasmAcceleratorState {
@@ -59,8 +59,12 @@ static command_flush_task: LazyLock<Sender<FlushedCommands>> = LazyLock::new(|| 
     while let Ok(flush) = rx.recv().await {
       let (wake_id, future) = WasmWakeable::new();
       unsafe { flush_command_buffer(flush.command_buffer.as_ptr(), flush.command_buffer.len(), wake_id); }
-      future.await;
-      provide_wakeable(flush.notify, 0);
+      assert_eq!(
+        Ok(WasmWakeableSize::Zero),
+        future.await,
+        "incorrect size provided or sender dropped for flush_command_buffer wakeup"
+      );
+      provide_wakeable(flush.notify, WasmWakeableSize::Zero);
       // buffer dropped and deallocated
     }
   });
@@ -116,9 +120,17 @@ unsafe extern "C" {
   /// Processes all commands in the command buffer
   /// This needs to be called before other methods to ensure the state they query is actually available
   unsafe fn flush_command_buffer(command_buffer: *const u8, len: usize, async_wake_id: u64);
-  /// Returns dimensions for the given handle, as two u32 (width, height) packed into a u64
-  unsafe fn fetch_dimensions(id: u64) -> u64;
+  
+  /// Fetches dimensions for the given handle, storing them in provided outvalues.
+  ///
+  /// If out_code is nonzero, indicates a pointer containing an error that should be retrieved from the TPSE buffer 
+  /// infrastructure. The buffer will be deallocated internally, manual deallocation is not required.
+  unsafe fn fetch_dimensions(id: u64, out_code: *mut u64, out_width: *mut u32, out_height: *mut u32);
+  
   /// Encodes the given handle into a buffer managed by the TPSE buffer infastructure
+  ///
+  /// The waker takes two arguments: a status code (0=ok, 1=error) and a pointer to a buffer containing either the
+  /// encoded png or the error message. The buffer will be deallocated internally, manual deallocation is not required.
   unsafe fn encode_png(id: u64, async_wake_id: u64) -> *const u8;
 }
 
@@ -139,29 +151,50 @@ impl Drop for WasmTextureHandleInner {
 #[derive(Clone)]
 pub struct WasmTextureHandle(Arc<WasmTextureHandleInner>);
 impl WasmTextureHandle {
-  async fn dimensions(&self) -> (u32, u32) {
+  async fn dimensions(&self) -> Result<(u32, u32), LoadError> {
     if self.0.dimensions.get().is_none() {
       let flush_complete = STATE.lock().unwrap().flush_command_buffer();
-      if let Some(f) = flush_complete { f.await; } // STATE lock dropped at this point
-      let bytes = unsafe { fetch_dimensions(self.0.id) };
-      let [a, b, c, d, e, f, g, h] = bytes.to_be_bytes();
-      let width = u32::from_be_bytes([a, b, c, d]);
-      let height = u32::from_be_bytes([e, f, g, h]);
+      if let Some(f) = flush_complete { // STATE lock dropped by this point
+        assert_eq!(f.await, Ok(WasmWakeableSize::Zero));
+      }
+      
+      // even though state has been dropped, the texture handle can't be invalidated
+      // because we're still a reference counted copy of it and invalidation doesn't
+      // occur until Drop of the inner value.
+      // At worst, something might be drawn on top of the handle, which doesn't matter
+      // since we're just retrieving the dimensions here. All size-changing operations
+      // only operate by creating a texture with a new handle.
+      
+      let mut code: u64 = 0;
+      let mut width: u32 = 0;
+      let mut height: u32 = 0;
+      unsafe { fetch_dimensions(self.0.id, &mut code, &mut width, &mut height) };
+      
+      if (code != 0) {
+        let mut state = TPSE_STATE.lock().unwrap();
+        let buf_id = state.lookup_buffer(code as *mut u8).unwrap();
+        let data = state.buffers.remove(&buf_id).unwrap();
+        let message = String::from_utf8_lossy(&*data).into_owned();
+        return Err(LoadError::WasmAcceleratorError(message));
+      }
+      
       self.0.dimensions.set((width, height));
     }
-    *self.0.dimensions.get().unwrap()
+    Ok(*self.0.dimensions.get().unwrap())
   }
 }
 impl TextureHandle for WasmTextureHandle {
-  async fn width(&self) -> u32 {
-    self.dimensions().await.0
+  type Error = LoadError;
+  
+  async fn width(&self) -> Result<u32, Self::Error> {
+    Ok(self.dimensions().await?.0)
   }
 
-  async fn height(&self) -> u32 {
-    self.dimensions().await.1
+  async fn height(&self) -> Result<u32, Self::Error> {
+    Ok(self.dimensions().await?.1)
   }
 
-  async fn encode_png(&self) -> Result<Arc<[u8]>, ()> {
+  async fn encode_png(&self) -> Result<Arc<[u8]>, Self::Error> {
     let flush_complete = STATE.lock().unwrap().flush_command_buffer();
     if let Some(f) = flush_complete { f.await; } // STATE lock dropped at this point
     
@@ -169,19 +202,22 @@ impl TextureHandle for WasmTextureHandle {
     let (wake_id, future) = WasmWakeable::new();
     unsafe { encode_png(self.0.id, wake_id) };
     drop(state);
-    let ptr = future.await.expect("shouldn't be deregistered before completion") as *const u8;
     
-    // todo: error message routing
-    // because all operations are deferred, this is the one place where we actually get back errors
-    // and so having a good message here is quite important
-    if ptr == null() {
-      return Err(())
-    }
+    let result = future.await;
+    let Ok(WasmWakeableSize::Two(error, ptr)) = result else {
+      panic!("incorrect size provided or sender dropped for encode_png wakeup, got: {:?}", result);
+    };
     
     let mut state = TPSE_STATE.lock().unwrap();
-    let buffer_id = state.lookup_buffer(ptr as *mut u8).unwrap();
-    let buffer = state.buffers.remove(&buffer_id).unwrap();
-    Ok(buffer)
+    let buf_id = state.lookup_buffer(ptr as *mut u8).unwrap();
+    let buffer = state.buffers.remove(&buf_id).unwrap();
+    match error {
+      0 => Ok(buffer),
+      _nonzero => {
+        let message = String::from_utf8_lossy(&*buffer).into_owned();
+        Err(LoadError::WasmAcceleratorError(message))
+      }
+    }
   }
 
   fn create_copy(&self) -> Self {

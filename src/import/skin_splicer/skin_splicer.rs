@@ -42,43 +42,51 @@ impl<T: TPSEAccelerator> SkinSplicer<T> {
   /// first available image size is used instead. If the connection or piece isn't supported
   /// by the loaded skins, None will be returned.
   pub async fn get(&self, piece: Piece, connection: u8, resolution: Option<u32>)
-    -> Option<<T as TPSEAccelerator>::Texture>
+    -> Result<Option<T::Texture>, <T::Texture as TextureHandle>::Error>
   {
-    let (texture, skin_slice) = self.images.iter()
+    let Some((texture, skin_slice)) = self.images.iter()
       .filter_map(|(skin_type, tex)| Some((tex, lookup_skin(*skin_type, piece)?)))
-      .next()?;
-    let mut slice_iter = skin_slice.slices(connection, texture.width().await, texture.height().await)?;
-    let (x, y, w, h) = slice_iter.next()?;
+      .next()
+      else { return Ok(None) };
+    let Some(mut slice_iter) = skin_slice
+      .slices(connection, texture.width().await?, texture.height().await?)
+      else { return Ok(None) };
+    let Some((x, y, w, h)) = slice_iter.next() else { return Ok(None) };
     let mut canvas = texture.slice(x, y, w, h).create_copy();
     
     if let Some(resolution) = resolution {
       canvas = canvas.resized(resolution, resolution);
     }
     for (x, y, w, h) in slice_iter {
-      let next_canvas = texture.slice(x, y, w, h).resized(canvas.width().await, canvas.height().await);
+      let next_canvas = texture.slice(x, y, w, h).resized(canvas.width().await?, canvas.height().await?);
       canvas.overlay(&next_canvas, 0, 0);
     }
-    Some(canvas)
+    Ok(Some(canvas))
   }
 
   /// Draws a buffer to the first available slice for a block
   /// Returns `Some(())` if a slice was found and written to
-  pub async fn set(&mut self, piece: Piece, connection: u8, buffer: &<T as TPSEAccelerator>::Texture) -> Option<()> {
-    let (texture, skin_slice) = self.images.iter()
+  pub async fn set(&mut self, piece: Piece, connection: u8, buffer: &<T as TPSEAccelerator>::Texture)
+    -> Result<Option<()>, <T::Texture as TextureHandle>::Error>
+  {
+    let Some((texture, skin_slice)) = self.images.iter()
       .filter_map(|(skin_type, tex)| Some((tex, lookup_skin(*skin_type, piece)?)))
-      .next()?;
-    let mut slices = skin_slice.slices(connection, texture.width().await, texture.height().await)?;
-    let (x, y, w, h) = slices.next()?;
+      .next()
+      else { return Ok(None) };
+    let Some(mut slices) = skin_slice
+      .slices(connection, texture.width().await?, texture.height().await?)
+      else { return Ok(None) };
+    let Some((x, y, w, h)) = slices.next() else { return Ok(None) };
     let sliced = texture.slice(x, y, w, h);
-    log::trace!("Resizing image: {} {} -> {} {}", buffer.width().await, buffer.height().await, w, h);
+    log::trace!("Resizing image: {} {} -> {} {}", buffer.width().await?, buffer.height().await?, w, h);
     sliced.overlay(&buffer.resized(w, h), 0, 0);
-    Some(())
+    Ok(Some(()))
   }
 
   /// Creates a skin of the given output type, returning None if no blocks were
   /// available to draw to it.
   pub async fn convert(&self, target_type: SkinType, block_size_override: Option<u32>)
-    -> Option<<T as TPSEAccelerator>::Texture>
+    -> Result<Option<T::Texture>, <T::Texture as TextureHandle>::Error>
   {
     log::trace!(
       "Converting splicer of {:?} to {:?}",
@@ -92,13 +100,13 @@ impl<T: TPSEAccelerator> SkinSplicer<T> {
     for piece in Piece::values() {
       for conn in tetrio_connections_submap.connections.keys() {
         let default_conn = tetrio_connections_submap.default;
-        let texture = match self.get(*piece, *conn, block_size_override).await {
-          None => self.get(*piece, default_conn, block_size_override).await,
+        let texture = match self.get(*piece, *conn, block_size_override).await? {
+          None => self.get(*piece, default_conn, block_size_override).await?,
           Some(x) => Some(x)
         };
 
         if let Some(texture) = texture {
-          if let Some(()) = target.set(*piece, *conn, &texture).await {
+          if let Some(()) = target.set(*piece, *conn, &texture).await? {
             valid = true;
           }
         }
@@ -106,7 +114,7 @@ impl<T: TPSEAccelerator> SkinSplicer<T> {
     }
 
     log::trace!("Conversion finished!");
-    if valid { Some(target.images.remove(0).1) } else { None }
+    Ok(if valid { Some(target.images.remove(0).1) } else { None })
   }
 
   /// Returns the number of loaded iamges

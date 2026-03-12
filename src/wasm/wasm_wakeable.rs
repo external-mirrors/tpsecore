@@ -4,20 +4,38 @@ use std::task::{Context, Poll, Waker};
 
 use slotmap::{DefaultKey, Key, KeyData, SlotMap};
 
-
 #[derive(Debug)]
-enum WasmWakeableState<u64> {
+enum WasmWakeableState {
   Unpolled,
   Waiting(Waker),
-  Finished(u64)
+  Finished(WasmWakeableSize)
+}
+#[derive(Debug, PartialEq)]
+pub enum WasmWakeableSize {
+  Zero,
+  One(u64),
+  Two(u64, u64)
 }
 
-static WAKEABLES: LazyLock<Mutex<SlotMap<DefaultKey, WasmWakeableState<u64>>>> = LazyLock::new(Default::default);
+static WAKEABLES: LazyLock<Mutex<SlotMap<DefaultKey, WasmWakeableState>>> = LazyLock::new(Default::default);
+
+
+#[unsafe(no_mangle)]
+pub extern fn provide_wakeable_zero(key: u64) -> u32 {
+  provide_wakeable(key, WasmWakeableSize::Zero)
+}
+#[unsafe(no_mangle)]
+pub extern fn provide_wakeable_one(key: u64, one: u64) -> u32 {
+  provide_wakeable(key, WasmWakeableSize::One(one))
+}
+#[unsafe(no_mangle)]
+pub extern fn provide_wakeable_two(key: u64, one: u64, two: u64) -> u32 {
+  provide_wakeable(key, WasmWakeableSize::Two(one, two))
+}
 
 /// Provides a [WASMWakeable] with a value and wakes it
 /// Return codes 0=success 1=unknown wakeable 2=invalid state
-#[unsafe(no_mangle)]
-pub extern fn provide_wakeable(key: u64, value: u64) -> u32 {
+pub fn provide_wakeable(key: u64, value: WasmWakeableSize) -> u32 {
   let key = DefaultKey::from(KeyData::from_ffi(key));
   let mut wakeables = WAKEABLES.lock().unwrap();
   let Some(mut slot) = wakeables.get_mut(key) else { return 1 };
@@ -45,7 +63,7 @@ impl WasmWakeable {
   }
 }
 impl Future for WasmWakeable {
-  type Output = Result<u64, ()>;
+  type Output = Result<WasmWakeableSize, ()>;
   fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
     let mut state = WAKEABLES.lock().unwrap();
     let mut slot = state.get_mut(self.0);

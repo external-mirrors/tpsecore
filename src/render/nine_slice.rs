@@ -23,14 +23,14 @@ pub fn nine_slice
 
 pub async fn nine_slice_resize<T: TPSEAccelerator>
   (tex: &T::Texture, w: u32, h: u32, pad_top: u32, pad_right: u32, pad_bottom: u32, pad_left: u32)
-  -> T::Texture
+  -> Result<T::Texture, <T::Texture as TextureHandle>::Error>
 {
   if w > 10_000 || h > 10_000 || w*h > 10_000_000 {
     log::warn!("nine_slice_resize: creating huge texture of {w}*{h}");
     #[cfg(test)]
     panic!("excessive texture size requested");
   }
-  let sources = nine_slice(tex.width().await, tex.height().await, pad_top, pad_right, pad_bottom, pad_left);
+  let sources = nine_slice(tex.width().await?, tex.height().await?, pad_top, pad_right, pad_bottom, pad_left);
   let dests = nine_slice(w, h, pad_top, pad_right, pad_bottom, pad_left);
   let mut dest = T::new_texture(w, h);
   for ((sx, sy, sw, sh), (dx, dy, dw, dh)) in sources.iter().copied().zip(dests.iter().copied()) {
@@ -39,5 +39,5 @@ pub async fn nine_slice_resize<T: TPSEAccelerator>
     let resized = slice.resized(dw, dh);
     dest.overlay(&resized, dx as i64, dy as i64);
   }
-  dest
+  Ok(dest)
 }

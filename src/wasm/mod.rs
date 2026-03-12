@@ -26,9 +26,9 @@ unsafe extern "C" {
   /// Code values: 0=success 1=failure 2=tpse disappeared before completion
   unsafe fn report_import_done(tpse: u32, code: u32);
   /// Reports that rendering of a frame has been finished.
-  /// Gives back the nonce used to identify the frame and the location of the buffer
-  /// If rendering fails, the ptr will be null
-  unsafe fn report_frame_render_done(tpse: u32, nonce: u64, ptr: *const u8, len: usize);
+  /// Gives back the nonce used to identify the frame and the location of the buffer containing
+  /// either the rendered frame (when status=0) or an error string (when status=1)
+  unsafe fn report_frame_render_done(tpse: u32, nonce: u64, status: u8, ptr: *const u8, len: usize);
   /// Controls whether `tick_async` is called
   unsafe fn set_runtime_sleeping(sleep: bool);
   /// Requests an external asset be fetched and provided back asynchronously to `provide_asset`

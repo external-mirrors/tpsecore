@@ -159,7 +159,9 @@ impl<T: TPSEAccelerator> RenderContext<T> {
     [skin, ghost].iter().filter_map(|el| *el).min().unwrap_or(1)
   }
 
-  pub async fn render_frame(&self, frame: &FrameInfo<'_>) -> RenderedFrame<T::Texture> {
+  pub async fn render_frame(&self, frame: &FrameInfo<'_>)
+    -> Result<RenderedFrame<T::Texture>, <T::Texture as TextureHandle>::Error>
+  {
     /// A list of drawing tasks to perform. Units are in pixels.
     let mut tasks: Vec<(T::Texture, i64, i64, i64, i64)> = vec![];
 
@@ -174,7 +176,7 @@ impl<T: TPSEAccelerator> RenderContext<T> {
       }) else { continue };
       let texture = clone_slice::<T>(&texture, x, y, w, h);
       let (x, y, mut w, mut h) = el.get_target(&frame.render_options);
-      let texture = nine_slice_resize::<T>(&texture, w as u32 * scale, h as u32 * scale, pt, pr, pb, pl).await;
+      let texture = nine_slice_resize::<T>(&texture, w as u32 * scale, h as u32 * scale, pt, pr, pb, pl).await?;
       let texture = texture.tinted(el.tint());
       tasks.push((texture, x, y, w, h))
     }
@@ -205,8 +207,8 @@ impl<T: TPSEAccelerator> RenderContext<T> {
       for (row, col, piece) in frame.render_options.board.iter() {
         let tex = match piece {
           Some((piece, connection)) => {
-            let piece_a = splicer.get(piece, connection, None).await;
-            let piece_fallback = splicer.get(piece, 0b00000, None).await;
+            let piece_a = splicer.get(piece, connection, None).await?;
+            let piece_fallback = splicer.get(piece, 0b00000, None).await?;
             piece_a.or(piece_fallback)
           },
           None => None
@@ -224,13 +226,13 @@ impl<T: TPSEAccelerator> RenderContext<T> {
 
     if tasks.is_empty() {
       log::trace!("No render tasks!");
-      RenderedFrame {
+      Ok(RenderedFrame {
         image: T::new_texture(0, 0),
         min_x: 0,
         min_y: 0,
         max_x: 0,
         max_y: 0
-      }
+      })
     } else {
       let min_x = tasks.iter().map(|(img, x, y, w, h)| *x).min().unwrap();
       let min_y = tasks.iter().map(|(img, x, y, w, h)| *y).min().unwrap();
@@ -253,7 +255,7 @@ impl<T: TPSEAccelerator> RenderContext<T> {
       if frame.render_options.debug_grid {
         let white = [255, 255, 255, 255];
         for x in (min_x..max_x).filter(|el| el % 48 == 0) {
-          let height = canvas.height().await;
+          let height = canvas.height().await?;
           canvas.draw_line(
             ((x - min_x) as f32, 0.0),
             ((x - min_x) as f32, height as f32),
@@ -268,7 +270,7 @@ impl<T: TPSEAccelerator> RenderContext<T> {
           );
         }
         for y in (min_y..max_y).filter(|el| el % 48 == 0) {
-          let width = canvas.width().await;
+          let width = canvas.width().await?;
           canvas.draw_line(
             (0.0, (y - min_y) as f32),
             (width as f32, (y - min_y) as f32),
@@ -283,7 +285,7 @@ impl<T: TPSEAccelerator> RenderContext<T> {
         }
       }
 
-      RenderedFrame { image: canvas, min_x, min_y, max_x, max_y }
+      Ok(RenderedFrame { image: canvas, min_x, min_y, max_x, max_y })
     }
   }
 }

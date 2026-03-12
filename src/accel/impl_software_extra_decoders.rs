@@ -9,16 +9,16 @@ use image::codecs::gif::GifDecoder;
 use crate::accel::traits::TPSEAccelerator;
 use crate::import::LoadError;
 
-pub fn decode_gif<T: TPSEAccelerator>(bytes: &[u8]) -> Result<Vec<(T::Texture, Duration)>, Box<dyn Error>> {
+pub fn decode_gif<T: TPSEAccelerator>(bytes: &[u8]) -> Result<Vec<(T::Texture, Duration)>, Box<dyn Error + Send + Sync>> {
   decode::<T>(GifDecoder::new(Cursor::new(bytes)))
 }
-pub fn decode_webp<T: TPSEAccelerator>(bytes: &[u8]) -> Result<Vec<(T::Texture, Duration)>, Box<dyn Error>> {
+pub fn decode_webp<T: TPSEAccelerator>(bytes: &[u8]) -> Result<Vec<(T::Texture, Duration)>, Box<dyn Error + Send + Sync>> {
   decode::<T>(WebPDecoder::new(Cursor::new(bytes)))
 }
 
 fn decode<'a, T: TPSEAccelerator>
-  (decoder: Result<impl AnimationDecoder<'a>, impl Error + 'static>)
-  -> Result<Vec<(T::Texture, Duration)>, Box<dyn Error>>
+  (decoder: Result<impl AnimationDecoder<'a>, impl Error + Send + Sync + 'static>)
+  -> Result<Vec<(T::Texture, Duration)>, Box<dyn Error + Send + Sync>>
 {
   let frames = decoder.map_err(Box::new)?.into_frames();
   let mut textures = vec![];

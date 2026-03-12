@@ -28,8 +28,12 @@ pub async fn decide_specific_type<'c, T: TPSEAccelerator>
           FileType::TPSE => SIT::TPSE,
           FileType::Image => {
             let image = T::decode_texture(bytes.clone())
-              .map_err(|err| ctx.wrap(LoadError::ErasedError(Box::new(err)).into()))?;
-            if let Some(format) = SkinType::guess_format(filename, image.width().await, image.height().await, &ctx) {
+              .map_err(|err| ctx.wrap(LoadError::ErasedAcceleratorError(Box::new(err)).into()))?;
+            let width = image.width().await
+              .map_err(|err| ctx.wrap(LoadError::ErasedAcceleratorError(Box::new(err)).into()))?;
+            let height = image.height().await
+              .map_err(|err| ctx.wrap(LoadError::ErasedAcceleratorError(Box::new(err)).into()))?;
+            if let Some(format) = SkinType::guess_format(filename, width, height, &ctx) {
               let format = ImportType::Skin { subtype: format };
               let context = ctx.with_context(ImportContextEntry::WithGuessedType(format));
               return Box::pin(decide_specific_type::<T>(format, filename, bytes, context)).await

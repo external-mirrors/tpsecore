@@ -40,10 +40,10 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: ImportConte
           // other single frame image
           _ => T::decode_texture(frame.file.binary)
             .map(|frame| vec![(frame, Duration::from_secs(1))])
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
         };
         match decoded {
-          Err(err) => return Err(ctx.wrap(LoadError::ErasedError(err).into())),
+          Err(err) => return Err(ctx.wrap(LoadError::ErasedAcceleratorError(err).into())),
           Ok(decoded) => decoded_frames.extend(decoded)
         }
       };
@@ -63,8 +63,16 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: ImportConte
         let mut source = SkinSplicer::<T>::default();
         source.load_decoded(skin_type, texture.create_copy());
         let groups = [
-          (source.convert(SkinType::Tetrio61Connected, Some(block_size)).await, &mut mino_canvas),
-          (source.convert(SkinType::Tetrio61ConnectedGhost, Some(block_size)).await, &mut ghost_canvas)
+          (
+            source.convert(SkinType::Tetrio61Connected, Some(block_size)).await
+              .map_err(|err| ctx.wrap(LoadError::ErasedAcceleratorError(Box::new(err)).into()))?,
+           &mut mino_canvas
+          ),
+          (
+            source.convert(SkinType::Tetrio61ConnectedGhost, Some(block_size)).await
+              .map_err(|err| ctx.wrap(LoadError::ErasedAcceleratorError(Box::new(err)).into()))?, 
+            &mut ghost_canvas
+          )
         ];
         for (frame, canvas) in groups {
           if let Some(frame) = frame {
@@ -108,7 +116,9 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: ImportConte
           source.load_decoded(skin_type, first_frame.clone());
           let first_frame_skin = source
             .convert(skin_type, Some(uhd_block_size))
-            .await.expect("Skin should exist if animated buffer was created");
+            .await
+            .map_err(|err| ctx.wrap(LoadError::ErasedAcceleratorError(Box::new(err)).into()))?
+            .expect("Skin should exist if animated buffer was created");
           *skin = Some(File {
             binary: first_frame_skin.encode_png().await.map_err(|_| ctx.wrap(ImportErrorType::EncodeFailed))?,
             mime: "image/png".to_string()
@@ -286,8 +296,10 @@ async fn splice_to_t61<T: TPSEAccelerator>(skin_type: SkinType, bytes: Arc<[u8]>
 {
   let target_resolution = 96;
   let mut source = SkinSplicer::<T>::default();
-  source.load(skin_type, bytes).map_err(|err| LoadError::ErasedError(Box::new(err)))?;
-  let minos = source.convert(SkinType::Tetrio61Connected, Some(target_resolution)).await;
-  let ghost = source.convert(SkinType::Tetrio61ConnectedGhost, Some(target_resolution)).await;
+  source.load(skin_type, bytes).map_err(|err| LoadError::ErasedAcceleratorError(Box::new(err)))?;
+  let minos = source.convert(SkinType::Tetrio61Connected, Some(target_resolution)).await
+    .map_err(|err| LoadError::ErasedAcceleratorError(Box::new(err)))?;
+  let ghost = source.convert(SkinType::Tetrio61ConnectedGhost, Some(target_resolution)).await
+    .map_err(|err| LoadError::ErasedAcceleratorError(Box::new(err)))?;
   Ok((minos, ghost))
 }

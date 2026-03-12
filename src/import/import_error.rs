@@ -74,8 +74,12 @@ pub enum AssetParseFailure {
 /// An error indicating failure to parse a media file
 #[derive(Debug, thiserror::Error)]
 pub enum LoadError {
+  /// For errors that occured in javascript
   #[error("failed to load asset: {0}")]
-  ErasedError(#[from] Box<dyn Error>),
+  WasmAcceleratorError(String),
+  /// For errors that occured in other accelerators
+  #[error("failed to load asset: {0}")]
+  ErasedAcceleratorError(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),
   #[error("failed to load image: image decoder implementation panicked")]
   ImageLoadPanic,
   #[error("failed to decode audio: {0}")]

@@ -1,10 +1,9 @@
-use std::error::Error;
 use std::sync::Arc;
 
 
 pub trait TPSEAccelerator {
   type Texture: TextureHandle;
-  type DecodeError: Error + 'static;
+  type DecodeError: std::error::Error + Send + Sync + 'static;
   
   /// Creates a new texture of the given size, filled with transparency
   fn new_texture(width: u32, height: u32) -> Self::Texture;
@@ -15,9 +14,10 @@ pub trait TPSEAccelerator {
 /// Cloning the handle still points to the original texture. Use [create_copy] to create an independent copy.
 /// Some methods mutate, and some create new versions.
 pub trait TextureHandle: Clone {
-  async fn width(&self) -> u32;
-  async fn height(&self) -> u32;
-  async fn encode_png(&self) -> Result<Arc<[u8]>, ()>;
+  type Error: std::error::Error + Send + Sync + 'static;
+  async fn width(&self) -> Result<u32, Self::Error>;
+  async fn height(&self) -> Result<u32, Self::Error>;
+  async fn encode_png(&self) -> Result<Arc<[u8]>, Self::Error>;
   /// Creates a standalone copy of the underlying texture
   fn create_copy(&self) -> Self;
   /// Creates a view of the texture. Modifying the view with in-place methods will modify the original texture.
