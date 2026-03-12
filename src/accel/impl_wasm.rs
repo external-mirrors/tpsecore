@@ -23,7 +23,6 @@ impl WasmAcceleratorState {
     if let Some(init_dimension) = init_dimension {
       dimensions.set(init_dimension);
     }
-    log::debug!("constructed new handle {}", self.id_counter);
     let handle = WasmTextureHandle(Arc::new(WasmTextureHandleInner {
       id: self.id_counter,
       dimensions
@@ -182,7 +181,6 @@ impl TextureHandle for WasmTextureHandle {
     let mut state = TPSE_STATE.lock().unwrap();
     let buffer_id = state.lookup_buffer(ptr as *mut u8).unwrap();
     let buffer = state.buffers.remove(&buffer_id).unwrap();
-    log::info!("encode_png got buffer {buffer_id} of length {}", buffer.len());
     Ok(buffer)
   }
 

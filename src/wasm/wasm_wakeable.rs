@@ -19,7 +19,6 @@ static WAKEABLES: LazyLock<Mutex<SlotMap<DefaultKey, WasmWakeableState<u64>>>> =
 #[unsafe(no_mangle)]
 pub extern fn provide_wakeable(key: u64, value: u64) -> u32 {
   let key = DefaultKey::from(KeyData::from_ffi(key));
-  log::debug!("provide_wakeable {key:?}");
   let mut wakeables = WAKEABLES.lock().unwrap();
   let Some(mut slot) = wakeables.get_mut(key) else { return 1 };
   match slot {
@@ -42,7 +41,6 @@ impl WasmWakeable {
   /// Constructs a new WASMWakeable, returning the key ID required to wake it and the future
   pub fn new() -> (u64, Self) {
     let key = WAKEABLES.lock().unwrap().insert(WasmWakeableState::Unpolled);
-    log::debug!("WASMWakeable {key:?} created");
     (key.data().as_ffi(), Self(key))
   }
 }
@@ -51,7 +49,6 @@ impl Future for WasmWakeable {
   fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
     let mut state = WAKEABLES.lock().unwrap();
     let mut slot = state.get_mut(self.0);
-    log::debug!("polling WasmWakeable {:?} -> {slot:?}", self.0);
     match slot {
       None => Poll::Ready(Err(())),
       Some(ref mut slot@(WasmWakeableState::Unpolled | WasmWakeableState::Waiting(_))) => {
