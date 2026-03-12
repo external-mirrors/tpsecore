@@ -1,9 +1,15 @@
+use std::collections::VecDeque;
+use std::mem::take;
 use std::ptr::null;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, OnceLock};
+
+use async_channel::Sender;
 
 use crate::accel::traits::{TPSEAccelerator, TextureHandle};
 use crate::import::LoadError;
 use crate::wasm::STATE as TPSE_STATE;
+use crate::wasm::wasm_wakeable::{WasmWakeable, provide_wakeable};
 
 #[derive(Default)]
 struct WasmAcceleratorState {
@@ -17,6 +23,7 @@ impl WasmAcceleratorState {
     if let Some(init_dimension) = init_dimension {
       dimensions.set(init_dimension);
     }
+    log::debug!("constructed new handle {}", self.id_counter);
     let handle = WasmTextureHandle(Arc::new(WasmTextureHandleInner {
       id: self.id_counter,
       dimensions
@@ -24,19 +31,42 @@ impl WasmAcceleratorState {
     self.id_counter += 1;
     handle
   }
-  /// Flushes, clears, and if necessary shrinks the command buffer
-  fn flush_command_buffer(&mut self) {
-    unsafe { flush_command_buffer(self.command_buffer.as_ptr(), self.command_buffer.len()); }
-    self.command_buffer.clear();
-    // Command buffer contains a few dozen bytes at most per command,
-    // and theoretically there should never be enough image operations
-    // to reach anywhere near this, but put a cap on it anyway just in case
-    // so we don't waste tons of memory.
-    // Worst case scenario, someone tries to draw a _really long_ string
-    self.command_buffer.shrink_to(8*1024); // 8KiB
-    self.arcs_in_command_buffer.clear();
+  /// Flushes, clears, and if necessary shrinks the command buffer.
+  /// The existing buffers are detached and moved to a background task for processing.
+  /// The returned promise should be awaited only after dropping the lock on self.
+  /// Returns None if the buffers are empty.
+  fn flush_command_buffer(&mut self) -> Option<WasmWakeable> {
+    if self.command_buffer.is_empty() { return None }
+    let (wake_id, future) = WasmWakeable::new();
+    let Ok(None) = command_flush_task.force_send(FlushedCommands {
+      command_buffer: take(&mut self.command_buffer),
+      arcs_in_command_buffer: take(&mut self.arcs_in_command_buffer),
+      notify: wake_id
+    }) else {
+      unreachable!("force_send shifted a value on an unbounded channel?");
+    };
+    Some(future)
   }
 }
+
+struct FlushedCommands {
+  command_buffer: Vec<u8>,
+  arcs_in_command_buffer: Vec<Arc<[u8]>>,
+  notify: u64
+}
+static command_flush_task: LazyLock<Sender<FlushedCommands>> = LazyLock::new(|| {
+  let (tx, rx) = async_channel::unbounded::<FlushedCommands>();
+  crate::wasm::asynch::spawn(async move {
+    while let Ok(flush) = rx.recv().await {
+      let (wake_id, future) = WasmWakeable::new();
+      unsafe { flush_command_buffer(flush.command_buffer.as_ptr(), flush.command_buffer.len(), wake_id); }
+      future.await;
+      provide_wakeable(flush.notify, 0);
+      // buffer dropped and deallocated
+    }
+  });
+  tx
+});
 
 macro_rules! encode {
   (auto, $($rest:tt)+) => {{
@@ -69,14 +99,14 @@ impl TPSEAccelerator for WasmAccelerator {
   fn new_texture(width: u32, height: u32) -> Self::Texture {
     let mut state = STATE.lock().unwrap();
     let handle = state.new_handle(Some((width, height)));
-    encode!(state, handle, 0, [width, height]);
+    encode!(state, handle, 1, [width, height]);
     handle
   }
 
   fn decode_texture(buffer: Arc<[u8]>) -> Result<Self::Texture, Self::DecodeError> {
     let mut state = STATE.lock().unwrap();
     let handle = state.new_handle(None);
-    encode!(state, handle, 1, [buffer.as_ptr() as u64, buffer.len() as u64]);
+    encode!(state, handle, 2, [buffer.as_ptr() as u64, buffer.len() as u64]);
     state.arcs_in_command_buffer.push(buffer);
     Ok(handle)
   }
@@ -86,13 +116,11 @@ impl TPSEAccelerator for WasmAccelerator {
 unsafe extern "C" {
   /// Processes all commands in the command buffer
   /// This needs to be called before other methods to ensure the state they query is actually available
-  unsafe fn flush_command_buffer(command_buffer: *const u8, len: usize);
+  unsafe fn flush_command_buffer(command_buffer: *const u8, len: usize, async_wake_id: u64);
   /// Returns dimensions for the given handle, as two u32 (width, height) packed into a u64
   unsafe fn fetch_dimensions(id: u64) -> u64;
   /// Encodes the given handle into a buffer managed by the TPSE buffer infastructure
-  unsafe fn encode_png(id: u64) -> *const u8;
-  /// Drops a handle by ID
-  unsafe fn drop_handle(id: u64);
+  unsafe fn encode_png(id: u64, async_wake_id: u64) -> *const u8;
 }
 
 struct WasmTextureHandleInner {
@@ -102,43 +130,47 @@ struct WasmTextureHandleInner {
 impl Drop for WasmTextureHandleInner {
   fn drop(&mut self) {
     // locking state shouldn't deadlock so long as we don't go dropping handles inside any of the impl
-    // WasmTextureHandle methods, but in this case freeing memory is more important than lazy evaluation
-    unsafe { drop_handle(self.id); }
+    // WasmTextureHandle methods
+    let mut state = STATE.lock().unwrap();
+    state.command_buffer.push(0);
+    state.command_buffer.extend(self.id.to_be_bytes());
   }
 }
 
 #[derive(Clone)]
 pub struct WasmTextureHandle(Arc<WasmTextureHandleInner>);
 impl WasmTextureHandle {
-  fn dimensions(&self) -> (u32, u32) {
-    *self.0.dimensions.get_or_init(|| {
-      let mut state = STATE.lock().unwrap();
-      state.flush_command_buffer();
-      let bytes = unsafe {
-        fetch_dimensions(self.0.id)
-      };
-      
+  async fn dimensions(&self) -> (u32, u32) {
+    if self.0.dimensions.get().is_none() {
+      let flush_complete = STATE.lock().unwrap().flush_command_buffer();
+      if let Some(f) = flush_complete { f.await; } // STATE lock dropped at this point
+      let bytes = unsafe { fetch_dimensions(self.0.id) };
       let [a, b, c, d, e, f, g, h] = bytes.to_be_bytes();
       let width = u32::from_be_bytes([a, b, c, d]);
       let height = u32::from_be_bytes([e, f, g, h]);
-      (width, height)
-    })
+      self.0.dimensions.set((width, height));
+    }
+    *self.0.dimensions.get().unwrap()
   }
 }
 impl TextureHandle for WasmTextureHandle {
-  fn width(&self) -> u32 {
-    self.dimensions().0
+  async fn width(&self) -> u32 {
+    self.dimensions().await.0
   }
 
-  fn height(&self) -> u32 {
-    self.dimensions().1
+  async fn height(&self) -> u32 {
+    self.dimensions().await.1
   }
 
-  fn encode_png(&self) -> Result<Arc<[u8]>, ()> {
+  async fn encode_png(&self) -> Result<Arc<[u8]>, ()> {
+    let flush_complete = STATE.lock().unwrap().flush_command_buffer();
+    if let Some(f) = flush_complete { f.await; } // STATE lock dropped at this point
+    
     let mut state = STATE.lock().unwrap();
-    state.flush_command_buffer();
-    let ptr = unsafe { encode_png(self.0.id) };
+    let (wake_id, future) = WasmWakeable::new();
+    unsafe { encode_png(self.0.id, wake_id) };
     drop(state);
+    let ptr = future.await.expect("shouldn't be deregistered before completion") as *const u8;
     
     // todo: error message routing
     // because all operations are deferred, this is the one place where we actually get back errors
@@ -148,37 +180,39 @@ impl TextureHandle for WasmTextureHandle {
     }
     
     let mut state = TPSE_STATE.lock().unwrap();
-    let buffer = state.lookup_buffer(ptr as *mut u8).unwrap();
-    Ok(state.buffers.remove(&buffer).unwrap())
+    let buffer_id = state.lookup_buffer(ptr as *mut u8).unwrap();
+    let buffer = state.buffers.remove(&buffer_id).unwrap();
+    log::info!("encode_png got buffer {buffer_id} of length {}", buffer.len());
+    Ok(buffer)
   }
 
   fn create_copy(&self) -> Self {
-    encode!(auto, self, 2, new(self.0.dimensions.get().copied()), [])
+    encode!(auto, self, 3, new(self.0.dimensions.get().copied()), [])
   }
 
   fn slice(&self, x: u32, y: u32, width: u32, height: u32) -> Self {
-    encode!(auto, self, 3, new(self.0.dimensions.get().copied()), [x, y, width, height])
+    encode!(auto, self, 4, new(self.0.dimensions.get().copied()), [x, y, width, height])
   }
 
   fn resized(&self, width: u32, height: u32) -> Self {
-    encode!(auto, self, 4, new(Some((width, height))), [width, height])
+    encode!(auto, self, 5, new(Some((width, height))), [width, height])
   }
 
   fn tinted(&self, [r, g, b, a]: [u8; 4]) -> Self {
-    encode!(auto, self, 5, new(self.0.dimensions.get().copied()), [r, g, b, a])
+    encode!(auto, self, 6, new(self.0.dimensions.get().copied()), [r, g, b, a])
   }
 
   fn overlay(&self, with_image: &Self, x: i64, y: i64) {
-    encode!(auto, self, 6, [with_image.0.id, x, y])
+    encode!(auto, self, 7, [with_image.0.id, x, y])
   }
 
   fn draw_line(&self, start: (f32, f32), end: (f32, f32), [r, g, b, a]: [u8; 4]) {
-    encode!(auto, self, 7, [start.0, start.1, end.0, end.1, r, g, b, a]);
+    encode!(auto, self, 8, [start.0, start.1, end.0, end.1, r, g, b, a]);
   }
 
   fn draw_text(&self, [r, g, b, a]: [u8; 4], x: i32, y: i32, scale: f32, text: &str) {
     let mut state = STATE.lock().unwrap();
-    encode!(state, self, 8, [r, g, b, a, x, y, scale, text.as_ptr() as u64, text.len() as u64]);
+    encode!(state, self, 9, [r, g, b, a, x, y, scale, text.as_ptr() as u64, text.len() as u64]);
     state.command_buffer.extend_from_slice(text.as_bytes());
   }
 }

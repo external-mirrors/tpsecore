@@ -6,7 +6,6 @@ use std::ops::{Deref, DerefMut};
 use std::sync::{Arc, LazyLock, Mutex};
 use log::Level;
 use mime::Mime;
-use crate::accel::impl_software::SoftwareRendering;
 use crate::accel::impl_wasm::WasmAccelerator;
 use crate::import::{Asset, AssetProvider, DefaultAssetProvider, import, ImportErrorType, ImportContext, RenderFailure, ImportError, ImportType, SkinType};
 use crate::import::decode_helper::{decode, TetrioAtlasDecoder};
@@ -17,7 +16,8 @@ use crate::tpse::TPSE;
 
 mod tpse;
 mod render;
-mod asynch;
+pub(in crate) mod asynch;
+pub(in crate) mod wasm_wakeable;
 mod provide_asset;
 
 #[link(wasm_import_module="tpsecore")]
@@ -25,6 +25,10 @@ unsafe extern "C" {
   /// Reports that an import has completed and that the results are now visible to `export_tpse`.  
   /// Code values: 0=success 1=failure 2=tpse disappeared before completion
   unsafe fn report_import_done(tpse: u32, code: u32);
+  /// Reports that rendering of a frame has been finished.
+  /// Gives back the nonce used to identify the frame and the location of the buffer
+  /// If rendering fails, the ptr will be null
+  unsafe fn report_frame_render_done(tpse: u32, nonce: u64, ptr: *const u8, len: usize);
   /// Controls whether `tick_async` is called
   unsafe fn set_runtime_sleeping(sleep: bool);
   /// Requests an external asset be fetched and provided back asynchronously to `provide_asset`
@@ -39,6 +43,7 @@ unsafe extern "C" {
   unsafe fn import_log(level: u8, tpse: u32, ptr: *const u8, len: usize);
 }
 
+// pub(in crate) type WasmGlobalAccelerator = crate::accel::impl_software::SoftwareRendering;
 pub(in crate) type WasmGlobalAccelerator = WasmAccelerator;
 
 pub(in crate) static STATE: LazyLock<Mutex<State>> = LazyLock::new(|| {

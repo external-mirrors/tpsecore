@@ -21,7 +21,7 @@ pub fn nine_slice
   ]
 }
 
-pub fn nine_slice_resize<T: TPSEAccelerator>
+pub async fn nine_slice_resize<T: TPSEAccelerator>
   (tex: &T::Texture, w: u32, h: u32, pad_top: u32, pad_right: u32, pad_bottom: u32, pad_left: u32)
   -> T::Texture
 {
@@ -30,7 +30,7 @@ pub fn nine_slice_resize<T: TPSEAccelerator>
     #[cfg(test)]
     panic!("excessive texture size requested");
   }
-  let sources = nine_slice(tex.width(), tex.height(), pad_top, pad_right, pad_bottom, pad_left);
+  let sources = nine_slice(tex.width().await, tex.height().await, pad_top, pad_right, pad_bottom, pad_left);
   let dests = nine_slice(w, h, pad_top, pad_right, pad_bottom, pad_left);
   let mut dest = T::new_texture(w, h);
   for ((sx, sy, sw, sh), (dx, dy, dw, dh)) in sources.iter().copied().zip(dests.iter().copied()) {

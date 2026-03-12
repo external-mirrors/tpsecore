@@ -107,7 +107,7 @@ impl TextureHandle for SoftwareTextureHandle {
       imageproc::drawing::draw_text_mut(image.inner_mut(), color.into(), x, y, scale, &*FONT, text);
     });
   }
-  fn encode_png(&self) -> Result<Arc<[u8]>, ()> {    
+  async fn encode_png(&self) -> Result<Arc<[u8]>, ()> {    
     self.get(|image| {
       let mut buffer = vec![];
       match image.inner().write_to(Cursor::new(&mut buffer), ImageFormat::Png) {
@@ -119,7 +119,10 @@ impl TextureHandle for SoftwareTextureHandle {
       }
     })
   }
-  fn height(&self) -> u32 {
+  async fn width(&self) -> u32 {
+    self.get(|x| x.width())
+  }
+  async fn height(&self) -> u32 {
     self.get(|x| x.height())
   }
   fn overlay(&self, with_image: &Self, x: i64, y: i64) {
@@ -155,9 +158,5 @@ impl TextureHandle for SoftwareTextureHandle {
       }
       texture.into()
     }))
-  }
-
-fn width(&self) -> u32 {
-    self.get(|x| x.width())
   }
 }

@@ -15,9 +15,9 @@ pub trait TPSEAccelerator {
 /// Cloning the handle still points to the original texture. Use [create_copy] to create an independent copy.
 /// Some methods mutate, and some create new versions.
 pub trait TextureHandle: Clone {
-  fn width(&self) -> u32;
-  fn height(&self) -> u32;
-  fn encode_png(&self) -> Result<Arc<[u8]>, ()>;
+  async fn width(&self) -> u32;
+  async fn height(&self) -> u32;
+  async fn encode_png(&self) -> Result<Arc<[u8]>, ()>;
   /// Creates a standalone copy of the underlying texture
   fn create_copy(&self) -> Self;
   /// Creates a view of the texture. Modifying the view with in-place methods will modify the original texture.

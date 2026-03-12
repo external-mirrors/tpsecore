@@ -19,6 +19,20 @@ pub struct RenderContext<T: TPSEAccelerator> {
   queue: Option<T::Texture>,
   grid: Option<T::Texture>
 }
+impl<T: TPSEAccelerator> Clone for RenderContext<T> {
+  fn clone(&self) -> Self {
+    // texture handles are lightweight to clone, so this should be quite fast
+    Self {
+      skin: self.skin.clone(),
+      ghost: self.ghost.clone(),
+      skin_anim: self.skin_anim.clone(),
+      ghost_anim: self.ghost_anim.clone(),
+      board: self.board.clone(),
+      queue: self.queue.clone(),
+      grid: self.grid.clone()
+    }
+  }
+}
 
 /// A rendered frame
 #[derive(Debug, serde::Serialize)]
@@ -145,7 +159,7 @@ impl<T: TPSEAccelerator> RenderContext<T> {
     [skin, ghost].iter().filter_map(|el| *el).min().unwrap_or(1)
   }
 
-  pub fn render_frame(&self, frame: &FrameInfo) -> RenderedFrame<T::Texture> {
+  pub async fn render_frame(&self, frame: &FrameInfo<'_>) -> RenderedFrame<T::Texture> {
     /// A list of drawing tasks to perform. Units are in pixels.
     let mut tasks: Vec<(T::Texture, i64, i64, i64, i64)> = vec![];
 
@@ -160,7 +174,7 @@ impl<T: TPSEAccelerator> RenderContext<T> {
       }) else { continue };
       let texture = clone_slice::<T>(&texture, x, y, w, h);
       let (x, y, mut w, mut h) = el.get_target(&frame.render_options);
-      let texture = nine_slice_resize::<T>(&texture, w as u32 * scale, h as u32 * scale, pt, pr, pb, pl);
+      let texture = nine_slice_resize::<T>(&texture, w as u32 * scale, h as u32 * scale, pt, pr, pb, pl).await;
       let texture = texture.tinted(el.tint());
       tasks.push((texture, x, y, w, h))
     }
@@ -189,9 +203,14 @@ impl<T: TPSEAccelerator> RenderContext<T> {
     if splicer.len() > 0 {
       let skyline_size = frame.render_options.board_size().1 as i64 - frame.render_options.skyline as i64;
       for (row, col, piece) in frame.render_options.board.iter() {
-        let tex = piece.and_then(|(piece, connection)| {
-          splicer.get(piece, connection, None).or_else(|| splicer.get(piece, 0b00000, None))
-        });
+        let tex = match piece {
+          Some((piece, connection)) => {
+            let piece_a = splicer.get(piece, connection, None).await;
+            let piece_fallback = splicer.get(piece, 0b00000, None).await;
+            piece_a.or(piece_fallback)
+          },
+          None => None
+        };
         if let Some(tex) = tex {
           tasks.push((
             tex,
@@ -234,7 +253,7 @@ impl<T: TPSEAccelerator> RenderContext<T> {
       if frame.render_options.debug_grid {
         let white = [255, 255, 255, 255];
         for x in (min_x..max_x).filter(|el| el % 48 == 0) {
-          let height = canvas.height();
+          let height = canvas.height().await;
           canvas.draw_line(
             ((x - min_x) as f32, 0.0),
             ((x - min_x) as f32, height as f32),
@@ -249,7 +268,7 @@ impl<T: TPSEAccelerator> RenderContext<T> {
           );
         }
         for y in (min_y..max_y).filter(|el| el % 48 == 0) {
-          let width = canvas.width();
+          let width = canvas.width().await;
           canvas.draw_line(
             (0.0, (y - min_y) as f32),
             (width as f32, (y - min_y) as f32),

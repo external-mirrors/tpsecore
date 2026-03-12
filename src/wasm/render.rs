@@ -7,7 +7,8 @@ use crate::accel::traits::TextureHandle;
 use crate::import::radiance::parse_radiance_sound_definition;
 use crate::import::skin_splicer::Piece;
 use crate::render::{BoardElement, FrameInfo, RenderContext, RenderOptions, SoundEffectInfo};
-use crate::wasm::{STATE, State};
+use crate::wasm::asynch::spawn;
+use crate::wasm::{STATE, State, report_frame_render_done};
 
 /// Returns the sound effect atlas from the given tpse slot
 ///
@@ -102,43 +103,48 @@ struct RenderFrameArgs {
   block_size: i64
 }
 
+// return code 0=queued 1=no such tpse 2=tpse lacks render data 3=no such argument buffer 4=unparseable arguments
 #[unsafe(no_mangle)]
-pub extern fn render_frame(tpse: u32, argument_buffer: *mut u8) -> *const u8 {
+pub extern fn render_frame(tpse_id: u32, argument_buffer: *mut u8, nonce: u64) -> u32 {
   let mut state = STATE.lock().unwrap();
-  let Some(id) = state.lookup_buffer(argument_buffer) else { return null() };
+  let Some(id) = state.lookup_buffer(argument_buffer) else { return 2 };
   let argument_buffer = state.buffers.get(&id).unwrap();
   let args: RenderFrameArgs = match serde_json::from_slice(&argument_buffer) {
     Ok(res) => res,
     Err(err) => {
       log::error!("failed to parse render_video arguments: {err:?}");
-      return null();
+      return 4;
     }
   };
-  let Some(tpse) = state.tpses.get(&tpse) else {
-    log::error!("Rendering video failed: no such tpse");
-    return null()
-  };
-  let Some(ctx) = &tpse.render_data else {
-    log::error!("rendering video failed: tpse lacks render data");
-    return null()
-  };
+  let Some(tpse) = state.tpses.get(&tpse_id) else { return 1 };
+  let Some(ctx) = tpse.render_data.clone() else { return 2 };
   
-  let frame = ctx.render_frame(&FrameInfo {
-    real_time: 0.0, // todo
-    render_options: &RenderOptions {
-      board_elements: &args.board_elements,
-      debug_grid: args.debug_grid,
-      board: args.board_state.into(),
-      skyline: args.skyline,
-      block_size: args.block_size
-    }
+  spawn(async move {
+    let frame = ctx.render_frame(&FrameInfo {
+      real_time: 0.0, // todo
+      render_options: &RenderOptions {
+        board_elements: &args.board_elements,
+        debug_grid: args.debug_grid,
+        board: args.board_state.into(),
+        skyline: args.skyline,
+        block_size: args.block_size
+      }
+    }).await;
+    
+    let Ok(buffer) = frame.image.encode_png().await else {
+      unsafe { report_frame_render_done(tpse_id, nonce, null(), 0); }
+      return;
+    };
+    let len = buffer.len();
+    
+    let mut state = STATE.lock().unwrap();
+    let id = state.next_id();
+    state.buffers.insert(id, buffer.into());
+    let ptr = state.buffers.get_mut(&id).unwrap().as_ptr();
+    
+    unsafe { report_frame_render_done(tpse_id, nonce, ptr, len); }
   });
-  
-  let Ok(buffer) = frame.image.encode_png() else { return null() };
-  
-  let id = state.next_id();
-  state.buffers.insert(id, buffer.into());
-  state.buffers.get_mut(&id).unwrap().as_ptr()
+  0
 }
 // 
 // #[wasm_bindgen]

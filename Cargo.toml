@@ -8,7 +8,7 @@ authors = ["UniQMG"]
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = ["software_rendering", "extra_software_decoders"]
+default = ["extra_software_decoders"]
 # Software rendering implementation of image manipulation primitives
 software_rendering = ["dep:image", "dep:imageproc", "dep:resvg", "dep:usvg", "dep:tiny-skia", "dep:ab_glyph"]
 # Software decoding for multi-frame trickier formats like gifs and animated webps
@@ -36,6 +36,7 @@ slotmap = "1.1.1"
 # Other utilities
 thiserror = "2.0.11"
 log = "0.4.17"
+async-channel = "2.5.0"
 
 # Image
 image = { optional = true, version = "0.25.5", default-features = false, features = ["bmp","dds","exr","ff","gif","hdr","ico","jpeg","png","pnm","qoi","tga","tiff","webp"] } # all the defaults except avif, which has a transitive relationship on wasm-bindgen

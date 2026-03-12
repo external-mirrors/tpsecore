@@ -63,8 +63,8 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: ImportConte
         let mut source = SkinSplicer::<T>::default();
         source.load_decoded(skin_type, texture.create_copy());
         let groups = [
-          (source.convert(SkinType::Tetrio61Connected, Some(block_size)), &mut mino_canvas),
-          (source.convert(SkinType::Tetrio61ConnectedGhost, Some(block_size)), &mut ghost_canvas)
+          (source.convert(SkinType::Tetrio61Connected, Some(block_size)).await, &mut mino_canvas),
+          (source.convert(SkinType::Tetrio61ConnectedGhost, Some(block_size)).await, &mut ghost_canvas)
         ];
         for (frame, canvas) in groups {
           if let Some(frame) = frame {
@@ -98,7 +98,7 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: ImportConte
       for (canvas, skin_anim, skin_anim_meta, skin, skin_type) in instances {
         if let Some(canvas) = canvas {
           *skin_anim = Some(File {
-            binary: canvas.encode_png().map_err(|_| ctx.wrap(ImportErrorType::EncodeFailed))?,
+            binary: canvas.encode_png().await.map_err(|_| ctx.wrap(ImportErrorType::EncodeFailed))?,
             mime: "image/png".to_string()
           });
           *skin_anim_meta = Some(AnimMeta { frames: frames.len() as u32, delay });
@@ -108,9 +108,9 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: ImportConte
           source.load_decoded(skin_type, first_frame.clone());
           let first_frame_skin = source
             .convert(skin_type, Some(uhd_block_size))
-            .expect("Skin should exist if animated buffer was created");
+            .await.expect("Skin should exist if animated buffer was created");
           *skin = Some(File {
-            binary: first_frame_skin.encode_png().map_err(|_| ctx.wrap(ImportErrorType::EncodeFailed))?,
+            binary: first_frame_skin.encode_png().await.map_err(|_| ctx.wrap(ImportErrorType::EncodeFailed))?,
             mime: "image/png".to_string()
           });
         }
@@ -234,16 +234,16 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: ImportConte
         },
         SpecificImportType::Skin(skin_type) => {
           let (minos, ghost) = splice_to_t61::<T>(skin_type, file.binary.clone())
-            .map_err(|err| ctx.wrap(err))?;
+            .await.map_err(|err| ctx.wrap(err))?;
           if let Some(minos) = minos {
             tpse.skin = Some(File {
-              binary: minos.encode_png().unwrap(),
+              binary: minos.encode_png().await.unwrap(),
               mime: "image/png".to_string()
             });
           }
           if let Some(ghost) = ghost {
             tpse.ghost = Some(File {
-              binary: ghost.encode_png().unwrap(),
+              binary: ghost.encode_png().await.unwrap(),
               mime: "image/png".to_string()
             });
           }
@@ -281,13 +281,13 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: ImportConte
   Ok(tpse)
 }
 
-fn splice_to_t61<T: TPSEAccelerator>(skin_type: SkinType, bytes: Arc<[u8]>)
+async fn splice_to_t61<T: TPSEAccelerator>(skin_type: SkinType, bytes: Arc<[u8]>)
   -> Result<(Option<T::Texture>, Option<T::Texture>), ImportErrorType>
 {
   let target_resolution = 96;
   let mut source = SkinSplicer::<T>::default();
   source.load(skin_type, bytes).map_err(|err| LoadError::ErasedError(Box::new(err)))?;
-  let minos = source.convert(SkinType::Tetrio61Connected, Some(target_resolution));
-  let ghost = source.convert(SkinType::Tetrio61ConnectedGhost, Some(target_resolution));
+  let minos = source.convert(SkinType::Tetrio61Connected, Some(target_resolution)).await;
+  let ghost = source.convert(SkinType::Tetrio61ConnectedGhost, Some(target_resolution)).await;
   Ok((minos, ghost))
 }
