@@ -3,11 +3,10 @@ use std::io::Cursor;
 use std::time::Duration;
 
 use image::codecs::webp::WebPDecoder;
-use image::{AnimationDecoder, ImageDecoder, ImageFormat};
+use image::{AnimationDecoder, ImageFormat};
 use image::codecs::gif::GifDecoder;
 
 use crate::accel::traits::TPSEAccelerator;
-use crate::import::LoadError;
 
 pub fn decode_gif<T: TPSEAccelerator>(bytes: &[u8]) -> Result<Vec<(T::Texture, Duration)>, Box<dyn Error + Send + Sync>> {
   decode::<T>(GifDecoder::new(Cursor::new(bytes)))

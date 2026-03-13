@@ -1,8 +1,8 @@
-use std::borrow::Cow;
 use std::fmt::{Debug, Display, Formatter};
-use std::io::{BufWriter, Cursor};
 use std::str::FromStr;
 use std::sync::Arc;
+use base64::Engine;
+use base64::prelude::BASE64_STANDARD;
 use data_url::{DataUrl, DataUrlError, forgiving_base64};
 use sha2::{Digest, Sha256};
 
@@ -35,8 +35,7 @@ impl File {
 
   pub fn sha256_hex(&self) -> String {
     let string = hex::encode(self.sha256());
-    string.to_ascii_uppercase();
-    return string
+    return string.to_ascii_uppercase();
   }
 }
 
@@ -49,7 +48,7 @@ impl Debug for File {
 
 impl Display for File {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-    write!(f, "data:{};base64,{}", self.mime, base64::encode(&self.binary))
+    write!(f, "data:{};base64,{}", self.mime, BASE64_STANDARD.encode(&self.binary))
   }
 }
 

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::accel::traits::TPSEAccelerator;
-use crate::import::{ImportContextEntry, ImportError, ImportErrorType, ImportTaskContextEntry, ImportType};
+use crate::import::{ImportContextEntry, ImportError, ImportTaskContextEntry, ImportType};
 
 use crate::import::import_types::ImportContext;
 use crate::import::stages::{decide_specific_type, execute_task, reduce_types};

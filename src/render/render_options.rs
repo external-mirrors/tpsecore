@@ -1,4 +1,3 @@
-use crate::import::skin_splicer::Piece;
 use crate::render::{BoardElement, BoardMap, example_maps};
 
 

@@ -1,12 +1,11 @@
 // todo: finish rewrites of the below
 
-use std::io::Cursor;
 use std::ptr::null;
 
 use crate::accel::traits::TextureHandle;
 use crate::import::radiance::parse_radiance_sound_definition;
 use crate::import::skin_splicer::Piece;
-use crate::render::{BoardElement, FrameInfo, RenderContext, RenderOptions, SoundEffectInfo};
+use crate::render::{BoardElement, FrameInfo, RenderContext, RenderOptions};
 use crate::wasm::asynch::spawn;
 use crate::wasm::{STATE, State, report_frame_render_done};
 
@@ -15,7 +14,7 @@ use crate::wasm::{STATE, State, report_frame_render_done};
 /// Return value: null if no such tpse, otherwise buffer containing serialized atlas
 /// The returned buffer should be deallocated via [deallocate_buffer].
 #[unsafe(no_mangle)]
-pub extern fn get_atlas(tpse: u32) -> *const u8 {
+pub extern "C" fn get_atlas(tpse: u32) -> *const u8 {
   let mut state = STATE.lock().unwrap();
   let Some(tpse) = state.tpses.get(&tpse) else { return null() };
   let buffer = serde_json::to_vec(&tpse.tpse.custom_sound_atlas).unwrap();
@@ -30,7 +29,7 @@ pub extern fn get_atlas(tpse: u32) -> *const u8 {
 /// Return value: null if no such buffer or if parsing fails (see logs), otherwise buffer containing serialized atlas
 /// The returned buffer should be deallocated via [deallocate_buffer].
 #[unsafe(no_mangle)]
-pub extern fn parse_radiance_atlas(rsd_buffer: *mut u8) -> *const u8 {
+pub extern "C" fn parse_radiance_atlas(rsd_buffer: *mut u8) -> *const u8 {
   let mut state = STATE.lock().unwrap();
   let Some(id) = state.lookup_buffer(rsd_buffer) else { return null() };
   let rsd_buffer = state.buffers.get(&id).unwrap();
@@ -56,9 +55,9 @@ pub extern fn parse_radiance_atlas(rsd_buffer: *mut u8) -> *const u8 {
 /// the TPSE is deallocated.
 /// Return codes: 0=ok, 1=no such tpse, 2=loading failed
 #[unsafe(no_mangle)]
-pub extern fn prepare_render_data(tpse_id: u32) -> u32 {
+pub extern "C" fn prepare_render_data(tpse_id: u32) -> u32 {
   let mut state = STATE.lock().unwrap();
-  let State { tpses, buffers, .. } = &mut *state;
+  let State { tpses, .. } = &mut *state;
   let Some(tpse) = tpses.get_mut(&tpse_id) else { return 1 };
   match RenderContext::try_from_tpse(&tpse.tpse) {
     Err(_err) => {
@@ -75,9 +74,9 @@ pub extern fn prepare_render_data(tpse_id: u32) -> u32 {
 /// Throws away decoded buffers to free up memory
 /// Return codes: 0=ok, 1=no such tpse
 #[unsafe(no_mangle)]
-pub extern fn discard_render_data(tpse_id: u32) -> u32 {
+pub extern "C" fn discard_render_data(tpse_id: u32) -> u32 {
   let mut state = STATE.lock().unwrap();
-  let State { tpses, buffers, .. } = &mut *state;
+  let State { tpses, .. } = &mut *state;
   let Some(tpse) = tpses.get_mut(&tpse_id) else { return 1 };
   tpse.render_data = None;
   0
@@ -90,8 +89,6 @@ fn default_board_elements() -> Vec<BoardElement> {
 }
 #[derive(Debug, serde::Deserialize)]
 struct RenderFrameArgs {
-  #[serde(default)]
-  real_time: f32,
   board_state: Vec<Vec<Option<(Piece, u8)>>>,
   #[serde(default = "default_board_elements")]
   board_elements: Vec<BoardElement>,
@@ -105,8 +102,8 @@ struct RenderFrameArgs {
 
 // return code 0=queued 1=no such tpse 2=tpse lacks render data 3=no such argument buffer 4=unparseable arguments
 #[unsafe(no_mangle)]
-pub extern fn render_frame(tpse_id: u32, argument_buffer: *mut u8, nonce: u64) -> u32 {
-  let mut state = STATE.lock().unwrap();
+pub extern "C" fn render_frame(tpse_id: u32, argument_buffer: *mut u8, nonce: u64) -> u32 {
+  let state = STATE.lock().unwrap();
   let Some(id) = state.lookup_buffer(argument_buffer) else { return 2 };
   let argument_buffer = state.buffers.get(&id).unwrap();
   let args: RenderFrameArgs = match serde_json::from_slice(&argument_buffer) {

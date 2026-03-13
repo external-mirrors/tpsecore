@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use crate::accel::traits::{TPSEAccelerator, TextureHandle};
 
 pub fn nine_slice
@@ -32,7 +30,7 @@ pub async fn nine_slice_resize<T: TPSEAccelerator>
   }
   let sources = nine_slice(tex.width().await?, tex.height().await?, pad_top, pad_right, pad_bottom, pad_left);
   let dests = nine_slice(w, h, pad_top, pad_right, pad_bottom, pad_left);
-  let mut dest = T::new_texture(w, h);
+  let dest = T::new_texture(w, h);
   for ((sx, sy, sw, sh), (dx, dy, dw, dh)) in sources.iter().copied().zip(dests.iter().copied()) {
     if sw == 0 || sh == 0 { continue; }
     let slice = tex.slice(sx, sy, sw, sh);

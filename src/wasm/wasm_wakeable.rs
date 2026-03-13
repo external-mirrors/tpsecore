@@ -21,15 +21,15 @@ static WAKEABLES: LazyLock<Mutex<SlotMap<DefaultKey, WasmWakeableState>>> = Lazy
 
 
 #[unsafe(no_mangle)]
-pub extern fn provide_wakeable_zero(key: u64) -> u32 {
+pub extern "C" fn provide_wakeable_zero(key: u64) -> u32 {
   provide_wakeable(key, WasmWakeableSize::Zero)
 }
 #[unsafe(no_mangle)]
-pub extern fn provide_wakeable_one(key: u64, one: u64) -> u32 {
+pub extern "C" fn provide_wakeable_one(key: u64, one: u64) -> u32 {
   provide_wakeable(key, WasmWakeableSize::One(one))
 }
 #[unsafe(no_mangle)]
-pub extern fn provide_wakeable_two(key: u64, one: u64, two: u64) -> u32 {
+pub extern "C" fn provide_wakeable_two(key: u64, one: u64, two: u64) -> u32 {
   provide_wakeable(key, WasmWakeableSize::Two(one, two))
 }
 
@@ -38,7 +38,7 @@ pub extern fn provide_wakeable_two(key: u64, one: u64, two: u64) -> u32 {
 pub fn provide_wakeable(key: u64, value: WasmWakeableSize) -> u32 {
   let key = DefaultKey::from(KeyData::from_ffi(key));
   let mut wakeables = WAKEABLES.lock().unwrap();
-  let Some(mut slot) = wakeables.get_mut(key) else { return 1 };
+  let Some(slot) = wakeables.get_mut(key) else { return 1 };
   match slot {
     WasmWakeableState::Unpolled => {
       *slot = WasmWakeableState::Finished(value);

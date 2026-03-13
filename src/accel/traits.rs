@@ -13,6 +13,7 @@ pub trait TPSEAccelerator {
 /// A handle to a texture.
 /// Cloning the handle still points to the original texture. Use [create_copy] to create an independent copy.
 /// Some methods mutate, and some create new versions.
+#[allow(async_fn_in_trait)] // maybe fix later
 pub trait TextureHandle: Clone {
   type Error: std::error::Error + Send + Sync + 'static;
   async fn width(&self) -> Result<u32, Self::Error>;

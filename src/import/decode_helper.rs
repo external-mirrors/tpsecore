@@ -1,16 +1,12 @@
-use std::ffi::{CStr, CString};
 use std::io::Cursor;
 use std::io::ErrorKind::UnexpectedEof;
 use std::ops::Deref;
-use std::os::raw::c_char;
-use std::ptr::{null, null_mut};
 use symphonia::core::audio::SampleBuffer;
 use symphonia::core::codecs::CODEC_TYPE_NULL;
 use symphonia::core::formats::FormatOptions;
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::probe::Hint;
 use symphonia::default::{get_codecs, get_probe};
-use crate::import::import_task::SoundEffect;
 use crate::import::{ImportErrorType, RenderFailure};
 use crate::import::LoadError::{NoSupportedAudioTrack, SymphoniaError};
 use crate::tpse::{CustomSoundAtlas, TPSE};
@@ -67,7 +63,7 @@ pub fn decode(bytes: &[u8], extension: Option<&str>, mut caller: impl FnMut(&[f3
     hint.with_extension(extension);
   }
 
-  let mut stream = MediaSourceStream::new(Box::new(Cursor::new(Vec::from(bytes))), Default::default());
+  let stream = MediaSourceStream::new(Box::new(Cursor::new(Vec::from(bytes))), Default::default());
 
   let fmt_opts = FormatOptions { enable_gapless: true, ..Default::default() };
   let mut probe = get_probe()

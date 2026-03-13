@@ -1,7 +1,4 @@
-use std::collections::VecDeque;
 use std::mem::take;
-use std::ptr::null;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 
 use async_channel::Sender;
@@ -21,7 +18,7 @@ impl WasmAcceleratorState {
   pub fn new_handle(&mut self, init_dimension: Option<(u32, u32)>) -> WasmTextureHandle {
     let dimensions = OnceLock::new();
     if let Some(init_dimension) = init_dimension {
-      dimensions.set(init_dimension);
+      dimensions.set(init_dimension).expect("freshly made oncelock");
     }
     let handle = WasmTextureHandle(Arc::new(WasmTextureHandleInner {
       id: self.id_counter,
@@ -37,7 +34,7 @@ impl WasmAcceleratorState {
   fn flush_command_buffer(&mut self) -> Option<WasmWakeable> {
     if self.command_buffer.is_empty() { return None }
     let (wake_id, future) = WasmWakeable::new();
-    let Ok(None) = command_flush_task.force_send(FlushedCommands {
+    let Ok(None) = COMMAND_FLUSH_TASK.force_send(FlushedCommands {
       command_buffer: take(&mut self.command_buffer),
       arcs_in_command_buffer: take(&mut self.arcs_in_command_buffer),
       notify: wake_id
@@ -50,10 +47,11 @@ impl WasmAcceleratorState {
 
 struct FlushedCommands {
   command_buffer: Vec<u8>,
+  #[allow(dead_code)] // it's never "read" but it _is_ dropped for effect
   arcs_in_command_buffer: Vec<Arc<[u8]>>,
   notify: u64
 }
-static command_flush_task: LazyLock<Sender<FlushedCommands>> = LazyLock::new(|| {
+static COMMAND_FLUSH_TASK: LazyLock<Sender<FlushedCommands>> = LazyLock::new(|| {
   let (tx, rx) = async_channel::unbounded::<FlushedCommands>();
   crate::wasm::asynch::spawn(async move {
     while let Ok(flush) = rx.recv().await {
@@ -170,7 +168,7 @@ impl WasmTextureHandle {
       let mut height: u32 = 0;
       unsafe { fetch_dimensions(self.0.id, &mut code, &mut width, &mut height) };
       
-      if (code != 0) {
+      if code != 0 {
         let mut state = TPSE_STATE.lock().unwrap();
         let buf_id = state.lookup_buffer(code as *mut u8).unwrap();
         let data = state.buffers.remove(&buf_id).unwrap();
@@ -178,7 +176,7 @@ impl WasmTextureHandle {
         return Err(LoadError::WasmAcceleratorError(message));
       }
       
-      self.0.dimensions.set((width, height));
+      let _ = self.0.dimensions.set((width, height));
     }
     Ok(*self.0.dimensions.get().unwrap())
   }
@@ -196,9 +194,9 @@ impl TextureHandle for WasmTextureHandle {
 
   async fn encode_png(&self) -> Result<Arc<[u8]>, Self::Error> {
     let flush_complete = STATE.lock().unwrap().flush_command_buffer();
-    if let Some(f) = flush_complete { f.await; } // STATE lock dropped at this point
+    if let Some(f) = flush_complete { f.await.expect("should never be dropped"); } // STATE lock dropped at this point
     
-    let mut state = STATE.lock().unwrap();
+    let state = STATE.lock().unwrap();
     let (wake_id, future) = WasmWakeable::new();
     unsafe { encode_png(self.0.id, wake_id) };
     drop(state);

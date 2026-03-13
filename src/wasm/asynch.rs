@@ -3,7 +3,7 @@
 use std::collections::VecDeque;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
-use std::task::{Context, Poll, Wake, Waker};
+use std::task::{Context, Wake};
 
 use crate::wasm::set_runtime_sleeping;
 
@@ -35,7 +35,7 @@ pub fn spawn(task: impl Future<Output = ()> + Sync + Send + 'static) {
 
 /// Processes one task on the runtime
 #[unsafe(no_mangle)]
-pub extern fn tick_async() {
+pub extern "C" fn tick_async() {
   let task = match STATE.lock().unwrap().pop_front() {
     Some(task) => task,
     None => {

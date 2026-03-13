@@ -1,5 +1,5 @@
 use crate::import::{ImportType, SkinType, SpecificImportType};
-use crate::import::import_task::{ImportTask, SoundEffect};
+use crate::import::import_task::ImportTask;
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum ImportContextEntry {

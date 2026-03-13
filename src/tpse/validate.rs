@@ -5,20 +5,23 @@ impl TPSE {
   pub fn validate(&self) -> Result<(), Vec<ValidationError>> {
     let mut errors = vec![];
     use ValidationError::*;
-    use AssetValidationError::*;
     use AssetType::*;
 
     // todo: check image sizes
 
     if let Some(music) = &self.music {
       for song in music {
-        self.ensure_exists(&song.id, Song).map_err(|err| errors.push(err));
+        if let Err(err) = self.ensure_exists(&song.id, Song) {
+          errors.push(err);
+        }
       }
     }
 
     if let Some(backgrounds) = &self.backgrounds {
       for bg in backgrounds {
-        self.ensure_exists(&bg.id, Background).map_err(|err| errors.push(err));
+        if let Err(err) = self.ensure_exists(&bg.id, Background) {
+          errors.push(err);
+        }
       }
     }
 

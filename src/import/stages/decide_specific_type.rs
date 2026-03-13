@@ -1,6 +1,4 @@
-use std::borrow::Cow;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 use std::sync::Arc;
 use log::Level;
 use crate::accel::traits::{TPSEAccelerator, TextureHandle};
@@ -49,7 +47,7 @@ pub async fn decide_specific_type<'c, T: TPSEAccelerator>
             let asset = ctx.asset_source.provide(Asset::TetrioRSD).await.map_err(|err| ctx.wrap(err))?;
             let rsd = parse_radiance_sound_definition(&asset).map_err(|err| ctx.wrap(err.into()))?;
             let atlas = rsd.to_old_style_atlas();
-            let sfx = PathBuf::from(filename).file_stem().and_then(|ext| atlas.get(filename));
+            let sfx = PathBuf::from(filename).file_stem().and_then(|ext| ext.to_str()).and_then(|ext| atlas.get(ext));
             match sfx {
               Some(_) => SIT::SoundEffects,
               None => SIT::Music

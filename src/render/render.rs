@@ -1,9 +1,8 @@
 use std::borrow::Cow;
 use std::io::Cursor;
-use std::rc::Rc;
 use hound::{SampleFormat, WavSpec};
 use crate::accel::traits::{TPSEAccelerator, TextureHandle};
-use crate::import::{ImportErrorType, LoadError, SkinType};
+use crate::import::{ImportErrorType, SkinType};
 use crate::import::decode_helper::TetrioAtlasDecoder;
 use crate::import::skin_splicer::SkinSplicer;
 use crate::render::{BoardElement, clone_slice, nine_slice_resize, RenderOptions};
@@ -58,6 +57,7 @@ pub enum SoundEffectRenderError<'a> {
 }
 
 /// Renders a sequence of sound effects to a continuous buffer
+#[allow(unused)] // remove when done reimplementing
 pub fn render_sound_effects<'a>
   (tpse: &'a TPSE, opts: &'a [SoundEffectInfo])
   -> Result<File, SoundEffectRenderError<'a>>
@@ -162,7 +162,7 @@ impl<T: TPSEAccelerator> RenderContext<T> {
   pub async fn render_frame(&self, frame: &FrameInfo<'_>)
     -> Result<RenderedFrame<T::Texture>, <T::Texture as TextureHandle>::Error>
   {
-    /// A list of drawing tasks to perform. Units are in pixels.
+    // A list of drawing tasks to perform. Units are in pixels.
     let mut tasks: Vec<(T::Texture, i64, i64, i64, i64)> = vec![];
 
     for el in BoardElement::get_draw_order() {
@@ -175,7 +175,7 @@ impl<T: TPSEAccelerator> RenderContext<T> {
         BoardTextureKind::Grid => &self.grid
       }) else { continue };
       let texture = clone_slice::<T>(&texture, x, y, w, h);
-      let (x, y, mut w, mut h) = el.get_target(&frame.render_options);
+      let (x, y, w, h) = el.get_target(&frame.render_options);
       let texture = nine_slice_resize::<T>(&texture, w as u32 * scale, h as u32 * scale, pt, pr, pb, pl).await?;
       let texture = texture.tinted(el.tint());
       tasks.push((texture, x, y, w, h))
@@ -234,10 +234,10 @@ impl<T: TPSEAccelerator> RenderContext<T> {
         max_y: 0
       })
     } else {
-      let min_x = tasks.iter().map(|(img, x, y, w, h)| *x).min().unwrap();
-      let min_y = tasks.iter().map(|(img, x, y, w, h)| *y).min().unwrap();
-      let max_x = tasks.iter().map(|(img, x, y, w, h)| x + w).max().unwrap();
-      let max_y = tasks.iter().map(|(img, x, y, w, h)| y + h).max().unwrap();
+      let min_x = tasks.iter().map(|(_, x, _, _, _)| *x).min().unwrap();
+      let min_y = tasks.iter().map(|(_, _, y, _, _)| *y).min().unwrap();
+      let max_x = tasks.iter().map(|(_, x, _, w, _)| x + w).max().unwrap();
+      let max_y = tasks.iter().map(|(_, _, y, _, h)| y + h).max().unwrap();
 
       let canvas_w: u32 = (max_x - min_x).try_into().expect("min_x > max_x or max_x - min_x overflow");
       let canvas_h: u32 = (max_y - min_y).try_into().expect("min_y > max_y or max_y - min_y overflow");
@@ -246,7 +246,7 @@ impl<T: TPSEAccelerator> RenderContext<T> {
         #[cfg(test)]
         panic!("excessive texture size requested");
       }
-      let mut canvas = T::new_texture(canvas_w, canvas_h);
+      let canvas = T::new_texture(canvas_w, canvas_h);
 
       for (img, x, y, w, h) in tasks {
         canvas.overlay(&img.resized(w as u32, h as u32), x - min_x, y - min_y);

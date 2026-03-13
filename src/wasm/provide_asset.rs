@@ -14,8 +14,8 @@ use crate::wasm::{fetch_asset, STATE};
 ///
 /// Return codes: 0=ok, 1=no such buffer, 2=unknown asset type
 #[unsafe(no_mangle)]
-pub extern fn provide_asset(asset_type: u8, ptr: *mut u8) -> u32 {
-  let mut state = STATE.lock().unwrap();
+pub extern "C" fn provide_asset(asset_type: u8, ptr: *mut u8) -> u32 {
+  let state = STATE.lock().unwrap();
   let Ok(asset) = Asset::try_from(asset_type) else { return 2 };
   let listeners = match asset {
     Asset::TetrioJS => &ASSET_TETRIOJS_LISTENERS,
@@ -63,7 +63,7 @@ impl Future for AwaitAssetFuture {
       };
       let waker = cx.waker().clone();
       listeners.lock().unwrap().push(Box::new(move |data| {
-        sender.send(data.clone());
+        let _ = sender.send(data.clone());
         waker.wake();
       }));
       unsafe { fetch_asset(self.0 as u32); }

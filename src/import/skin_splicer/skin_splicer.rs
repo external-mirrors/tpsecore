@@ -1,10 +1,8 @@
-use std::io::Cursor;
-use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 use crate::accel::traits::{TPSEAccelerator, TextureHandle};
 use crate::import::skin_splicer::{lookup_skin, Piece};
 use crate::import::skin_splicer::maps::*;
-use crate::import::{LoadError, SkinType};
+use crate::import::SkinType;
 
 pub struct SkinSplicer<T: TPSEAccelerator> {
   images: Vec<(SkinType, T::Texture)>
@@ -98,8 +96,8 @@ impl<T: TPSEAccelerator> SkinSplicer<T> {
     let mut valid = false;
 
     for piece in Piece::values() {
-      for conn in tetrio_connections_submap.connections.keys() {
-        let default_conn = tetrio_connections_submap.default;
+      for conn in TETRIO_CONNECTIONS_SUBMAP.connections.keys() {
+        let default_conn = TETRIO_CONNECTIONS_SUBMAP.default;
         let texture = match self.get(*piece, *conn, block_size_override).await? {
           None => self.get(*piece, default_conn, block_size_override).await?,
           Some(x) => Some(x)

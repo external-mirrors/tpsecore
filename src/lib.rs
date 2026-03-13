@@ -1,5 +1,3 @@
-#![allow(warnings, unused)] // todo: fix these at some point
-
 pub mod tpse;
 pub mod import;
 pub mod render;

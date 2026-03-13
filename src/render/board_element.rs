@@ -107,28 +107,28 @@ impl BoardElement {
     let (width, _) = opts.board_size();
     let width = width as i64;
     let height = opts.skyline as i64;
-    /// How many pixels each block is
+    // How many pixels each block is
     let block = opts.block_size;
-    /// How wide a border on the board is
+    // How wide a border on the board is
     let border = 9 / BORDER_SCALE as i64;
-    /// The space inside the board where the blocks and grid are located.
-    /// Does not include the default borders.
+    // The space inside the board where the blocks and grid are located.
+    // Does not include the default borders.
     let board_internal = (0, 0, block*width, block*height);
-    /// The whole board including its borders but not including any bars
-    let board_with_border = (-border, 0, block*width + border*2, block*height + border);
-    /// How wide each bar is
+    // // The whole board including its borders but not including any bars
+    // let board_with_border = (-border, 0, block*width + border*2, block*height + border);
+    // How wide each bar is
     let bar_width = 32;
-    /// The garbage bar, located to the left of the board
+    // The garbage bar, located to the left of the board
     let mut garbage_bar = (border*-2 + bar_width*-1, 0, border*2 + bar_width, block*height + border);
     let has_garbage_bar = [BoardElement::GarbageBar, BoardElement::Garbage, BoardElement::PendingGarbage].iter()
       .any(|x| opts.board_elements.contains(x));
     if !has_garbage_bar { garbage_bar.2 = 0; }
-    /// The progress bar, located to the right of the board
+    // The progress bar, located to the right of the board
     let mut progress_bar = (block*width, 0, border*2 + bar_width, block*height + border);
     let has_progress_bar = [BoardElement::ProgressBar, BoardElement::Progress].iter()
       .any(|x| opts.board_elements.contains(x));
     if !has_progress_bar { progress_bar.2 = 0; }
-    /// How many pixels to bad the bar contents by
+    // How many pixels to bad the bar contents by
     let bar_pad = 4;
 
     match self {

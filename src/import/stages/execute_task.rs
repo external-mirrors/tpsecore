@@ -1,24 +1,15 @@
+use std::io::Read;
 use std::collections::{HashMap, HashSet};
-use std::io::{Cursor, Read, Seek};
-use std::path::{Path, PathBuf};
+use std::io::Cursor;
 use std::sync::Arc;
 use std::time::Duration;
 use hound::{SampleFormat, WavSpec};
 use log::Level;
-use symphonia::core::audio::{AudioBufferRef, SampleBuffer};
-use symphonia::core::codecs::{CODEC_TYPE_NULL, DecoderOptions};
-use symphonia::core::formats::FormatOptions;
-use symphonia::core::io::MediaSourceStream;
-use symphonia::core::meta::MetadataOptions;
-use symphonia::core::probe::Hint;
-use symphonia::default::{get_codecs, get_probe};
-use zip::read::ZipFile;
 use zip::ZipArchive;
 use crate::accel::traits::{TPSEAccelerator, TextureHandle};
 use crate::import::import_task::ImportTask;
-use crate::import::{Asset, import, ImportErrorType, ImportContext, ImportType, LoadError, OtherSkinType, SkinType, SpecificImportType, ImportContextEntry, ImportError};
+use crate::import::{Asset, import, ImportErrorType, ImportContext, ImportType, LoadError, SkinType, SpecificImportType, ImportContextEntry, ImportError};
 use crate::import::decode_helper::decode;
-use crate::import::LoadError::{NoSupportedAudioTrack, SymphoniaError};
 use crate::import::radiance::parse_radiance_sound_definition;
 use crate::import::skin_splicer::{SkinSplicer};
 use crate::tpse::{AnimMeta, Background, File, MiscTPSEValue, Song, SongMetadata, TPSE};
@@ -59,7 +50,7 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: ImportConte
       let block_size = 48; // at HD/1024x1024 resolution
       let mut mino_canvas: Option<T::Texture> = None;
       let mut ghost_canvas: Option<T::Texture> = None;
-      for (i, (texture, duration)) in frames.iter().enumerate() {
+      for (i, (texture, _)) in frames.iter().enumerate() {
         let mut source = SkinSplicer::<T>::default();
         source.load_decoded(skin_type, texture.create_copy());
         let groups = [
@@ -223,7 +214,7 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: ImportConte
               filename.to_string(),
               {
                 let mut bytes = Vec::new();
-                file.read_to_end(&mut bytes);
+                file.read_to_end(&mut bytes).map_err(|err| ctx.wrap(LoadError::Zip(err.into()).into()))?;
                 bytes.into()
               }
             ));

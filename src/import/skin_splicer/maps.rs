@@ -53,84 +53,84 @@ impl SkinSlice {
 
 pub fn tetrio_map(piece: Piece) -> Option<SkinSlice> {
   match piece {
-    Piece::Z            => Some(SkinSlice { x:  0.0/12.0, y: 0.0, w: 1.0/12.4, h: 1.0, connections: &no_conn_submap }),
-    Piece::L            => Some(SkinSlice { x:  1.0/12.0, y: 0.0, w: 1.0/12.4, h: 1.0, connections: &no_conn_submap }),
-    Piece::O            => Some(SkinSlice { x:  2.0/12.0, y: 0.0, w: 1.0/12.4, h: 1.0, connections: &no_conn_submap }),
-    Piece::S            => Some(SkinSlice { x:  3.0/12.0, y: 0.0, w: 1.0/12.4, h: 1.0, connections: &no_conn_submap }),
-    Piece::I            => Some(SkinSlice { x:  4.0/12.0, y: 0.0, w: 1.0/12.4, h: 1.0, connections: &no_conn_submap }),
-    Piece::J            => Some(SkinSlice { x:  5.0/12.0, y: 0.0, w: 1.0/12.4, h: 1.0, connections: &no_conn_submap }),
-    Piece::T            => Some(SkinSlice { x:  6.0/12.0, y: 0.0, w: 1.0/12.4, h: 1.0, connections: &no_conn_submap }),
-    Piece::Ghost        => Some(SkinSlice { x:  7.0/12.0, y: 0.0, w: 1.0/12.4, h: 1.0, connections: &no_conn_submap }),
-    Piece::HoldDisabled => Some(SkinSlice { x:  8.0/12.0, y: 0.0, w: 1.0/12.4, h: 1.0, connections: &no_conn_submap }),
-    Piece::Garbage      => Some(SkinSlice { x:  9.0/12.0, y: 0.0, w: 1.0/12.4, h: 1.0, connections: &no_conn_submap }),
-    Piece::DarkGarbage  => Some(SkinSlice { x: 10.0/12.0, y: 0.0, w: 1.0/12.4, h: 1.0, connections: &no_conn_submap }),
-    Piece::Topout       => Some(SkinSlice { x: 11.0/12.0, y: 0.0, w: 1.0/12.4, h: 1.0, connections: &no_conn_submap }),
+    Piece::Z            => Some(SkinSlice { x:  0.0/12.0, y: 0.0, w: 1.0/12.4, h: 1.0, connections: &NO_CONN_SUBMAP }),
+    Piece::L            => Some(SkinSlice { x:  1.0/12.0, y: 0.0, w: 1.0/12.4, h: 1.0, connections: &NO_CONN_SUBMAP }),
+    Piece::O            => Some(SkinSlice { x:  2.0/12.0, y: 0.0, w: 1.0/12.4, h: 1.0, connections: &NO_CONN_SUBMAP }),
+    Piece::S            => Some(SkinSlice { x:  3.0/12.0, y: 0.0, w: 1.0/12.4, h: 1.0, connections: &NO_CONN_SUBMAP }),
+    Piece::I            => Some(SkinSlice { x:  4.0/12.0, y: 0.0, w: 1.0/12.4, h: 1.0, connections: &NO_CONN_SUBMAP }),
+    Piece::J            => Some(SkinSlice { x:  5.0/12.0, y: 0.0, w: 1.0/12.4, h: 1.0, connections: &NO_CONN_SUBMAP }),
+    Piece::T            => Some(SkinSlice { x:  6.0/12.0, y: 0.0, w: 1.0/12.4, h: 1.0, connections: &NO_CONN_SUBMAP }),
+    Piece::Ghost        => Some(SkinSlice { x:  7.0/12.0, y: 0.0, w: 1.0/12.4, h: 1.0, connections: &NO_CONN_SUBMAP }),
+    Piece::HoldDisabled => Some(SkinSlice { x:  8.0/12.0, y: 0.0, w: 1.0/12.4, h: 1.0, connections: &NO_CONN_SUBMAP }),
+    Piece::Garbage      => Some(SkinSlice { x:  9.0/12.0, y: 0.0, w: 1.0/12.4, h: 1.0, connections: &NO_CONN_SUBMAP }),
+    Piece::DarkGarbage  => Some(SkinSlice { x: 10.0/12.0, y: 0.0, w: 1.0/12.4, h: 1.0, connections: &NO_CONN_SUBMAP }),
+    Piece::Topout       => Some(SkinSlice { x: 11.0/12.0, y: 0.0, w: 1.0/12.4, h: 1.0, connections: &NO_CONN_SUBMAP }),
   }
 }
 pub fn tetrio_61_map(piece: Piece) -> Option<SkinSlice> {
   match piece {
-    Piece::Z            => Some(SkinSlice { x: 0.0 * 6.0/32.0, y: 0.0 * 6.0/32.0, w: 6.0/32.0, h: 6.0/32.0, connections: &no_conn_submap }),
-    Piece::L            => Some(SkinSlice { x: 1.0 * 6.0/32.0, y: 0.0 * 6.0/32.0, w: 6.0/32.0, h: 6.0/32.0, connections: &no_conn_submap }),
-    Piece::O            => Some(SkinSlice { x: 2.0 * 6.0/32.0, y: 0.0 * 6.0/32.0, w: 6.0/32.0, h: 6.0/32.0, connections: &no_conn_submap }),
-    Piece::S            => Some(SkinSlice { x: 3.0 * 6.0/32.0, y: 0.0 * 6.0/32.0, w: 6.0/32.0, h: 6.0/32.0, connections: &no_conn_submap }),
-    Piece::I            => Some(SkinSlice { x: 4.0 * 6.0/32.0, y: 0.0 * 6.0/32.0, w: 6.0/32.0, h: 6.0/32.0, connections: &no_conn_submap }),
-    Piece::J            => Some(SkinSlice { x: 0.0 * 6.0/32.0, y: 1.0 * 6.0/32.0, w: 6.0/32.0, h: 6.0/32.0, connections: &no_conn_submap }),
-    Piece::T            => Some(SkinSlice { x: 1.0 * 6.0/32.0, y: 1.0 * 6.0/32.0, w: 6.0/32.0, h: 6.0/32.0, connections: &no_conn_submap }),
-    Piece::HoldDisabled => Some(SkinSlice { x: 2.0 * 6.0/32.0, y: 1.0 * 6.0/32.0, w: 6.0/32.0, h: 6.0/32.0, connections: &no_conn_submap }),
-    Piece::Garbage      => Some(SkinSlice { x: 3.0 * 6.0/32.0, y: 1.0 * 6.0/32.0, w: 6.0/32.0, h: 6.0/32.0, connections: &no_conn_submap }),
-    Piece::DarkGarbage  => Some(SkinSlice { x: 4.0 * 6.0/32.0, y: 1.0 * 6.0/32.0, w: 6.0/32.0, h: 6.0/32.0, connections: &no_conn_submap }),
+    Piece::Z            => Some(SkinSlice { x: 0.0 * 6.0/32.0, y: 0.0 * 6.0/32.0, w: 6.0/32.0, h: 6.0/32.0, connections: &NO_CONN_SUBMAP }),
+    Piece::L            => Some(SkinSlice { x: 1.0 * 6.0/32.0, y: 0.0 * 6.0/32.0, w: 6.0/32.0, h: 6.0/32.0, connections: &NO_CONN_SUBMAP }),
+    Piece::O            => Some(SkinSlice { x: 2.0 * 6.0/32.0, y: 0.0 * 6.0/32.0, w: 6.0/32.0, h: 6.0/32.0, connections: &NO_CONN_SUBMAP }),
+    Piece::S            => Some(SkinSlice { x: 3.0 * 6.0/32.0, y: 0.0 * 6.0/32.0, w: 6.0/32.0, h: 6.0/32.0, connections: &NO_CONN_SUBMAP }),
+    Piece::I            => Some(SkinSlice { x: 4.0 * 6.0/32.0, y: 0.0 * 6.0/32.0, w: 6.0/32.0, h: 6.0/32.0, connections: &NO_CONN_SUBMAP }),
+    Piece::J            => Some(SkinSlice { x: 0.0 * 6.0/32.0, y: 1.0 * 6.0/32.0, w: 6.0/32.0, h: 6.0/32.0, connections: &NO_CONN_SUBMAP }),
+    Piece::T            => Some(SkinSlice { x: 1.0 * 6.0/32.0, y: 1.0 * 6.0/32.0, w: 6.0/32.0, h: 6.0/32.0, connections: &NO_CONN_SUBMAP }),
+    Piece::HoldDisabled => Some(SkinSlice { x: 2.0 * 6.0/32.0, y: 1.0 * 6.0/32.0, w: 6.0/32.0, h: 6.0/32.0, connections: &NO_CONN_SUBMAP }),
+    Piece::Garbage      => Some(SkinSlice { x: 3.0 * 6.0/32.0, y: 1.0 * 6.0/32.0, w: 6.0/32.0, h: 6.0/32.0, connections: &NO_CONN_SUBMAP }),
+    Piece::DarkGarbage  => Some(SkinSlice { x: 4.0 * 6.0/32.0, y: 1.0 * 6.0/32.0, w: 6.0/32.0, h: 6.0/32.0, connections: &NO_CONN_SUBMAP }),
     Piece::Ghost        => None,
     Piece::Topout       => None
   }
 }
 pub fn tetrio_61_ghost_map(piece: Piece) -> Option<SkinSlice> {
   match piece {
-    Piece::Ghost => Some(SkinSlice { x: 0.0/8.0, y: 0.0, w: 3.0/8.0, h: 3.0/8.0, connections: &no_conn_submap }),
-    Piece::Topout => Some(SkinSlice { x: 3.0/8.0, y: 0.0, w: 3.0/8.0, h: 3.0/8.0, connections: &no_conn_submap }),
+    Piece::Ghost => Some(SkinSlice { x: 0.0/8.0, y: 0.0, w: 3.0/8.0, h: 3.0/8.0, connections: &NO_CONN_SUBMAP }),
+    Piece::Topout => Some(SkinSlice { x: 3.0/8.0, y: 0.0, w: 3.0/8.0, h: 3.0/8.0, connections: &NO_CONN_SUBMAP }),
     _ => None
   }
 }
 pub fn tetrio_61_conn_map(piece: Piece) -> Option<SkinSlice> {
   match piece {
-    Piece::Z            => Some(SkinSlice { x:  0.0 * 6.0/32.0, y:  0.0 * 9.0/32.0, w: 6.0/32.0, h: 9.0/32.0, connections: &tetrio_connections_submap }),
-    Piece::L            => Some(SkinSlice { x:  1.0 * 6.0/32.0, y:  0.0 * 9.0/32.0, w: 6.0/32.0, h: 9.0/32.0, connections: &tetrio_connections_submap }),
-    Piece::O            => Some(SkinSlice { x:  2.0 * 6.0/32.0, y:  0.0 * 9.0/32.0, w: 6.0/32.0, h: 9.0/32.0, connections: &tetrio_connections_submap }),
-    Piece::S            => Some(SkinSlice { x:  3.0 * 6.0/32.0, y:  0.0 * 9.0/32.0, w: 6.0/32.0, h: 9.0/32.0, connections: &tetrio_connections_submap }),
-    Piece::I            => Some(SkinSlice { x:  0.0 * 6.0/32.0, y:  1.0 * 9.0/32.0, w: 6.0/32.0, h: 9.0/32.0, connections: &tetrio_connections_submap }),
-    Piece::J            => Some(SkinSlice { x:  1.0 * 6.0/32.0, y:  1.0 * 9.0/32.0, w: 6.0/32.0, h: 9.0/32.0, connections: &tetrio_connections_submap }),
-    Piece::T            => Some(SkinSlice { x:  2.0 * 6.0/32.0, y:  1.0 * 9.0/32.0, w: 6.0/32.0, h: 9.0/32.0, connections: &tetrio_connections_submap }),
-    Piece::HoldDisabled => Some(SkinSlice { x:  3.0 * 6.0/32.0, y:  1.0 * 9.0/32.0, w: 6.0/32.0, h: 9.0/32.0, connections: &tetrio_connections_submap }),
-    Piece::Garbage      => Some(SkinSlice { x:  4.0 * 6.0/32.0, y:  0.0 * 6.0/32.0, w: 6.0/32.0, h: 6.0/32.0, connections: &tetrio_garbage_connections_submap }),
-    Piece::DarkGarbage  => Some(SkinSlice { x:  4.0 * 6.0/32.0, y:  1.0 * 6.0/32.0, w: 6.0/32.0, h: 6.0/32.0, connections: &tetrio_garbage_connections_submap }),
+    Piece::Z            => Some(SkinSlice { x:  0.0 * 6.0/32.0, y:  0.0 * 9.0/32.0, w: 6.0/32.0, h: 9.0/32.0, connections: &TETRIO_CONNECTIONS_SUBMAP }),
+    Piece::L            => Some(SkinSlice { x:  1.0 * 6.0/32.0, y:  0.0 * 9.0/32.0, w: 6.0/32.0, h: 9.0/32.0, connections: &TETRIO_CONNECTIONS_SUBMAP }),
+    Piece::O            => Some(SkinSlice { x:  2.0 * 6.0/32.0, y:  0.0 * 9.0/32.0, w: 6.0/32.0, h: 9.0/32.0, connections: &TETRIO_CONNECTIONS_SUBMAP }),
+    Piece::S            => Some(SkinSlice { x:  3.0 * 6.0/32.0, y:  0.0 * 9.0/32.0, w: 6.0/32.0, h: 9.0/32.0, connections: &TETRIO_CONNECTIONS_SUBMAP }),
+    Piece::I            => Some(SkinSlice { x:  0.0 * 6.0/32.0, y:  1.0 * 9.0/32.0, w: 6.0/32.0, h: 9.0/32.0, connections: &TETRIO_CONNECTIONS_SUBMAP }),
+    Piece::J            => Some(SkinSlice { x:  1.0 * 6.0/32.0, y:  1.0 * 9.0/32.0, w: 6.0/32.0, h: 9.0/32.0, connections: &TETRIO_CONNECTIONS_SUBMAP }),
+    Piece::T            => Some(SkinSlice { x:  2.0 * 6.0/32.0, y:  1.0 * 9.0/32.0, w: 6.0/32.0, h: 9.0/32.0, connections: &TETRIO_CONNECTIONS_SUBMAP }),
+    Piece::HoldDisabled => Some(SkinSlice { x:  3.0 * 6.0/32.0, y:  1.0 * 9.0/32.0, w: 6.0/32.0, h: 9.0/32.0, connections: &TETRIO_CONNECTIONS_SUBMAP }),
+    Piece::Garbage      => Some(SkinSlice { x:  4.0 * 6.0/32.0, y:  0.0 * 6.0/32.0, w: 6.0/32.0, h: 6.0/32.0, connections: &TETRIO_GARBAGE_CONNECTIONS_SUBMAP }),
+    Piece::DarkGarbage  => Some(SkinSlice { x:  4.0 * 6.0/32.0, y:  1.0 * 6.0/32.0, w: 6.0/32.0, h: 6.0/32.0, connections: &TETRIO_GARBAGE_CONNECTIONS_SUBMAP }),
     Piece::Ghost        => None,
     Piece::Topout       => None
   }
 }
 pub fn tetrio_61_conn_ghost_map(piece: Piece) -> Option<SkinSlice> {
   match piece {
-    Piece::Ghost  => Some(SkinSlice { x: 0.0/16.0, y: 0.0, w: 6.0/16.0, h: 9.0/16.0, connections: &tetrio_connections_submap }),
-    Piece::Topout => Some(SkinSlice { x: 6.0/16.0, y: 0.0, w: 6.0/16.0, h: 9.0/16.0, connections: &tetrio_connections_submap }),
+    Piece::Ghost  => Some(SkinSlice { x: 0.0/16.0, y: 0.0, w: 6.0/16.0, h: 9.0/16.0, connections: &TETRIO_CONNECTIONS_SUBMAP }),
+    Piece::Topout => Some(SkinSlice { x: 6.0/16.0, y: 0.0, w: 6.0/16.0, h: 9.0/16.0, connections: &TETRIO_CONNECTIONS_SUBMAP }),
     _ => None
   }
 }
 pub fn jstris_map(piece: Piece) -> Option<SkinSlice> {
   match piece {
-    Piece::Z            => Some(SkinSlice { x: 2.0/9.0, y: 0.0, w: 1.0/9.0, h: 1.0, connections: &no_conn_submap }),
-    Piece::L            => Some(SkinSlice { x: 3.0/9.0, y: 0.0, w: 1.0/9.0, h: 1.0, connections: &no_conn_submap }),
-    Piece::O            => Some(SkinSlice { x: 4.0/9.0, y: 0.0, w: 1.0/9.0, h: 1.0, connections: &no_conn_submap }),
-    Piece::S            => Some(SkinSlice { x: 5.0/9.0, y: 0.0, w: 1.0/9.0, h: 1.0, connections: &no_conn_submap }),
-    Piece::I            => Some(SkinSlice { x: 6.0/9.0, y: 0.0, w: 1.0/9.0, h: 1.0, connections: &no_conn_submap }),
-    Piece::J            => Some(SkinSlice { x: 7.0/9.0, y: 0.0, w: 1.0/9.0, h: 1.0, connections: &no_conn_submap }),
-    Piece::T            => Some(SkinSlice { x: 8.0/9.0, y: 0.0, w: 1.0/9.0, h: 1.0, connections: &no_conn_submap }),
-    Piece::Ghost        => Some(SkinSlice { x: 1.0/9.0, y: 0.0, w: 1.0/9.0, h: 1.0, connections: &no_conn_submap }),
-    Piece::Garbage      => Some(SkinSlice { x: 0.0/9.0, y: 0.0, w: 1.0/9.0, h: 1.0, connections: &no_conn_submap }),
+    Piece::Z            => Some(SkinSlice { x: 2.0/9.0, y: 0.0, w: 1.0/9.0, h: 1.0, connections: &NO_CONN_SUBMAP }),
+    Piece::L            => Some(SkinSlice { x: 3.0/9.0, y: 0.0, w: 1.0/9.0, h: 1.0, connections: &NO_CONN_SUBMAP }),
+    Piece::O            => Some(SkinSlice { x: 4.0/9.0, y: 0.0, w: 1.0/9.0, h: 1.0, connections: &NO_CONN_SUBMAP }),
+    Piece::S            => Some(SkinSlice { x: 5.0/9.0, y: 0.0, w: 1.0/9.0, h: 1.0, connections: &NO_CONN_SUBMAP }),
+    Piece::I            => Some(SkinSlice { x: 6.0/9.0, y: 0.0, w: 1.0/9.0, h: 1.0, connections: &NO_CONN_SUBMAP }),
+    Piece::J            => Some(SkinSlice { x: 7.0/9.0, y: 0.0, w: 1.0/9.0, h: 1.0, connections: &NO_CONN_SUBMAP }),
+    Piece::T            => Some(SkinSlice { x: 8.0/9.0, y: 0.0, w: 1.0/9.0, h: 1.0, connections: &NO_CONN_SUBMAP }),
+    Piece::Ghost        => Some(SkinSlice { x: 1.0/9.0, y: 0.0, w: 1.0/9.0, h: 1.0, connections: &NO_CONN_SUBMAP }),
+    Piece::Garbage      => Some(SkinSlice { x: 0.0/9.0, y: 0.0, w: 1.0/9.0, h: 1.0, connections: &NO_CONN_SUBMAP }),
     Piece::HoldDisabled => None,
     Piece::DarkGarbage  => None,
     Piece::Topout       => None
   }
 }
 pub fn jstris_conn_map(piece: Piece) -> Option<SkinSlice> {
-  Some(SkinSlice { connections: &jstris_connections_submap, ..jstris_map(piece)? })
+  Some(SkinSlice { connections: &JSTRIS_CONNECTIONS_SUBMAP, ..jstris_map(piece)? })
 }
 
 /// A map of connections within a piece region
@@ -171,9 +171,9 @@ impl ConnectionSubmap {
   }
 }
 
-pub static tetrio_connections_submap: LazyLock<ConnectionSubmap> = LazyLock::new(|| {
+pub static TETRIO_CONNECTIONS_SUBMAP: LazyLock<ConnectionSubmap> = LazyLock::new(|| {
   // Include all garbage sides, plus some extra ones.
-  let mut map = tetrio_garbage_connections_submap.clone();
+  let mut map = TETRIO_GARBAGE_CONNECTIONS_SUBMAP.clone();
   // Corner/elbow sides
   map.insert(0b00000110, &[(0, 4)]);
   map.insert(0b00000011, &[(1, 4)]);
@@ -185,7 +185,7 @@ pub static tetrio_connections_submap: LazyLock<ConnectionSubmap> = LazyLock::new
   map.insert(0b00001011, &[(3, 5)]);
   return map;
 });
-pub static tetrio_garbage_connections_submap: LazyLock<ConnectionSubmap> = LazyLock::new(|| {
+pub static TETRIO_GARBAGE_CONNECTIONS_SUBMAP: LazyLock<ConnectionSubmap> = LazyLock::new(|| {
   let mut map = ConnectionSubmap::new(0b00000000, &[(0, 3)]);
   // key = corners (top left, top right, bottom right, bottom left), sides (top, right, bottom, left)
   // (1=open,0=closed)
@@ -207,7 +207,7 @@ pub static tetrio_garbage_connections_submap: LazyLock<ConnectionSubmap> = LazyL
   map.insert(0b00000001, &[(3, 3)]);
   return map;
 });
-pub static jstris_connections_submap: LazyLock<ConnectionSubmap> = LazyLock::new(|| {
+pub static JSTRIS_CONNECTIONS_SUBMAP: LazyLock<ConnectionSubmap> = LazyLock::new(|| {
   use jstris_dimples::*;
   let mut map = ConnectionSubmap::new(0b00000000, &[(0, 0)]);
   // map.insert(0b00000000, &[(0,  0)]); // inserted as default
@@ -235,15 +235,13 @@ pub static jstris_connections_submap: LazyLock<ConnectionSubmap> = LazyLock::new
       if (i & 0b0010) == 0 { None } else { Some(BOTTOM_RIGHT) },
       if (i & 0b0001) == 0 { None } else { Some(BOTTOM_LEFT) }
     ];
-    for el in sets {
-      for connection in &to_dimple {
-        let mut sets = map.connections.get(connection).iter()
-          .flat_map(|v| **v)
-          .chain(sets.iter().filter_map(|el| el.as_ref()))
-          .copied()
-          .collect::<Vec<_>>();
-        map.insert(*connection | (i << 4), sets.leak());
-      }
+    for connection in &to_dimple {
+      let sets = map.connections.get(connection).iter()
+        .flat_map(|v| **v)
+        .chain(sets.iter().filter_map(|el| el.as_ref()))
+        .copied()
+        .collect::<Vec<_>>();
+      map.insert(*connection | (i << 4), sets.leak());
     }
   }
   // map.insert(0b01001100, &[(0,  9), TOP_RIGHT]);
@@ -257,7 +255,7 @@ pub static jstris_connections_submap: LazyLock<ConnectionSubmap> = LazyLock::new
   // map.insert(0b00001111, &[(0, 15), TOP_RIGHT, BOTTOM_RIGHT, BOTTOM_LEFT, TOP_LEFT]);
   return map
 });
-pub static no_conn_submap: LazyLock<ConnectionSubmap> = LazyLock::new(|| {
+pub static NO_CONN_SUBMAP: LazyLock<ConnectionSubmap> = LazyLock::new(|| {
   ConnectionSubmap::new(0b00000, &[(0, 0)])
 });
 

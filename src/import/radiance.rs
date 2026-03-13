@@ -1,7 +1,5 @@
-use regex::Regex;
 use crate::import::import_error::AssetParseFailure;
 use crate::import::import_error::AssetParseFailure::*;
-use crate::import::ImportErrorType;
 use crate::tpse::CustomSoundAtlas;
 
 /// A parsed RSD file
@@ -36,7 +34,7 @@ pub struct RadianceSprite<'a> {
   pub duration: f32
 }
 
-pub fn parse_radiance_sound_definition(rsd: &[u8]) -> Result<RadianceSoundDefinition, AssetParseFailure> {
+pub fn parse_radiance_sound_definition(rsd: &[u8]) -> Result<RadianceSoundDefinition<'_>, AssetParseFailure> {
   let mut buf = AtlasReadHelper { buffer: rsd, position: 0 };
 
   let header = u32::from_be_bytes(buf.read()?);
@@ -47,20 +45,18 @@ pub fn parse_radiance_sound_definition(rsd: &[u8]) -> Result<RadianceSoundDefini
   if major != 1 && minor != 0 {} // todo: emit version mismatch warning
 
   let mut sprites = vec![];
-  let mut last_audio_offset = 0.0;
-  loop {
+  let last_audio_offset = loop {
     let audio_offset = f32::from_le_bytes(buf.read()?);
     let name_length = u32::from_le_bytes(buf.read()?);
     if name_length == 0 {
-      last_audio_offset = audio_offset;
-      break
+      break audio_offset
     }
     if name_length > 1000 { return Err(SoundEffectsAtlasNameTooLong { sprite: sprites.len(), length: name_length }) }
     let name = str::from_utf8(buf.read_n(name_length)?).map_err(|error| {
       SoundEffectsAtlasSpriteNameUTF8Error { sprite: sprites.len(), error }
     })?;
     sprites.push((name, audio_offset));
-  }
+  };
   let sprites = sprites.iter().enumerate().map(|(i, (name, offset))| {
     let next_audio_offset = sprites.get(i+1).map(|x| x.1).unwrap_or(last_audio_offset);
     RadianceSprite { name, offset: *offset, duration: next_audio_offset - offset }

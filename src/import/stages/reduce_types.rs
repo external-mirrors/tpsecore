@@ -4,7 +4,6 @@ use std::ffi::OsStr;
 use std::path::Path;
 use crate::import::{ImportContext, ImportError, ImportErrorType, ImportResult, SkinType, SpecificImportType};
 use crate::import::import_task::{AnimatedSkinFrame, ImportTask, SoundEffect};
-use crate::tpse::File;
 
 /// Collates multiple import results into a list of import tasks
 pub fn reduce_types

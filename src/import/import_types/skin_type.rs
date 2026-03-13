@@ -1,10 +1,8 @@
 use std::borrow::Cow;
-use std::fmt::{Display, Formatter};
 use std::ops::Sub;
 use std::path::Path;
 use log::Level;
 use crate::import::{AnimatedOptions, ImportContext};
-use crate::tpse::AnimMeta;
 
 #[derive(Debug, Hash, Eq, PartialEq, Copy, Clone, serde::Serialize, serde::Deserialize, thiserror::Error)]
 #[serde(tag = "subtype", rename_all = "snake_case")]

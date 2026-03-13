@@ -11,13 +11,6 @@ impl Piece {
   }
 }
 
-impl Display for Piece {
-  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-    todo!()
-  }
-}
-
-
 pub struct PieceStringFailure(String);
 impl Display for PieceStringFailure {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {

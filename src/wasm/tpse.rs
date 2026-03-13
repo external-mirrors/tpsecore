@@ -1,20 +1,14 @@
-use std::pin::Pin;
-use std::ptr::{null, null_mut};
-use std::sync::mpsc::{sync_channel, Receiver, Sender, SyncSender};
-use std::sync::{Arc, Mutex};
-use std::task::Poll;
+use std::ptr::null;
 
-use crate::import::{import, Asset, AssetProvider, ImportContext, ImportErrorType, ImportType};
+use crate::import::{import, ImportContext, ImportType};
 use crate::log::ImportLogger;
-use crate::tpse::validate::AssetType;
-use crate::tpse::TPSE;
 use crate::wasm::provide_asset::WasmAssetProvider;
-use crate::wasm::{ImportStatus, STATE, StagedFile, State, TPSEContext, WasmGlobalAccelerator, fetch_asset, import_log, report_import_done};
+use crate::wasm::{ImportStatus, STATE, StagedFile, State, TPSEContext, WasmGlobalAccelerator, import_log, report_import_done};
 
 
 #[unsafe(no_mangle)]
-pub extern fn dump_loaded_asset_debug() {
-  let mut state = STATE.lock().unwrap();
+pub extern "C" fn dump_loaded_asset_debug() {
+  let state = STATE.lock().unwrap();
   log::info!("dump_loaded_asset_debug()");
   for (id, tpse) in &state.tpses {
     log::info!("tpse {id} status={:?} render_data={} staged_files={:?}", tpse.import_status, tpse.render_data.is_some(), tpse.staged_files);
@@ -25,7 +19,7 @@ pub extern fn dump_loaded_asset_debug() {
 }
 
 #[unsafe(no_mangle)]
-pub extern fn allocate_tpse() -> u32 {
+pub extern "C" fn allocate_tpse() -> u32 {
   let mut state = STATE.lock().unwrap();
   let id = state.next_id();
   state.tpses.insert(id, TPSEContext::default());
@@ -34,7 +28,7 @@ pub extern fn allocate_tpse() -> u32 {
 
 /// Return codes: 0=ok, 1=no such tpse
 #[unsafe(no_mangle)]
-pub extern fn deallocate_tpse(tpse_id: u32, deallocate_attached_buffers: bool) -> u32 {
+pub extern "C" fn deallocate_tpse(tpse_id: u32, deallocate_attached_buffers: bool) -> u32 {
   if deallocate_attached_buffers {
     clear_staged_files(tpse_id, true);
   }
@@ -47,7 +41,7 @@ pub extern fn deallocate_tpse(tpse_id: u32, deallocate_attached_buffers: bool) -
 }
 
 #[unsafe(no_mangle)]
-pub extern fn allocate_buffer(length: usize) -> *const u8 {
+pub extern "C" fn allocate_buffer(length: usize) -> *const u8 {
   let mut state = STATE.lock().unwrap();
   let id = state.next_id();
   state.buffers.insert(id, vec![0; length].into());
@@ -55,15 +49,15 @@ pub extern fn allocate_buffer(length: usize) -> *const u8 {
 }
 
 #[unsafe(no_mangle)]
-pub extern fn get_buffer_length(ptr: *mut u8) -> usize {
-  let mut state = STATE.lock().unwrap();
+pub extern "C" fn get_buffer_length(ptr: *mut u8) -> usize {
+  let state = STATE.lock().unwrap();
   let Some(id) = state.lookup_buffer(ptr) else { return 0 };
   state.buffers.get(&id).unwrap().len()
 }
 
 /// Return codes: 0=ok, 1=no such buffer
 #[unsafe(no_mangle)]
-pub extern fn deallocate_buffer(ptr: *mut u8) -> u32 {
+pub extern "C" fn deallocate_buffer(ptr: *mut u8) -> u32 {
   let mut state = STATE.lock().unwrap();
   let Some(id) = state.lookup_buffer(ptr) else { return 1 };
   state.buffers.remove(&id);
@@ -73,7 +67,7 @@ pub extern fn deallocate_buffer(ptr: *mut u8) -> u32 {
 /// Stages a file for import into a given TPSE by handle  
 /// Return codes: 0=ok, 1=no such tpse, 2=no such filename buffer, 3=no such content buffer
 #[unsafe(no_mangle)]
-pub extern fn stage_file(tpse_id: u32, filename: *mut u8, content: *mut u8) -> u32 {
+pub extern "C" fn stage_file(tpse_id: u32, filename: *mut u8, content: *mut u8) -> u32 {
   let mut state = STATE.lock().unwrap();
   let Some(filename) = state.lookup_buffer(filename) else { return 2 };
   let Some(content) = state.lookup_buffer(content) else { return 3 };
@@ -88,7 +82,7 @@ pub extern fn stage_file(tpse_id: u32, filename: *mut u8, content: *mut u8) -> u
 
 /// Return codes: 0=ok, 1=no such tpse
 #[unsafe(no_mangle)]
-pub extern fn clear_staged_files(tpse_id: u32, deallocate_buffers: bool) -> u32 {
+pub extern "C" fn clear_staged_files(tpse_id: u32, deallocate_buffers: bool) -> u32 {
   let mut state = STATE.lock().unwrap();
   let State { tpses, buffers, .. } = &mut *state;
   let Some(tpse) = tpses.get_mut(&tpse_id) else { return 1 };
@@ -107,7 +101,7 @@ pub extern fn clear_staged_files(tpse_id: u32, deallocate_buffers: bool) -> u32 
 ///
 /// Return codes: 0=import queued, 1=no such tpse, 2=invalid file staged to tpse, 3=import already running
 #[unsafe(no_mangle)]
-pub extern fn queue_import(tpse_id: u32) -> usize {
+pub extern "C" fn queue_import(tpse_id: u32) -> usize {
   let mut state = STATE.lock().unwrap();
   let State { tpses, buffers, .. } = &mut *state;
   let Some(tpse) = tpses.get_mut(&tpse_id) else { return 1 };
@@ -146,7 +140,7 @@ pub extern fn queue_import(tpse_id: u32) -> usize {
         tpse.import_status = ImportStatus::Idle;
         0
       }
-      (Some(tpse), Err(error)) => {
+      (Some(tpse), Err(_error)) => {
         tpse.import_status = ImportStatus::Idle;
         1
       }
@@ -158,10 +152,10 @@ pub extern fn queue_import(tpse_id: u32) -> usize {
 }
 
 #[unsafe(no_mangle)]
-pub extern fn export_tpse(tpse_id: u32) -> *const u8 {
+pub extern "C" fn export_tpse(tpse_id: u32) -> *const u8 {
   let mut state = STATE.lock().unwrap();
   let id = state.next_id();
-  let State { tpses, buffers, .. } = &mut *state;
+  let State { tpses, .. } = &mut *state;
   let Some(tpse) = tpses.get_mut(&tpse_id) else { return null() };
   
   let encoded = serde_json::to_vec(&tpse.tpse).unwrap();
@@ -179,3 +173,5 @@ impl ImportLogger for WasmImportLogger {
     }
   }
 }
+
+
