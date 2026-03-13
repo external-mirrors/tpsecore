@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::io::Cursor;
 use hound::{SampleFormat, WavSpec};
 use crate::accel::traits::{TPSEAccelerator, TextureHandle};
-use crate::import::{ImportErrorType, SkinType};
+use crate::import::{ImportErrorType, MediaLoadError, SkinType};
 use crate::import::decode_helper::TetrioAtlasDecoder;
 use crate::import::skin_splicer::SkinSplicer;
 use crate::render::{BoardElement, clone_slice, nine_slice_resize, RenderOptions};
@@ -49,18 +49,20 @@ pub struct RenderedFrame<T> {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum SoundEffectRenderError<'a> {
+pub enum SoundEffectRenderError<'a, T: TPSEAccelerator> {
+  #[error("tpse lacks sound effect configuration data")]
+  NoSoundEffectsConfigured,
   #[error("no such sound effect: {0}")]
   NoSuchSoundEffect(Cow<'a, str>),
   #[error(transparent)]
-  ImportError(#[from] ImportErrorType)
+  ImportError(#[from] ImportErrorType<T>)
 }
 
 /// Renders a sequence of sound effects to a continuous buffer
 #[allow(unused)] // remove when done reimplementing
-pub fn render_sound_effects<'a>
-  (tpse: &'a TPSE, opts: &'a [SoundEffectInfo])
-  -> Result<File, SoundEffectRenderError<'a>>
+pub async fn render_sound_effects<'a, T: TPSEAccelerator>
+  (tpse: &'a TPSE, opts: &'a [SoundEffectInfo<'_>])
+  -> Result<File, SoundEffectRenderError<'a, T>>
 {
   if opts.is_empty() {
     return Ok(File {
@@ -70,7 +72,9 @@ pub fn render_sound_effects<'a>
   }
   use SoundEffectRenderError::*;
 
-  let atlas = TetrioAtlasDecoder::decode_from_tpse(tpse)?;
+  let Some(atlas) = TetrioAtlasDecoder::decode_from_tpse::<T>(tpse).await
+    .map_err(|err| SoundEffectRenderError::ImportError(ImportErrorType::LoadError(MediaLoadError::AudioError(err))))?
+    else { return Err(SoundEffectRenderError::NoSoundEffectsConfigured) };
   let sample_rate = 44100;
   let channels = 2;
   // let samples_per_frame = (1.0/ctx.frame_rate * sample_rate as f64) as usize * channels;
@@ -131,9 +135,9 @@ pub struct FrameInfo<'a> {
   pub render_options: &'a RenderOptions<'a>,
 }
 impl<T: TPSEAccelerator> RenderContext<T> {
-  pub fn try_from_tpse(tpse: &TPSE) -> Result<Self, T::DecodeError> {
+  pub fn try_from_tpse(tpse: &TPSE) -> Result<Self, <T::Texture as TextureHandle>::Error> {
     let load_transpose = |file: &Option<File>| {
-      file.as_ref().map(|file| T::decode_texture(file.binary.clone())).transpose()
+      file.as_ref().map(|file| T::Texture::decode_texture(file.binary.clone())).transpose()
     };
     let skin = load_transpose(&tpse.skin)?;
     let ghost = load_transpose(&tpse.ghost)?;
@@ -227,7 +231,7 @@ impl<T: TPSEAccelerator> RenderContext<T> {
     if tasks.is_empty() {
       log::trace!("No render tasks!");
       Ok(RenderedFrame {
-        image: T::new_texture(0, 0),
+        image: T::Texture::new_texture(0, 0),
         min_x: 0,
         min_y: 0,
         max_x: 0,
@@ -246,7 +250,7 @@ impl<T: TPSEAccelerator> RenderContext<T> {
         #[cfg(test)]
         panic!("excessive texture size requested");
       }
-      let canvas = T::new_texture(canvas_w, canvas_h);
+      let canvas = T::Texture::new_texture(canvas_w, canvas_h);
 
       for (img, x, y, w, h) in tasks {
         canvas.overlay(&img.resized(w as u32, h as u32), x - min_x, y - min_y);

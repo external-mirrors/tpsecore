@@ -2,15 +2,16 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
 use std::path::Path;
+use crate::accel::traits::TPSEAccelerator;
 use crate::import::{ImportContext, ImportError, ImportErrorType, ImportResult, SkinType, SpecificImportType};
 use crate::import::import_task::{AnimatedSkinFrame, ImportTask, SoundEffect};
 
 /// Collates multiple import results into a list of import tasks
-pub fn reduce_types
-  (results: &[ImportResult], ctx: ImportContext<'_>)
-   -> Result<Vec<ImportTask>, ImportError>
+pub fn reduce_types<T: TPSEAccelerator>
+  (results: &[ImportResult<T>], ctx: ImportContext<'_, T>)
+   -> Result<Vec<ImportTask>, ImportError<T>>
 {
-  let mut map: HashMap<SpecificImportType, Vec<ImportResult>> = HashMap::new();
+  let mut map: HashMap<SpecificImportType, Vec<ImportResult<T>>> = HashMap::new();
   for res in results {
     map.entry(res.specific_import_type).or_default().push(res.clone());
   }
@@ -21,8 +22,8 @@ pub fn reduce_types
   // Duplicate order is undefined
   let mut sound_effects: Vec<SoundEffect> = vec![];
   // Minos and ghosts are collated to allow for animated-from-frames style textures
-  let mut animated_minos: Option<(SkinType, Vec<ImportResult>)> = None;
-  let mut animated_ghost: Option<(SkinType, Vec<ImportResult>)> = None;
+  let mut animated_minos: Option<(SkinType, Vec<ImportResult<T>>)> = None;
+  let mut animated_ghost: Option<(SkinType, Vec<ImportResult<T>>)> = None;
   // If animated minos/ghosts encounter a _different_ type of skin that qualifies as animated,
   // an error is logged here. This is then shoved into one giant error message.
   let mut ambiguous_mino_skin_errors: HashSet<SkinType> = HashSet::new();

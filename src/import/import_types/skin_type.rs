@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::ops::Sub;
 use std::path::Path;
 use log::Level;
+use crate::accel::traits::TPSEAccelerator;
 use crate::import::{AnimatedOptions, ImportContext};
 
 #[derive(Debug, Hash, Eq, PartialEq, Copy, Clone, serde::Serialize, serde::Deserialize, thiserror::Error)]
@@ -42,7 +43,7 @@ pub enum SkinType {
 }
 
 impl SkinType {
-  pub fn guess_format(filename: &str, width: u32, height: u32, ctx: &ImportContext) -> Option<SkinType> {
+  pub fn guess_format<T: TPSEAccelerator>(filename: &str, width: u32, height: u32, ctx: &ImportContext<T>) -> Option<SkinType> {
     let ext = Path::new(&filename).extension()
       .map(|ext| ext.to_string_lossy())
       .unwrap_or(Cow::from(filename));

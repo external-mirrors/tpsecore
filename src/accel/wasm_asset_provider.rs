@@ -1,11 +1,35 @@
 use std::pin::Pin;
 use std::ptr::null_mut;
-use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::sync::{Arc, Mutex};
+use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 use std::task::Poll;
 
-use crate::import::{Asset, AssetProvider, ImportErrorType};
-use crate::wasm::{fetch_asset, STATE};
+use crate::accel::traits::AssetProvider;
+use crate::import::Asset;
+use crate::wasm::STATE;
+
+#[derive(Debug)]
+pub struct WasmAssetProvider;
+
+#[derive(Debug, thiserror::Error)]
+#[error("provide_asset was called with a failure code for asset {0}")]
+pub struct WasmAssetProviderError(Asset);
+
+impl AssetProvider for WasmAssetProvider {
+  type Error = WasmAssetProviderError;
+
+  async fn provide(&self, asset: Asset) -> Result<Arc<[u8]>, Self::Error> {
+    let (tx, rx) = sync_channel(1);
+    match AwaitAssetFuture(asset, Some(tx), Mutex::new(rx)).await {
+      Ok(ok) => Ok(ok),
+      Err(()) => Err(WasmAssetProviderError(asset))
+    }
+  }
+}
+
+type AssetFetchResult = Result<Arc<[u8]>, ()>;
+static ASSET_TETRIOJS_LISTENERS: Mutex<Vec<Box<dyn FnOnce(AssetFetchResult) + Send>>> = Mutex::new(vec![]);
+static ASSET_TETRIORSD_LISTENERS: Mutex<Vec<Box<dyn FnOnce(AssetFetchResult) + Send>>> = Mutex::new(vec![]);
 
 /// Provides an asset. If asset provision fails, a null pointer should be passed.
 /// This method does not clean up the given buffer, [deallocate_buffer] should be used for that.
@@ -34,22 +58,11 @@ pub extern "C" fn provide_asset(asset_type: u8, ptr: *mut u8) -> u32 {
   0
 }
 
-pub(in super) struct WasmAssetProvider;
-impl AssetProvider for WasmAssetProvider {
-  fn provide(&self, asset: Asset) -> Pin<Box<dyn Future<Output = Result<Arc<[u8]>, ImportErrorType>> + Send + Sync + '_>> {
-    Box::pin(async move {
-      let (tx, rx) = sync_channel(1);
-      match AwaitAssetFuture(asset, Some(tx), Mutex::new(rx)).await {
-        Ok(ok) => Ok(ok),
-        Err(()) => Err(ImportErrorType::AssetFetchFailed(asset, "provide_asset was called with a failure code".to_string()))
-      }
-    })
-  }
+#[link(wasm_import_module="wasm_accelerator_asset")]
+unsafe extern "C" {
+  /// Requests an external asset be fetched and provided back asynchronously to `provide_asset`
+  unsafe fn fetch_asset(asset_id: u32);
 }
-
-type AssetFetchResult = Result<Arc<[u8]>, ()>;
-static ASSET_TETRIOJS_LISTENERS: Mutex<Vec<Box<dyn FnOnce(AssetFetchResult) + Send>>> = Mutex::new(vec![]);
-static ASSET_TETRIORSD_LISTENERS: Mutex<Vec<Box<dyn FnOnce(AssetFetchResult) + Send>>> = Mutex::new(vec![]);
 
 struct AwaitAssetFuture(Asset, Option<SyncSender<AssetFetchResult>>, Mutex<Receiver<AssetFetchResult>>);
 impl Future for AwaitAssetFuture {

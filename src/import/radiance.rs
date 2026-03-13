@@ -1,5 +1,5 @@
-use crate::import::import_error::AssetParseFailure;
-use crate::import::import_error::AssetParseFailure::*;
+use crate::import::import_error::TetrioAssetParseFailure;
+use crate::import::import_error::TetrioAssetParseFailure::*;
 use crate::tpse::CustomSoundAtlas;
 
 /// A parsed RSD file
@@ -34,7 +34,7 @@ pub struct RadianceSprite<'a> {
   pub duration: f32
 }
 
-pub fn parse_radiance_sound_definition(rsd: &[u8]) -> Result<RadianceSoundDefinition<'_>, AssetParseFailure> {
+pub fn parse_radiance_sound_definition(rsd: &[u8]) -> Result<RadianceSoundDefinition<'_>, TetrioAssetParseFailure> {
   let mut buf = AtlasReadHelper { buffer: rsd, position: 0 };
 
   let header = u32::from_be_bytes(buf.read()?);
@@ -75,19 +75,19 @@ struct AtlasReadHelper<'data> {
   position: usize
 }
 impl<'data> AtlasReadHelper<'data> {
-  pub fn read<const N: usize>(&mut self) -> Result<[u8; N], AssetParseFailure> {
+  pub fn read<const N: usize>(&mut self) -> Result<[u8; N], TetrioAssetParseFailure> {
     let start = self.position;
     self.position += N;
     let slice = self.buffer.get(start..self.position).ok_or(SoundEffectsAtlasEOF)?;
     Ok(slice.try_into().unwrap())
   }
-  pub fn read_n<'reader>(&'reader mut self, n: u32) -> Result<&'data [u8], AssetParseFailure> {
+  pub fn read_n<'reader>(&'reader mut self, n: u32) -> Result<&'data [u8], TetrioAssetParseFailure> {
     let n: usize = n.try_into().expect("unsupported arch width: u32 doesn't fit into usize");
     let start = self.position;
     self.position += n;
     self.buffer.get(start..self.position).ok_or(SoundEffectsAtlasEOF)
   }
-  pub fn assert_eof(&self) -> Result<(), AssetParseFailure> {
+  pub fn assert_eof(&self) -> Result<(), TetrioAssetParseFailure> {
     if self.position < self.buffer.len() {
       Err(SoundEffectsAtlasExpectedEOF { position: self.position, length: self.buffer.len() })
     } else {

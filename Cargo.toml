@@ -9,8 +9,14 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 default = ["extra_software_decoders"]
+
+# Javascript implementations of image manipulation primitives
+# (wasm embedder dependent)
+wasm_rendering = []
+
 # Software rendering implementation of image manipulation primitives
 software_rendering = ["dep:image", "dep:imageproc", "dep:resvg", "dep:usvg", "dep:tiny-skia", "dep:ab_glyph"]
+
 # Software decoding for multi-frame trickier formats like gifs and animated webps
 # Required for importing animated skins from animated formats
 extra_software_decoders = ["dep:image"]

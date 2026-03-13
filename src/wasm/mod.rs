@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, Mutex};
-use crate::accel::impl_wasm::WasmAccelerator;
+use crate::accel::software_audio_handle::SoftwareAudioHandle;
+use crate::accel::traits::TPSEAccelerator;
+use crate::accel::wasm_asset_provider::WasmAssetProvider;
 use crate::render::RenderContext;
 use crate::tpse::TPSE;
 
@@ -8,7 +10,6 @@ mod tpse;
 mod render;
 pub(in crate) mod asynch;
 pub(in crate) mod wasm_wakeable;
-mod provide_asset;
 
 #[link(wasm_import_module="tpsecore")]
 unsafe extern "C" {
@@ -21,8 +22,6 @@ unsafe extern "C" {
   unsafe fn report_frame_render_done(tpse: u32, nonce: u64, status: u8, ptr: *const u8, len: usize);
   /// Controls whether `tick_async` is called
   unsafe fn set_runtime_sleeping(sleep: bool);
-  /// Requests an external asset be fetched and provided back asynchronously to `provide_asset`
-  unsafe fn fetch_asset(asset_id: u32);
   /// Called when a panic occurrs. Logs with additional details will be printed to accompany
   unsafe fn report_panic();
   /// Prints a log not associated with any specific tpse instance  
@@ -33,8 +32,20 @@ unsafe extern "C" {
   unsafe fn import_log(level: u8, tpse: u32, ptr: *const u8, len: usize);
 }
 
-// pub(in crate) type WasmGlobalAccelerator = crate::accel::impl_software::SoftwareRendering;
-pub(in crate) type WasmGlobalAccelerator = WasmAccelerator;
+#[derive(Debug, Clone)]
+pub struct WasmGlobalAccelerator;
+impl TPSEAccelerator for WasmGlobalAccelerator {
+  type Asset = WasmAssetProvider;
+  
+  #[cfg(all(not(feature = "software_rendering"), not(feature = "wasm_rendering")))]
+  type Texture = crate::accel::null_texture_handle::NullTextureHandle;
+  #[cfg(all(feature = "software_rendering", not(feature = "wasm_rendering")))]
+  type Texture = crate::accel::software_texture_handle::SoftwareTextureHandle;
+  #[cfg(feature = "wasm_rendering")]
+  type Texture = crate::accel::wasm_texture_handle::WasmTextureHandle;
+  
+  type Audio = SoftwareAudioHandle;
+}
 
 pub(in crate) static STATE: LazyLock<Mutex<State>> = LazyLock::new(|| {
   other_initialization();

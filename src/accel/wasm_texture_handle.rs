@@ -3,11 +3,18 @@ use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 
 use async_channel::Sender;
 
-use crate::accel::traits::{TPSEAccelerator, TextureHandle};
-use crate::import::LoadError;
+use crate::accel::traits::TextureHandle;
 use crate::wasm::STATE as TPSE_STATE;
 use crate::wasm::wasm_wakeable::{WasmWakeable, WasmWakeableSize, provide_wakeable};
 
+#[derive(Clone, Debug)]
+pub struct WasmTextureHandle(Arc<WasmTextureHandleInner>);
+
+#[derive(thiserror::Error, Debug)]
+#[error("{0}")]
+pub struct WasmAcceleratorError(String);
+
+static STATE: LazyLock<Mutex<WasmAcceleratorState>> = LazyLock::new(Default::default);
 #[derive(Default)]
 struct WasmAcceleratorState {
   id_counter: u64,
@@ -69,6 +76,25 @@ static COMMAND_FLUSH_TASK: LazyLock<Sender<FlushedCommands>> = LazyLock::new(|| 
   tx
 });
 
+#[link(wasm_import_module="wasm_accelerator_texture")]
+unsafe extern "C" {
+  /// Processes all commands in the command buffer
+  /// This needs to be called before other methods to ensure the state they query is actually available
+  unsafe fn flush_command_buffer(command_buffer: *const u8, len: usize, async_wake_id: u64);
+  
+  /// Fetches dimensions for the given handle, storing them in provided outvalues.
+  ///
+  /// If out_code is nonzero, indicates a pointer containing an error that should be retrieved from the TPSE buffer 
+  /// infrastructure. The buffer will be deallocated internally, manual deallocation is not required.
+  unsafe fn fetch_dimensions(id: u64, out_code: *mut u64, out_width: *mut u32, out_height: *mut u32);
+  
+  /// Encodes the given handle into a buffer managed by the TPSE buffer infastructure
+  ///
+  /// The waker takes two arguments: a status code (0=ok, 1=error) and a pointer to a buffer containing either the
+  /// encoded png or the error message. The buffer will be deallocated internally, manual deallocation is not required.
+  unsafe fn encode_png(id: u64, async_wake_id: u64) -> *const u8;
+}
+
 macro_rules! encode {
   (auto, $($rest:tt)+) => {{
     let mut state = STATE.lock().unwrap();
@@ -90,48 +116,7 @@ macro_rules! encode {
   }};
 }
 
-static STATE: LazyLock<Mutex<WasmAcceleratorState>> = LazyLock::new(Default::default);
-
-pub struct WasmAccelerator;
-impl TPSEAccelerator for WasmAccelerator {
-  type Texture = WasmTextureHandle;
-  type DecodeError = LoadError;
-
-  fn new_texture(width: u32, height: u32) -> Self::Texture {
-    let mut state = STATE.lock().unwrap();
-    let handle = state.new_handle(Some((width, height)));
-    encode!(state, handle, 1, [width, height]);
-    handle
-  }
-
-  fn decode_texture(buffer: Arc<[u8]>) -> Result<Self::Texture, Self::DecodeError> {
-    let mut state = STATE.lock().unwrap();
-    let handle = state.new_handle(None);
-    encode!(state, handle, 2, [buffer.as_ptr() as u64, buffer.len() as u64]);
-    state.arcs_in_command_buffer.push(buffer);
-    Ok(handle)
-  }
-}
-
-#[link(wasm_import_module="wasm_accelerator")]
-unsafe extern "C" {
-  /// Processes all commands in the command buffer
-  /// This needs to be called before other methods to ensure the state they query is actually available
-  unsafe fn flush_command_buffer(command_buffer: *const u8, len: usize, async_wake_id: u64);
-  
-  /// Fetches dimensions for the given handle, storing them in provided outvalues.
-  ///
-  /// If out_code is nonzero, indicates a pointer containing an error that should be retrieved from the TPSE buffer 
-  /// infrastructure. The buffer will be deallocated internally, manual deallocation is not required.
-  unsafe fn fetch_dimensions(id: u64, out_code: *mut u64, out_width: *mut u32, out_height: *mut u32);
-  
-  /// Encodes the given handle into a buffer managed by the TPSE buffer infastructure
-  ///
-  /// The waker takes two arguments: a status code (0=ok, 1=error) and a pointer to a buffer containing either the
-  /// encoded png or the error message. The buffer will be deallocated internally, manual deallocation is not required.
-  unsafe fn encode_png(id: u64, async_wake_id: u64) -> *const u8;
-}
-
+#[derive(Debug)]
 struct WasmTextureHandleInner {
   id: u64,
   dimensions: OnceLock<(u32, u32)>
@@ -146,10 +131,8 @@ impl Drop for WasmTextureHandleInner {
   }
 }
 
-#[derive(Clone)]
-pub struct WasmTextureHandle(Arc<WasmTextureHandleInner>);
 impl WasmTextureHandle {
-  async fn dimensions(&self) -> Result<(u32, u32), LoadError> {
+  async fn dimensions(&self) -> Result<(u32, u32), WasmAcceleratorError> {
     if self.0.dimensions.get().is_none() {
       let flush_complete = STATE.lock().unwrap().flush_command_buffer();
       if let Some(f) = flush_complete { // STATE lock dropped by this point
@@ -173,7 +156,7 @@ impl WasmTextureHandle {
         let buf_id = state.lookup_buffer(code as *mut u8).unwrap();
         let data = state.buffers.remove(&buf_id).unwrap();
         let message = String::from_utf8_lossy(&*data).into_owned();
-        return Err(LoadError::WasmAcceleratorError(message));
+        return Err(WasmAcceleratorError(message));
       }
       
       let _ = self.0.dimensions.set((width, height));
@@ -182,7 +165,22 @@ impl WasmTextureHandle {
   }
 }
 impl TextureHandle for WasmTextureHandle {
-  type Error = LoadError;
+  type Error = WasmAcceleratorError;
+
+  fn new_texture(width: u32, height: u32) -> Self {
+    let mut state = STATE.lock().unwrap();
+    let handle = state.new_handle(Some((width, height)));
+    encode!(state, handle, 1, [width, height]);
+    handle
+  }
+
+  fn decode_texture(buffer: Arc<[u8]>) -> Result<Self, Self::Error> {
+    let mut state = STATE.lock().unwrap();
+    let handle = state.new_handle(None);
+    encode!(state, handle, 2, [buffer.as_ptr() as u64, buffer.len() as u64]);
+    state.arcs_in_command_buffer.push(buffer);
+    Ok(handle)
+  }
   
   async fn width(&self) -> Result<u32, Self::Error> {
     Ok(self.dimensions().await?.0)
@@ -213,7 +211,7 @@ impl TextureHandle for WasmTextureHandle {
       0 => Ok(buffer),
       _nonzero => {
         let message = String::from_utf8_lossy(&*buffer).into_owned();
-        Err(LoadError::WasmAcceleratorError(message))
+        Err(WasmAcceleratorError(message))
       }
     }
   }

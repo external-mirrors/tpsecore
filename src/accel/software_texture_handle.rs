@@ -4,27 +4,68 @@ use std::panic::catch_unwind;
 use std::sync::{Arc, LazyLock, Mutex};
 
 use ab_glyph::FontRef;
-use base64::DecodeError;
-use image::io::Reader;
-use image::{DynamicImage, GenericImage, GenericImageView, ImageFormat, Rgba, SubImage};
+use image::{DynamicImage, GenericImageView, ImageFormat, ImageReader, SubImage};
 use image::imageops::{FilterType, overlay, resize};
 use slotmap::{DefaultKey, SlotMap};
 use tiny_skia::Pixmap;
 use usvg::Transform;
 
-use crate::accel::traits::{TPSEAccelerator, TextureHandle};
-use crate::import::LoadError;
+use crate::accel::traits::TextureHandle;
 
-pub struct SoftwareRendering;
-impl TPSEAccelerator for SoftwareRendering {
-  type Texture = SoftwareTextureHandle;
-  type DecodeError = LoadError;
+#[derive(Debug, Clone)]
+pub struct SoftwareTextureHandle(Arc<TexStoreKey>, [u32; 4]);
 
-  fn new_texture(width: u32, height: u32) -> Self::Texture {
-    SoftwareTextureHandle::new(DynamicImage::new_rgba8(width, height))
+#[derive(Debug, thiserror::Error)]
+pub enum SoftwareRenderingError {
+  #[error("failed to load asset: {0}")]
+  ErasedError(Box<dyn Error + Send + Sync + 'static>),
+  #[error("failed to load image: image decoder implementation panicked")]
+  ImageLoadPanic,
+}
+
+pub static TEX_STORE: LazyLock<Mutex<SlotMap<DefaultKey, DynamicImage>>> = LazyLock::new(Default::default);
+
+#[derive(Debug)]
+struct TexStoreKey(DefaultKey);
+impl Drop for TexStoreKey {
+  fn drop(&mut self) {
+    let mut store = TEX_STORE.lock().unwrap();
+    store.remove(self.0).unwrap();
+  }
+}
+
+impl SoftwareTextureHandle {
+  pub fn new(image: DynamicImage) -> Self {
+    let width = image.width();
+    let height = image.height();
+    let key = TEX_STORE.lock().unwrap().insert(image);
+    Self(Arc::new(TexStoreKey(key)), [0, 0, width, height])
+  }
+  pub fn get<T>(&self, handler: impl FnOnce(&mut SubImage<&mut DynamicImage>) -> T) -> T {
+    let Self(image, [x, y, w, h]) = self;
+    let mut map = TEX_STORE.lock().unwrap();
+    let inner = map.get_mut(image.0).unwrap();
+    let mut subimage = SubImage::new(inner, *x, *y, *w, *h);
+    handler(&mut subimage)
+  }
+  pub fn get2<T>(&self, other: &Self, handler: impl FnOnce(&mut SubImage<&mut DynamicImage>, &mut SubImage<&mut DynamicImage>) -> T) -> T {
+    let mut map = TEX_STORE.lock().unwrap();
+    let Some([inner1, inner2]) = map.get_disjoint_mut([self.0.0, other.0.0]) else {
+      panic!("attempted to use an image method with itself as an extra parameter");
+    };
+    let mut subimage1 = SubImage::new(inner1, self.1[0], self.1[1], self.1[2], self.1[3]);
+    let mut subimage2 = SubImage::new(inner2, other.1[0], other.1[1], other.1[2], other.1[3]);
+    handler(&mut subimage1, &mut subimage2)
+  }
+}
+impl TextureHandle for SoftwareTextureHandle {
+  type Error = SoftwareRenderingError;
+
+  fn new_texture(width: u32, height: u32) -> Self {
+    Self::new(DynamicImage::new_rgba8(width, height))
   }
 
-  fn decode_texture(buffer: Arc<[u8]>) -> Result<Self::Texture, Self::DecodeError> {
+  fn decode_texture(buffer: Arc<[u8]>) -> Result<Self, Self::Error> {
     fn decode_svg(bytes: &[u8]) -> Option<Vec<u8>> {
       let opt = usvg::Options::default();
       let rtree = usvg::Tree::from_data(bytes, &opt).ok()?;
@@ -42,56 +83,16 @@ impl TPSEAccelerator for SoftwareRendering {
 
     let image = catch_unwind
       (|| {
-        let reader = Reader::new(Cursor::new(buffer))
+        let reader = ImageReader::new(Cursor::new(buffer))
           .with_guessed_format()
           .expect("Cursor<&[u8]> shouldn't generate IO errors");
         reader.decode()
       })
-      .map_err(|err| LoadError::ImageLoadPanic)?
-      .map_err(|err| LoadError::ErasedError(Box::new(err)))?;
-    Ok(SoftwareTextureHandle::new(image))
+      .map_err(|_err| SoftwareRenderingError::ImageLoadPanic)?
+      .map_err(|err| SoftwareRenderingError::ErasedError(Box::new(err)))?;
+    Ok(Self::new(image))
   }
-}
-
-pub static TEX_STORE: LazyLock<Mutex<SlotMap<DefaultKey, DynamicImage>>> = LazyLock::new(Default::default);
-struct TexStoreKey(DefaultKey);
-impl Drop for TexStoreKey {
-  fn drop(&mut self) {
-    let mut store = TEX_STORE.lock().unwrap();
-    store.remove(self.0).unwrap();
-  }
-}
-
-#[derive(Clone)]
-pub struct SoftwareTextureHandle(Arc<TexStoreKey>, [u32; 4]);
-
-impl SoftwareTextureHandle {
-  pub fn new(image: DynamicImage) -> Self {
-    let width = image.width();
-    let height = image.height();
-    let key = TEX_STORE.lock().unwrap().insert(image);
-    Self(Arc::new(TexStoreKey(key)), [0, 0, width, height])
-  }
-  pub fn get<T>(&self, handler: impl FnOnce(&mut SubImage<&mut DynamicImage>) -> T) -> T {
-    let Self(image, [x, y, w, h]) = self;
-    let mut map = TEX_STORE.lock().unwrap();
-    let inner = map.get_mut(self.0.0).unwrap();
-    let mut subimage = SubImage::new(inner, *x, *y, *w, *h);
-    handler(&mut subimage)
-  }
-  pub fn get2<T>(&self, other: &Self, handler: impl FnOnce(&mut SubImage<&mut DynamicImage>, &mut SubImage<&mut DynamicImage>) -> T) -> T {
-    let Self(image, [x, y, w, h]) = self;
-    let mut map = TEX_STORE.lock().unwrap();
-    let inner = map.get_mut(self.0.0).unwrap();
-    let Some([inner1, inner2]) = map.get_disjoint_mut([self.0.0, other.0.0]) else {
-      panic!("attempted to use an image method with itself as an extra parameter");
-    };
-    let mut subimage1 = SubImage::new(inner1, self.1[0], self.1[1], self.1[2], self.1[3]);
-    let mut subimage2 = SubImage::new(inner2, other.1[0], other.1[1], other.1[2], other.1[3]);
-    handler(&mut subimage1, &mut subimage2)
-  }
-}
-impl TextureHandle for SoftwareTextureHandle {
+  
   fn create_copy(&self) -> Self {
     let clone = self.get(|image| { image.to_image() });
     Self::new(clone.into())
@@ -107,23 +108,23 @@ impl TextureHandle for SoftwareTextureHandle {
       imageproc::drawing::draw_text_mut(image.inner_mut(), color.into(), x, y, scale, &*FONT, text);
     });
   }
-  async fn encode_png(&self) -> Result<Arc<[u8]>, ()> {    
+  async fn encode_png(&self) -> Result<Arc<[u8]>, Self::Error> {    
     self.get(|image| {
       let mut buffer = vec![];
       match image.inner().write_to(Cursor::new(&mut buffer), ImageFormat::Png) {
         Err(err) => {
           log::error!("failed to encode frame: {err}");
-          Err(())
+          Err(SoftwareRenderingError::ErasedError(Box::new(err)))
         }
         Ok(()) => Ok(buffer.into()),
       }
     })
   }
-  async fn width(&self) -> u32 {
-    self.get(|x| x.width())
+  async fn width(&self) -> Result<u32, Self::Error> {
+    Ok(self.get(|x| x.width()))
   }
-  async fn height(&self) -> u32 {
-    self.get(|x| x.height())
+  async fn height(&self) -> Result<u32, Self::Error> {
+    Ok(self.get(|x| x.height()))
   }
   fn overlay(&self, with_image: &Self, x: i64, y: i64) {
     self.get2(with_image, |a, b| {
@@ -139,7 +140,7 @@ impl TextureHandle for SoftwareTextureHandle {
   fn slice(&self, x: u32, y: u32, w: u32, h: u32) -> Self {
     let arc = self.0.clone();
     let [ix, iy, iw, ih] = self.1;
-    self.get(|image| {
+    self.get(|_image| {
       let nx = ix.saturating_add(x);
       let ny = iy.saturating_add(y);
       assert!(nx as u64 + w as u64 <= ix as u64 + iw as u64);

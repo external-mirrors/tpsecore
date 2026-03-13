@@ -5,31 +5,31 @@ use std::fmt::{Display, Formatter};
 use std::str::Utf8Error;
 use itertools::Itertools;
 
-use crate::import::asset_provider::Asset;
+use crate::accel::traits::{AssetProvider, AudioHandle, TPSEAccelerator, TextureHandle};
 use crate::import::{ImportContextEntry, SkinType};
 
 /// An error tracking both the actual error and the import context in which it occurred
 #[derive(Debug)]
-pub struct ImportError {
+pub struct ImportError<T: TPSEAccelerator> {
   pub context: Vec<ImportContextEntry>,
-  pub error: ImportErrorType
+  pub error: ImportErrorType<T>
 }
-impl Error for ImportError {}
-impl Display for ImportError {
+impl<T: TPSEAccelerator> Error for ImportError<T> {}
+impl<T: TPSEAccelerator> Display for ImportError<T> {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
     write!(f, "import error at {}: {}", self.context.iter().format(" "), self.error)
   }
 }
 
-impl ImportError {
+impl<T: TPSEAccelerator> ImportError<T> {
   /// Creates an import error with no import context
-  pub fn with_no_context(error: ImportErrorType) -> Self {
+  pub fn with_no_context(error: ImportErrorType<T>) -> Self {
     Self { error, context: vec![] }
   }
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum ImportErrorType {
+pub enum ImportErrorType<T: TPSEAccelerator> {
   #[error("unknown file type")]
   UnknownFileType,
   #[error("invalid TPSE: {0}")]
@@ -37,15 +37,13 @@ pub enum ImportErrorType {
   #[error("files were nested too deeply")]
   TooMuchNesting,
   #[error("failed to load files: {0}")]
-  LoadError(#[from] LoadError),
+  LoadError(#[from] MediaLoadError<T>),
   #[error("animated {0} skin results were ambiguous: found multiple possible formats: {1:?}")]
   AmbiguousAnimatedSkinResults(Cow<'static, str>, HashSet<SkinType>),
-  #[error("failed to fetch asset for {0:?}: {1:?}")]
-  AssetFetchFailed(Asset, String),
-  #[error("the {0} asset was not preloaded and the given AssetProvider cannot fetch it")]
-  AssetNotPreloaded(Asset),
+  #[error("failed to load TETR.IO asset: {0}")]
+  AssetFetchFailed(<T::Asset as AssetProvider>::Error),
   #[error("asset parse failure: {0}")]
-  AssetParseFailure(#[from] AssetParseFailure),
+  AssetParseFailure(#[from] TetrioAssetParseFailure),
   #[error("rendering failure: {0}")]
   RenderFailure(#[from] RenderFailure),
   #[error("encoding image failed")]
@@ -54,7 +52,7 @@ pub enum ImportErrorType {
 
 /// An error indicating failure to parse base game assets
 #[derive(Debug, thiserror::Error)]
-pub enum AssetParseFailure {
+pub enum TetrioAssetParseFailure {
   #[error("Tried to parse non-UTF8 data as UTF8")]
   UTF8Error,
   #[error("regex failed to extract sound effects atlas")]
@@ -73,21 +71,16 @@ pub enum AssetParseFailure {
 
 /// An error indicating failure to parse a media file
 #[derive(Debug, thiserror::Error)]
-pub enum LoadError {
-  /// For errors that occured in javascript
-  #[error("failed to load asset: {0}")]
-  WasmAcceleratorError(String),
-  /// For errors that occured in other accelerators
-  #[error("failed to load asset: {0}")]
-  ErasedAcceleratorError(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),
-  #[error("failed to load image: image decoder implementation panicked")]
-  ImageLoadPanic,
-  #[error("failed to decode audio: {0}")]
-  SymphoniaError(#[from] symphonia::core::errors::Error),
-  #[error("failed to decode audio: no supported audio track")]
-  NoSupportedAudioTrack,
+pub enum MediaLoadError<T: TPSEAccelerator> {
+  #[error(transparent)]
+  TextureError(<T::Texture as TextureHandle>::Error),
+  #[error(transparent)]
+  AudioError(<T::Audio as AudioHandle>::Error),
   #[error("failed to read zip file: {0}")]
-  Zip(#[from] zip::result::ZipError)
+  Zip(#[from] zip::result::ZipError),
+  /// Currently only used by extra software decoders, which needs to be cleaned up so this can be removed
+  #[error("{0}")]
+  Other(String)
 }
 
 #[derive(Debug, thiserror::Error)]

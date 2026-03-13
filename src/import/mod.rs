@@ -7,7 +7,7 @@ mod import_error;
 mod file_type;
 mod import_result;
 mod import;
-mod asset_provider;
+mod asset;
 pub mod radiance;
 pub mod decode_helper;
 
@@ -17,4 +17,4 @@ pub use specific_import_type::SpecificImportType;
 pub use import_error::*;
 pub use import_result::ImportResult;
 pub use import::import;
-pub use asset_provider::*;
+pub use asset::*;

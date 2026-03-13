@@ -15,7 +15,7 @@ use crate::accel::traits::{TPSEAccelerator, TextureHandle};
 
 /// Clones a slice of the given T::Texture, filling overflow regions with transparency
 pub fn clone_slice<T: TPSEAccelerator>(tex: &T::Texture, x: u32, y: u32, w: u32, h: u32) -> T::Texture {
-  let target = T::new_texture(w, h);
+  let target = T::Texture::new_texture(w, h);
   target.overlay(tex, -(x as i64), -(y as i64));
   target
 }

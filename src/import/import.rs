@@ -8,8 +8,8 @@ use crate::import::stages::{decide_specific_type, execute_task, reduce_types};
 use crate::tpse::TPSE;
 
 pub async fn import<T: TPSEAccelerator>
-  (files: impl IntoIterator<Item = (ImportType, &str, Arc<[u8]>)>, context: ImportContext<'_>)
-  -> Result<TPSE, ImportError>
+  (files: impl IntoIterator<Item = (ImportType, &str, Arc<[u8]>)>, context: ImportContext<'_, T>)
+  -> Result<TPSE, ImportError<T>>
 {
   let files = files.into_iter();
   

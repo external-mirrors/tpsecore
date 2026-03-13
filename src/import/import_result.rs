@@ -1,22 +1,33 @@
 use std::sync::Arc;
 
+use crate::accel::traits::TPSEAccelerator;
 use crate::import::{ImportContext, SpecificImportType};
 use crate::tpse::File;
 
-#[derive(Clone)]
-pub struct ImportResult<'c> {
+pub struct ImportResult<'c, T: TPSEAccelerator> {
   pub filename: String,
   pub file: File,
   pub specific_import_type: SpecificImportType,
-  pub options: ImportContext<'c>
+  pub options: ImportContext<'c, T>
 }
 
-impl<'c> ImportResult<'c> {
+impl<T: TPSEAccelerator> Clone for ImportResult<'_, T> {
+  fn clone(&self) -> Self {
+    Self {
+      filename: self.filename.clone(),
+      file: self.file.clone(),
+      specific_import_type: self.specific_import_type.clone(),
+      options: self.options.clone()
+    }
+  }
+}
+
+impl<'c, T: TPSEAccelerator> ImportResult<'c, T> {
   pub fn new(
     filename: &str,
     bytes: Arc<[u8]>,
     mime_type: &str,
-    options: ImportContext<'c>,
+    options: ImportContext<'c, T>,
     specific_import_type: SpecificImportType
   ) -> Self {
     Self {

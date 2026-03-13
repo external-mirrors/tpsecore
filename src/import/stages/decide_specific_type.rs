@@ -1,14 +1,14 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use log::Level;
-use crate::accel::traits::{TPSEAccelerator, TextureHandle};
-use crate::import::{Asset, BackgroundType, FileType, ImportContext, ImportContextEntry, ImportError, ImportErrorType, ImportResult, ImportType, LoadError, SkinType, SpecificImportType as SIT};
+use crate::accel::traits::{AssetProvider, TPSEAccelerator, TextureHandle};
+use crate::import::{Asset, BackgroundType, FileType, ImportContext, ImportContextEntry, ImportError, ImportErrorType, ImportResult, ImportType, MediaLoadError, SkinType, SpecificImportType as SIT};
 use crate::import::radiance::parse_radiance_sound_definition;
 
 /// Prepares a single file for import.
 pub async fn decide_specific_type<'c, T: TPSEAccelerator>
-  (import_type: ImportType, filename: &str, bytes: Arc<[u8]>, ctx: ImportContext<'c>)
-   -> Result<ImportResult<'c>, ImportError>
+  (import_type: ImportType, filename: &str, bytes: Arc<[u8]>, ctx: ImportContext<'c, T>)
+   -> Result<ImportResult<'c, T>, ImportError<T>>
 {
   ctx.log(Level::Debug, format_args!("Deciding import type for {:?} {}", import_type, filename));
   if ctx.is_too_deep() {
@@ -25,12 +25,12 @@ pub async fn decide_specific_type<'c, T: TPSEAccelerator>
           FileType::Zip => SIT::Zip,
           FileType::TPSE => SIT::TPSE,
           FileType::Image => {
-            let image = T::decode_texture(bytes.clone())
-              .map_err(|err| ctx.wrap(LoadError::ErasedAcceleratorError(Box::new(err)).into()))?;
+            let image = T::Texture::decode_texture(bytes.clone())
+              .map_err(|err| ctx.wrap(MediaLoadError::TextureError(err).into()))?;
             let width = image.width().await
-              .map_err(|err| ctx.wrap(LoadError::ErasedAcceleratorError(Box::new(err)).into()))?;
+              .map_err(|err| ctx.wrap(MediaLoadError::TextureError(err).into()))?;
             let height = image.height().await
-              .map_err(|err| ctx.wrap(LoadError::ErasedAcceleratorError(Box::new(err)).into()))?;
+              .map_err(|err| ctx.wrap(MediaLoadError::TextureError(err).into()))?;
             if let Some(format) = SkinType::guess_format(filename, width, height, &ctx) {
               let format = ImportType::Skin { subtype: format };
               let context = ctx.with_context(ImportContextEntry::WithGuessedType(format));
@@ -44,7 +44,8 @@ pub async fn decide_specific_type<'c, T: TPSEAccelerator>
           },
           FileType::Video => SIT::Background(BackgroundType::Video),
           FileType::Audio => {
-            let asset = ctx.asset_source.provide(Asset::TetrioRSD).await.map_err(|err| ctx.wrap(err))?;
+            let asset = ctx.asset_source.provide(Asset::TetrioRSD).await
+              .map_err(|err| ctx.wrap(ImportErrorType::AssetFetchFailed(err)))?;
             let rsd = parse_radiance_sound_definition(&asset).map_err(|err| ctx.wrap(err.into()))?;
             let atlas = rsd.to_old_style_atlas();
             let sfx = PathBuf::from(filename).file_stem().and_then(|ext| ext.to_str()).and_then(|ext| atlas.get(ext));

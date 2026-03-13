@@ -1,16 +1,15 @@
 use std::fmt::Arguments;
 use itertools::Itertools;
 use log::Level;
-use crate::import::asset_provider::AssetProvider;
+use crate::accel::traits::TPSEAccelerator;
 use crate::import::{ImportContextEntry, ImportError, ImportErrorType};
 use crate::log::ImportLogger;
 
 /// Stores metadata and context associated with an import process, tracking the stack location
 /// (e.g. nested zip files) and base game asset provider.
-#[derive(Clone)]
-pub struct ImportContext<'a> {
+pub struct ImportContext<'a, T: TPSEAccelerator> {
   /// The asset provider providing `Asset`s for the importer
-  pub asset_source: &'a (dyn AssetProvider + Send + Sync),
+  pub asset_source: &'a T::Asset,
   /// The maximum depth the context stack is allowed to reach before bailing
   pub depth_limit: u8,
   /// A stack of context describing the current item the importer is working on
@@ -19,8 +18,19 @@ pub struct ImportContext<'a> {
   pub logger: Option<&'a (dyn ImportLogger + Send + Sync)>
 }
 
-impl<'a> ImportContext<'a> {
-  pub fn new(asset_source: &'a (dyn AssetProvider + Send + Sync), depth_limit: u8) -> ImportContext<'a> {
+impl<T: TPSEAccelerator> Clone for ImportContext<'_, T> {
+  fn clone(&self) -> Self {
+    Self {
+      asset_source: self.asset_source,
+      depth_limit: self.depth_limit.clone(),
+      context: self.context.clone(),
+      logger: self.logger.clone()
+    }
+  }
+}
+
+impl<'a, T: TPSEAccelerator> ImportContext<'a, T> {
+  pub fn new(asset_source: &'a T::Asset, depth_limit: u8) -> ImportContext<'a, T> {
     Self {
       depth_limit,
       asset_source,
@@ -40,7 +50,7 @@ impl<'a> ImportContext<'a> {
   }
 
   /// Wraps an ImportErrorType with this `ImportContext`'s context
-  pub fn wrap(&self, error: ImportErrorType) -> ImportError {
+  pub fn wrap(&self, error: ImportErrorType<T>) -> ImportError<T> {
     ImportError {
       context: self.context.clone(),
       error

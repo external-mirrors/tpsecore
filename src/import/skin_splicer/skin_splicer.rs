@@ -14,8 +14,8 @@ impl<T: TPSEAccelerator> Default for SkinSplicer<T> {
 }
 impl<T: TPSEAccelerator> SkinSplicer<T> {
   /// Loads an image into the SkinSplicer, putting it at the end of the queue
-  pub fn load(&mut self, format: SkinType, file: Arc<[u8]>) -> Result<(), T::DecodeError> {
-    let image = T::decode_texture(file)?;
+  pub fn load(&mut self, format: SkinType, file: Arc<[u8]>) -> Result<(), <T::Texture as TextureHandle>::Error> {
+    let image = T::Texture::decode_texture(file)?;
     self.images.push((format, image));
     Ok(())
   }
@@ -33,7 +33,7 @@ impl<T: TPSEAccelerator> SkinSplicer<T> {
     }
     let width = (image_width_ratio * block_size as f64) as u32;
     let height = (image_height_ratio * block_size as f64) as u32;
-    self.images.push((format, T::new_texture(width, height)))
+    self.images.push((format, T::Texture::new_texture(width, height)))
   }
 
   /// Draws a block, combining all available pieces. If no resolution is provided, the

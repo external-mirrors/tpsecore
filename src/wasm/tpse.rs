@@ -1,8 +1,8 @@
 use std::ptr::null;
 
+use crate::accel::wasm_asset_provider::WasmAssetProvider;
 use crate::import::{import, ImportContext, ImportType};
 use crate::log::ImportLogger;
-use crate::wasm::provide_asset::WasmAssetProvider;
 use crate::wasm::{ImportStatus, STATE, StagedFile, State, TPSEContext, WasmGlobalAccelerator, import_log, report_import_done};
 
 
