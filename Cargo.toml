@@ -8,7 +8,7 @@ authors = ["UniQMG"]
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = ["extra_software_decoders"]
+default = ["software_rendering", "extra_software_decoders"]
 
 # Javascript implementations of image manipulation primitives
 # (wasm embedder dependent)
@@ -53,10 +53,11 @@ tiny-skia = { optional = true, version = "0.11.4" }
 ab_glyph = { optional = true, version = "0.2.29" }
 
 # Audio
-symphonia = { version = "0.5.4", features = ["mp3", "isomp4", "aac"] } # various decoders
+symphonia = { version = "0.5.4", features = ["mp3", "isomp4", "aac"] } # various non-default decoders
 hound = "3.5.1" # wav encoder
 
 [dev-dependencies]
+tokio = { version = "1.50.0", features = ["full"] } # for async in tests
 simple_logger = "5.0.0" # for logging in tests
 
 [patch.crates-io]

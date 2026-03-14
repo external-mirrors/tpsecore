@@ -42,17 +42,19 @@ pub enum ImportErrorType<T: TPSEAccelerator> {
   AmbiguousAnimatedSkinResults(Cow<'static, str>, HashSet<SkinType>),
   #[error("failed to load TETR.IO asset: {0}")]
   AssetFetchFailed(<T::Asset as AssetProvider>::Error),
-  #[error("asset parse failure: {0}")]
-  AssetParseFailure(#[from] TetrioAssetParseFailure),
+  #[error("base game asset metadata parse failure: {0}")]
+  AssetParseFailure(#[from] TetrioAssetMetadataParseFailure),
+  #[error("failed to decode base game sound effects buffer")]
+  AssetSoundEffectsDecode(<T::Audio as AudioHandle>::Error),
   #[error("rendering failure: {0}")]
   RenderFailure(#[from] RenderFailure),
   #[error("encoding image failed")]
   EncodeFailed
 }
 
-/// An error indicating failure to parse base game assets
+/// An error indicating failure to parse base game asset metadata
 #[derive(Debug, thiserror::Error)]
-pub enum TetrioAssetParseFailure {
+pub enum TetrioAssetMetadataParseFailure {
   #[error("Tried to parse non-UTF8 data as UTF8")]
   UTF8Error,
   #[error("regex failed to extract sound effects atlas")]
@@ -66,7 +68,7 @@ pub enum TetrioAssetParseFailure {
   #[error("found invalid UTF-8 in name of sprite {sprite}: {error}")]
   SoundEffectsAtlasSpriteNameUTF8Error { sprite: usize, error: Utf8Error },
   #[error("name of sprite {sprite} beyond sane limits: {length} bytes")]
-  SoundEffectsAtlasNameTooLong { sprite: usize, length: u32 }
+  SoundEffectsAtlasNameTooLong { sprite: usize, length: u32 },
 }
 
 /// An error indicating failure to parse a media file

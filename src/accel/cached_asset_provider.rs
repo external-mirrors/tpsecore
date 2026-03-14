@@ -4,9 +4,9 @@ use std::sync::Arc;
 use crate::accel::traits::AssetProvider;
 use crate::import::Asset;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct CachedAssetProvider {
-  cache: HashMap<Asset, Arc<[u8]>>
+  pub cache: HashMap<Asset, Arc<[u8]>>
 }
 
 #[derive(thiserror::Error, Debug)]

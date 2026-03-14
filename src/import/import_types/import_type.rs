@@ -159,7 +159,7 @@ impl ImportType {
 #[cfg(test)]
 mod test {
   use crate::import::{AnimatedOptions, SkinType, ImportType};
-  use crate::import::import_types::import_type::POSSIBILITIES;
+  // use crate::import::import_types::import_type::POSSIBILITIES;
   use crate::import::ImportType::Skin;
 
   #[test]

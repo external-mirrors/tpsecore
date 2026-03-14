@@ -7,6 +7,8 @@ pub mod wasm_texture_handle;
 pub mod null_texture_handle;
 
 pub mod software_audio_handle;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod ffmpeg_audio_handle;
 
 pub mod cached_asset_provider;
 #[cfg(target_arch = "wasm32")]

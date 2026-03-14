@@ -8,7 +8,7 @@ use log::Level;
 use zip::ZipArchive;
 use crate::accel::traits::{AssetProvider, TPSEAccelerator, TextureHandle};
 use crate::import::import_task::ImportTask;
-use crate::import::{Asset, import, ImportErrorType, ImportContext, ImportType, MediaLoadError, SkinType, SpecificImportType, ImportContextEntry, ImportError};
+use crate::import::{Asset, ImportContext, ImportContextEntry, ImportError, ImportErrorType, ImportType, MediaLoadError, SkinType, SpecificImportType, TetrioAssetMetadataParseFailure, import};
 use crate::import::decode_helper::decode;
 use crate::import::radiance::parse_radiance_sound_definition;
 use crate::import::skin_splicer::{SkinSplicer};
@@ -168,11 +168,13 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: ImportConte
       if !unvisited.is_empty() {
         let rsd_asset = ctx.asset_source.provide(Asset::TetrioRSD).await
           .map_err(|err| ctx.wrap(ImportErrorType::AssetFetchFailed(err)))?;
-        let rsd = parse_radiance_sound_definition(&rsd_asset).map_err(|err| ctx.wrap(err.into()))?;
+          
+        let rsd = parse_radiance_sound_definition(&rsd_asset)
+          .map_err(|err| ctx.wrap(err.into()))?;
 
         ctx.log(Level::Trace, format_args!("Decoding {}: {} bytes", Asset::TetrioRSD, rsd_asset.len()));
         let decoded = decode::<T>(rsd.audio_buffer, Some("ogg")).await
-          .map_err(|err| ctx.wrap(MediaLoadError::AudioError(err).into()))?;
+          .map_err(|err| ctx.wrap(ImportErrorType::AssetSoundEffectsDecode(err)))?;
 
         ctx.log(Level::Trace, format_args!("Encoding..."));
         for sfx_name in unvisited {

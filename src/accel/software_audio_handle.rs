@@ -10,6 +10,8 @@ use symphonia::default::{get_codecs, get_probe};
 
 use crate::accel::traits::AudioHandle;
 
+/// This is actually fairly useless right now since it can't handle opus coded audio
+/// which tetrio has been using for a while now
 #[derive(Debug, Clone)]
 pub struct SoftwareAudioHandle(Arc<[f32]>);
 
