@@ -1,6 +1,6 @@
 use std::io::Write;
 use std::ops::Range;
-use std::process::{Command, Stdio};
+use std::process::{Command, ExitStatus, Stdio};
 use std::sync::Arc;
 
 use crate::accel::traits::AudioHandle;
@@ -9,8 +9,16 @@ use crate::accel::traits::AudioHandle;
 #[derive(Clone, Debug)]
 pub struct FFmpegAudioHandle(Arc<[f32]>, Range<usize>);
 
+#[derive(Debug, thiserror::Error)]
+pub enum FFmpegError {
+  #[error("io error: {0}")]
+  IOError(#[from] std::io::Error),
+  #[error("ffmpeg exited unsuccessfully: {0}")]
+  FFmpegExit(ExitStatus)
+}
+
 impl AudioHandle for FFmpegAudioHandle {
-  type Error = std::io::Error;
+  type Error = FFmpegError;
 
   fn new_from_samples(samples: Arc<[f32]>) -> Self {
     let range = 0..samples.len();
@@ -42,6 +50,9 @@ impl AudioHandle for FFmpegAudioHandle {
         ffmpeg.wait_with_output()
       }).join().unwrap()
     })?;
+    if !output.status.success() {
+      return Err(FFmpegError::FFmpegExit(output.status));
+    }
     
     let samples: Vec<f32> = output.stdout
       .chunks_exact(4)
@@ -75,7 +86,8 @@ impl AudioHandle for FFmpegAudioHandle {
         "-ar", "44100",
         "-i", "pipe:0",
         
-        "-c:a libopus",
+        "-f", "ogg",
+        "-c:a", "libopus",
         "pipe:1",
       ])
       .stdin(Stdio::piped())
@@ -95,6 +107,9 @@ impl AudioHandle for FFmpegAudioHandle {
         ffmpeg.wait_with_output()
       }).join().unwrap()
     })?;
+    if !output.status.success() {
+      return Err(FFmpegError::FFmpegExit(output.status));
+    }
     
     Ok(output.stdout.into())
   }
