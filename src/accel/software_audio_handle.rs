@@ -1,6 +1,8 @@
 use std::io::{Cursor, ErrorKind};
+use std::ops::Range;
 use std::sync::Arc;
 
+use hound::{SampleFormat, WavSpec};
 use symphonia::core::audio::SampleBuffer;
 use symphonia::core::codecs::CODEC_TYPE_NULL;
 use symphonia::core::formats::FormatOptions;
@@ -13,7 +15,7 @@ use crate::accel::traits::AudioHandle;
 /// This is actually fairly useless right now since it can't handle opus coded audio
 /// which tetrio has been using for a while now
 #[derive(Debug, Clone)]
-pub struct SoftwareAudioHandle(Arc<[f32]>);
+pub struct SoftwareAudioHandle(Arc<[f32]>, Range<usize>);
 
 #[derive(Debug, thiserror::Error)]
 pub enum SoftwareAudioError {
@@ -25,7 +27,13 @@ pub enum SoftwareAudioError {
 
 impl AudioHandle for SoftwareAudioHandle {
   type Error = SoftwareAudioError;
-  async fn decode_audio(buffer: &[u8], extension: Option<&str>) -> Result<Self, Self::Error> {
+  
+  fn new_from_samples(samples: Arc<[f32]>) -> Self {
+    let range = 0..samples.len();
+    Self(samples, range)
+  }
+  
+  async fn decode_audio(buffer: Arc<[u8]>, extension: Option<&str>) -> Result<Self, Self::Error> {
     let mut hint = Hint::new();
     if let Some(extension) = extension {
       hint.with_extension(extension);
@@ -65,14 +73,43 @@ impl AudioHandle for SoftwareAudioHandle {
       buffers.push(sample_buf);
     }
     
-    let buffer = buffers.iter().flat_map(|buf| buf.samples()).copied().collect::<Vec<_>>().into();
-    Ok(Self(buffer))
+    let buffer: Arc<[_]> = buffers.iter().flat_map(|buf| buf.samples()).copied().collect::<Vec<_>>().into();
+    let range = 0..buffer.len();
+    Ok(Self(buffer, range))
   }
+  
+  fn slice(&self, slice: std::ops::Range<usize>) -> Self {
+    let start = self.1.start + slice.start;
+    Self(self.0.clone(), start..start+slice.end)
+  }
+  
   async fn length(&self) -> Result<usize, Self::Error> {
-    Ok(self.0.len())
+    Ok(self.1.end - self.1.start)
   }
-  async fn read(&self, out: &mut [f32], offset: usize) -> Result<(), Self::Error> {
-    out.copy_from_slice(&self.0[offset..offset+out.len()]);
+
+  async fn read(&self, mut accept: impl FnMut(f32)) -> Result<(), Self::Error> {
+    for byte in &self.0[self.1.clone()] {
+      accept(*byte);
+    }
     Ok(())
+  }
+
+  async fn encode_ogg(chunks: &[Self]) -> Result<Arc<[u8]>, Self::Error> {
+    let mut encoded = vec![];
+    let mut cursor = Cursor::new(&mut encoded);
+    // "ogg"
+    let mut encoder = hound::WavWriter::new(&mut cursor, WavSpec {
+      channels: 2,
+      sample_rate: 44100,
+      bits_per_sample: 32,
+      sample_format: SampleFormat::Float
+    }).unwrap();
+    for chunk in chunks {
+      for sample in &chunk.0[..] {
+        encoder.write_sample(*sample).unwrap();
+      }
+    }
+    encoder.finalize().unwrap();
+    Ok(encoded.into())
   }
 }

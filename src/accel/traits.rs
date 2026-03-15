@@ -1,4 +1,5 @@
 use std::fmt::Debug;
+use std::ops::Range;
 use std::sync::Arc;
 
 use crate::import::Asset;
@@ -52,8 +53,15 @@ pub trait TextureHandle: Clone + Debug {
 pub trait AudioHandle: Clone + Debug {
   type Error: std::error::Error + Send + Sync + 'static;
   
-  async fn decode_audio(buffer: &[u8], extension: Option<&str>) -> Result<Self, Self::Error>;
+  fn new_from_samples(samples: Arc<[f32]>) -> Self;
+  async fn decode_audio(buffer: Arc<[u8]>, extension: Option<&str>) -> Result<Self, Self::Error>;
+  
+  fn slice(&self, slice: Range<usize>) -> Self;
+  /// Returns the length of the buffer in samples.
+  /// For multi-channel buffers, samples are interleaved and counted once per channel.
   async fn length(&self) -> Result<usize, Self::Error>;
   /// Reads sample data from the audio's internal buffer into the provided buffer
-  async fn read(&self, out: &mut [f32], offset: usize) -> Result<(), Self::Error>;
+  async fn read(&self, accept: impl FnMut(f32)) -> Result<(), Self::Error>;
+  
+  async fn encode_ogg(chunks: &[Self]) -> Result<Arc<[u8]>, Self::Error>;
 }

@@ -1,5 +1,3 @@
-use std::convert::Infallible;
-
 use crate::import::import_error::TetrioAssetMetadataParseFailure;
 use crate::import::import_error::TetrioAssetMetadataParseFailure::*;
 use crate::tpse::CustomSoundAtlas;

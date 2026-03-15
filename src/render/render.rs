@@ -1,13 +1,13 @@
 use std::borrow::Cow;
 use std::io::Cursor;
+use std::ops::Deref;
 use hound::{SampleFormat, WavSpec};
-use crate::accel::traits::{TPSEAccelerator, TextureHandle};
+use crate::accel::traits::{TPSEAccelerator, TextureHandle, AudioHandle};
 use crate::import::{ImportErrorType, MediaLoadError, SkinType};
-use crate::import::decode_helper::TetrioAtlasDecoder;
 use crate::import::skin_splicer::SkinSplicer;
 use crate::render::{BoardElement, clone_slice, nine_slice_resize, RenderOptions};
 use crate::render::board_element::BoardTextureKind;
-use crate::tpse::{AnimMeta, File, TPSE};
+use crate::tpse::{AnimMeta, CustomSoundAtlas, File, TPSE};
 
 pub struct RenderContext<T: TPSEAccelerator> {
   skin: Option<T::Texture>,
@@ -56,6 +56,42 @@ pub enum SoundEffectRenderError<'a, T: TPSEAccelerator> {
   NoSuchSoundEffect(Cow<'a, str>),
   #[error(transparent)]
   ImportError(#[from] ImportErrorType<T>)
+}
+
+struct TetrioAtlasDecoder {
+  pub atlas: CustomSoundAtlas,
+  pub buffer: Vec<f32>
+}
+
+impl TetrioAtlasDecoder {
+  async fn decode_from_tpse<T: TPSEAccelerator>(tpse: &TPSE) -> Result<Option<Self>, <T::Audio as AudioHandle>::Error> {
+    let Some(atlas) = tpse.custom_sound_atlas.clone() else { return Ok(None) };
+    let Some(file) = tpse.custom_sounds.clone() else { return Ok(None) };
+    let ext = mime_guess::get_mime_extensions_str(&file.mime)
+      .and_then(|mime| mime.first())
+      .map(Deref::deref);
+      
+    debug_assert!(file.binary.get(0..4) != Some(&[0x74, 0x52, 0x25, 0x44]), "decode was passed a tRSD file");
+    let decoded = T::Audio::decode_audio(file.binary.clone(), ext).await?;
+    let length = decoded.length().await?;
+    let mut buffer = Vec::with_capacity(length);
+    decoded.read(|sample| buffer.push(sample)).await?;
+  
+    Ok(Some(TetrioAtlasDecoder { atlas, buffer }))
+  }
+
+  /// Looks up an atlas entry by name and returns the associated samples
+  fn lookup(&self, sfx_name: &str) -> Option<&[f32]> {
+    let (offset, duration) = self.atlas.get(sfx_name)?;
+    let offset_samples = (offset/1000.0 * 44100.0 * 2.0) as usize;
+    let offset_duration = (duration/1000.0 * 44100.0 * 2.0) as usize;
+    // log::trace!("lookup {}: {} {} -> {} {}", sfx_name, offset, duration, offset_samples, offset_duration);
+    if offset_samples + offset_duration > self.buffer.len() {
+      log::error!("sound effect atlas entry {sfx_name} does not fit in buffer: {offset_samples}+{offset_duration}>{}", self.buffer.len());
+      return None;
+    }
+    Some(&self.buffer[offset_samples .. offset_samples + offset_duration])
+  }
 }
 
 /// Renders a sequence of sound effects to a continuous buffer

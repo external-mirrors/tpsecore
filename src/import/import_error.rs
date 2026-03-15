@@ -44,12 +44,14 @@ pub enum ImportErrorType<T: TPSEAccelerator> {
   AssetFetchFailed(<T::Asset as AssetProvider>::Error),
   #[error("base game asset metadata parse failure: {0}")]
   AssetParseFailure(#[from] TetrioAssetMetadataParseFailure),
-  #[error("failed to decode base game sound effects buffer")]
+  #[error("failed to decode base game sound effects buffer: {0}")]
   AssetSoundEffectsDecode(<T::Audio as AudioHandle>::Error),
   #[error("rendering failure: {0}")]
   RenderFailure(#[from] RenderFailure),
   #[error("encoding image failed")]
-  EncodeFailed
+  TextureEncodeFailed(<T::Texture as TextureHandle>::Error),
+  #[error("encoding audio failed: {0}")]
+  AudioEncodeFailed(<T::Audio as AudioHandle>::Error)
 }
 
 /// An error indicating failure to parse base game asset metadata

@@ -1,11 +1,12 @@
 pub mod traits;
 
-#[cfg(feature = "software_rendering")]
+#[cfg(feature = "software_texture")]
 pub mod software_texture_handle;
 #[cfg(target_arch = "wasm32")]
 pub mod wasm_texture_handle;
 pub mod null_texture_handle;
 
+#[cfg(feature = "software_audio")]
 pub mod software_audio_handle;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod ffmpeg_audio_handle;

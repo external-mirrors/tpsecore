@@ -37,9 +37,9 @@ pub struct WasmGlobalAccelerator;
 impl TPSEAccelerator for WasmGlobalAccelerator {
   type Asset = WasmAssetProvider;
   
-  #[cfg(all(not(feature = "software_rendering"), not(feature = "wasm_rendering")))]
+  #[cfg(all(not(feature = "software_texture"), not(feature = "wasm_rendering")))]
   type Texture = crate::accel::null_texture_handle::NullTextureHandle;
-  #[cfg(all(feature = "software_rendering", not(feature = "wasm_rendering")))]
+  #[cfg(all(feature = "software_texture", not(feature = "wasm_rendering")))]
   type Texture = crate::accel::software_texture_handle::SoftwareTextureHandle;
   #[cfg(feature = "wasm_rendering")]
   type Texture = crate::accel::wasm_texture_handle::WasmTextureHandle;

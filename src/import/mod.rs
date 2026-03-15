@@ -9,7 +9,6 @@ mod import_result;
 mod import;
 mod asset;
 pub mod radiance;
-pub mod decode_helper;
 
 pub use import_types::*;
 pub use file_type::FileType;

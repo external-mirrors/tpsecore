@@ -1829,6 +1829,7 @@ dependencies = [
  "ab_glyph",
  "async-channel",
  "base64",
+ "bytemuck",
  "data-url",
  "hex",
  "hex-literal",

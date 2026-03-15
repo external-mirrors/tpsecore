@@ -1,4 +1,5 @@
 use std::io::Write;
+use std::ops::Range;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 
@@ -6,15 +7,19 @@ use crate::accel::traits::AudioHandle;
 
 /// For industrial strength format support
 #[derive(Clone, Debug)]
-pub struct FFmpegAudioHandle(Arc<[f32]>);
+pub struct FFmpegAudioHandle(Arc<[f32]>, Range<usize>);
 
 impl AudioHandle for FFmpegAudioHandle {
   type Error = std::io::Error;
 
-  async fn decode_audio(buffer: &[u8], _extension: Option<&str>) -> Result<Self, Self::Error> {
+  fn new_from_samples(samples: Arc<[f32]>) -> Self {
+    let range = 0..samples.len();
+    Self(samples, range)
+  }
+  
+  async fn decode_audio(buffer: Arc<[u8]>, _extension: Option<&str>) -> Result<Self, Self::Error> {
     let mut ffmpeg = Command::new("ffmpeg")
       .args([
-        "-nostdin",
         "-i", "pipe:0",
         "-f", "f32le",
         "-acodec", "pcm_f32le",
@@ -42,15 +47,55 @@ impl AudioHandle for FFmpegAudioHandle {
       .chunks_exact(4)
       .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
       .collect();
-    Ok(Self(samples.into()))
+    let range = 0..samples.len();
+    Ok(Self(samples.into(), range))
+  }
+  
+  fn slice(&self, slice: std::ops::Range<usize>) -> Self {
+    let start = self.1.start + slice.start;
+    Self(self.0.clone(), start..start+slice.end)
   }
   
   async fn length(&self) -> Result<usize, Self::Error> {
-    Ok(self.0.len())
+    Ok(self.1.end - self.1.start)
   }
-  
-  async fn read(&self, out: &mut [f32], offset: usize) -> Result<(), Self::Error> {
-    out.copy_from_slice(&self.0[offset..offset+out.len()]);
+
+  async fn read(&self, mut accept: impl FnMut(f32)) -> Result<(), Self::Error> {
+    for byte in &self.0[self.1.clone()] {
+      accept(*byte);
+    }
     Ok(())
+  }
+
+  async fn encode_ogg(chunks: &[Self]) -> Result<Arc<[u8]>, Self::Error> {
+    let mut ffmpeg = Command::new("ffmpeg")
+      .args([
+        "-f", "f32le",
+        "-ac", "2",
+        "-ar", "44100",
+        "-i", "pipe:0",
+        
+        "-c:a libopus",
+        "pipe:1",
+      ])
+      .stdin(Stdio::piped())
+      .stdout(Stdio::piped())
+      .stderr(Stdio::inherit())
+      .spawn()?;
+
+    let mut stdin = ffmpeg.stdin.take().unwrap();
+    let output = std::thread::scope(|scope| {
+      scope.spawn(|| {
+        for chunk in chunks {
+          let _ = stdin.write_all(bytemuck::cast_slice(&chunk.0[chunk.1.clone()]));
+        }
+        drop(stdin);
+      });
+      scope.spawn(|| {
+        ffmpeg.wait_with_output()
+      }).join().unwrap()
+    })?;
+    
+    Ok(output.stdout.into())
   }
 }

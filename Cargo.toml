@@ -8,14 +8,16 @@ authors = ["UniQMG"]
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = ["software_rendering", "extra_software_decoders"]
+default = ["software_texture", "software_audio", "extra_software_decoders"]
 
 # Javascript implementations of image manipulation primitives
 # (wasm embedder dependent)
 wasm_rendering = []
 
 # Software rendering implementation of image manipulation primitives
-software_rendering = ["dep:image", "dep:imageproc", "dep:resvg", "dep:usvg", "dep:tiny-skia", "dep:ab_glyph"]
+software_texture = ["dep:image", "dep:imageproc", "dep:resvg", "dep:usvg", "dep:tiny-skia", "dep:ab_glyph"]
+# Software rendering implementation of audio manipulation primitives
+software_audio = ["dep:symphonia", "dep:hound"]
 
 # Software decoding for multi-frame trickier formats like gifs and animated webps
 # Required for importing animated skins from animated formats
@@ -43,6 +45,7 @@ slotmap = "1.1.1"
 thiserror = "2.0.11"
 log = "0.4.17"
 async-channel = "2.5.0"
+bytemuck = "1.25.0"
 
 # Image
 image = { optional = true, version = "0.25.5", default-features = false, features = ["bmp","dds","exr","ff","gif","hdr","ico","jpeg","png","pnm","qoi","tga","tiff","webp"] } # all the defaults except avif, which has a transitive relationship on wasm-bindgen
@@ -53,8 +56,8 @@ tiny-skia = { optional = true, version = "0.11.4" }
 ab_glyph = { optional = true, version = "0.2.29" }
 
 # Audio
-symphonia = { version = "0.5.4", features = ["mp3", "isomp4", "aac"] } # various non-default decoders
-hound = "3.5.1" # wav encoder
+symphonia = { optional = true, version = "0.5.4", features = ["mp3", "isomp4", "aac"] } # various non-default decoders
+hound = { optional = true, version = "3.5.1" } # wav encoder
 
 [dev-dependencies]
 tokio = { version = "1.50.0", features = ["full"] } # for async in tests

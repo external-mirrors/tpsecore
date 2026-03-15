@@ -3,13 +3,11 @@ use std::collections::{HashMap, HashSet};
 use std::io::Cursor;
 use std::sync::Arc;
 use std::time::Duration;
-use hound::{SampleFormat, WavSpec};
 use log::Level;
 use zip::ZipArchive;
-use crate::accel::traits::{AssetProvider, TPSEAccelerator, TextureHandle};
+use crate::accel::traits::{AssetProvider, TPSEAccelerator, TextureHandle, AudioHandle};
 use crate::import::import_task::ImportTask;
-use crate::import::{Asset, ImportContext, ImportContextEntry, ImportError, ImportErrorType, ImportType, MediaLoadError, SkinType, SpecificImportType, TetrioAssetMetadataParseFailure, import};
-use crate::import::decode_helper::decode;
+use crate::import::{Asset, ImportContext, ImportContextEntry, ImportError, ImportErrorType, ImportType, MediaLoadError, SkinType, SpecificImportType, import};
 use crate::import::radiance::parse_radiance_sound_definition;
 use crate::import::skin_splicer::{SkinSplicer};
 use crate::tpse::{AnimMeta, Background, File, MiscTPSEValue, Song, SongMetadata, TPSE};
@@ -100,7 +98,7 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: ImportConte
       for (canvas, skin_anim, skin_anim_meta, skin, skin_type) in instances {
         if let Some(canvas) = canvas {
           *skin_anim = Some(File {
-            binary: canvas.encode_png().await.map_err(|_| ctx.wrap(ImportErrorType::EncodeFailed))?,
+            binary: canvas.encode_png().await.map_err(|err| ctx.wrap(ImportErrorType::TextureEncodeFailed(err)))?,
             mime: "image/png".to_string()
           });
           *skin_anim_meta = Some(AnimMeta { frames: frames.len() as u32, delay });
@@ -114,17 +112,16 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: ImportConte
             .map_err(|err| ctx.wrap(MediaLoadError::TextureError(err).into()))?
             .expect("Skin should exist if animated buffer was created");
           *skin = Some(File {
-            binary: first_frame_skin.encode_png().await.map_err(|_| ctx.wrap(ImportErrorType::EncodeFailed))?,
+            binary: first_frame_skin.encode_png().await
+              .map_err(|err| ctx.wrap(ImportErrorType::TextureEncodeFailed(err)))?,
             mime: "image/png".to_string()
           });
         }
       }
     },
     ImportTask::SoundEffects(sound_effects) => {
-      // todo: probably not safe to assume 2 channel 44.1KHz audio
       let channels: usize = 2;
       let sample_rate: usize = 44100;
-      let bits_per_sample: usize = 32;
       // Atlas entries are in floating point milliseconds, but we primarily work in samples here.
       // Multiply by this constant to get from atlas timings to sample timings.
       let atlas_entry_to_sample_ratio: f64 = 1.0/1000.0 * sample_rate as f64 * channels as f64;
@@ -132,21 +129,14 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: ImportConte
       let asset = ctx.asset_source.provide(Asset::TetrioRSD).await
         .map_err(|err| ctx.wrap(ImportErrorType::AssetFetchFailed(err)))?;
       let rsd = parse_radiance_sound_definition(&asset).map_err(|err| ctx.wrap(err.into()))?;
+      
       let mut atlas = rsd.to_old_style_atlas();
       let mut unvisited = atlas.keys().cloned().collect::<HashSet<_>>();
-      let mut encoded = vec![];
-      let mut cursor = Cursor::new(&mut encoded);
-      // todo: this is a wav encoder, but I can't find a wasm-compatible rust ogg encoder.
-      // hopefully tetrio won't care?
-      let mut encoder = hound::WavWriter::new(&mut cursor, WavSpec {
-        channels: channels as u16,
-        sample_rate: sample_rate as u32,
-        bits_per_sample: bits_per_sample as u16,
-        sample_format: SampleFormat::Float
-      }).unwrap();
+      let mut encoding_queue = Vec::with_capacity(sound_effects.len());
       let mut encoder_position = 0;
-
-      for sfx in sound_effects {
+      
+      for sfx in &sound_effects {
+        // todo: ensure we've stripped file extension by this point
         let with_filekey_removed = sfx.name.replace(ImportType::SoundEffects.filekey(), "");
         let Some((offset, duration)) = atlas.get_mut(&with_filekey_removed) else {
           ctx.log(Level::Warn, format_args!("Skipping unknown sound effect {}", sfx.name));
@@ -156,13 +146,18 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: ImportConte
 
         ctx.log(Level::Trace, format_args!("Decoding {}: {} bytes", sfx.filename, sfx.file.binary.len()));
 
-        let samples = decode::<T>(&sfx.file.binary, sfx.extension().as_ref().map(|el| el.as_str()))
-          .await.map_err(|err| ctx.wrap(MediaLoadError::AudioError(err).into()))?;
-        assert!(samples.len() % 2 == 0);
-        for sample in &samples { encoder.write_sample(*sample).unwrap(); }
+        let ext = mime_guess::get_mime_extensions_str(&sfx.file.mime).and_then(|x| x.first()).map(|x| *x);
+        let handle = T::Audio::decode_audio(sfx.file.binary.clone(), ext).await
+          .map_err(|err| ctx.wrap(MediaLoadError::AudioError(err).into()))?;
+        let samples = handle.length().await
+          .map_err(|err| ctx.wrap(MediaLoadError::AudioError(err).into()))?;
+        encoding_queue.push(handle);
+        
+        assert!(samples % 2 == 0);
+        
         *offset = encoder_position as f64 / atlas_entry_to_sample_ratio;
-        *duration = samples.len() as f64 / atlas_entry_to_sample_ratio;
-        encoder_position += samples.len();
+        *duration = samples as f64 / atlas_entry_to_sample_ratio;
+        encoder_position += samples;
       }
       
       if !unvisited.is_empty() {
@@ -173,27 +168,28 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: ImportConte
           .map_err(|err| ctx.wrap(err.into()))?;
 
         ctx.log(Level::Trace, format_args!("Decoding {}: {} bytes", Asset::TetrioRSD, rsd_asset.len()));
-        let decoded = decode::<T>(rsd.audio_buffer, Some("ogg")).await
-          .map_err(|err| ctx.wrap(ImportErrorType::AssetSoundEffectsDecode(err)))?;
 
-        ctx.log(Level::Trace, format_args!("Encoding..."));
+        let handle = T::Audio::decode_audio(rsd.audio_buffer.into(), Some("ogg")).await
+          .map_err(|err| ctx.wrap(ImportErrorType::AssetSoundEffectsDecode(err).into()))?;
+          
         for sfx_name in unvisited {
           let (offset, duration) = atlas.get_mut(&sfx_name).unwrap();
           let offset_samples = (*offset * atlas_entry_to_sample_ratio) as usize;
           let duration_samples = (*duration * atlas_entry_to_sample_ratio) as usize;
-          let samples = &decoded[offset_samples..offset_samples + duration_samples];
-          for sample in samples { encoder.write_sample(*sample).unwrap(); }
+          let subhandle = handle.slice(offset_samples..offset_samples + duration_samples);
+          encoding_queue.push(subhandle);
           *offset = encoder_position as f64 / atlas_entry_to_sample_ratio;
-          *duration = samples.len() as f64 / atlas_entry_to_sample_ratio;
-          encoder_position += samples.len();
+          *duration = duration_samples as f64 / atlas_entry_to_sample_ratio;
+          encoder_position += duration_samples;
         }
       }
+      
+      ctx.log(Level::Trace, format_args!("Encoding..."));
+      let encoded = T::Audio::encode_ogg(&encoding_queue).await
+        .map_err(|err| ctx.wrap(ImportErrorType::AudioEncodeFailed(err).into()))?;
 
-      if let Err(err) = encoder.finalize() {
-        log::error!("non-fatal encoding error: {err}")
-      }
       tpse.custom_sounds = Some(File {
-        binary: encoded.into(),
+        binary: encoded,
         mime: "audio/wav".to_string()
       });
       tpse.custom_sound_atlas = Some(atlas);
