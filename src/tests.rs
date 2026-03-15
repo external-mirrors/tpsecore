@@ -18,7 +18,7 @@ use crate::accel::traits::{TPSEAccelerator, TextureHandle};
 use crate::import::{Asset, import, ImportContext, ImportType};
 use crate::import::skin_splicer::Piece;
 use crate::log::ImportLogger;
-use crate::render::{BoardElement, BoardMap, FrameInfo, RenderContext, RenderOptions, SoundEffectInfo, example_maps, render_sound_effects};
+use crate::render::{BoardElement, BoardMap, FrameInfo, RenderContext, RenderOptions, example_maps};
 
 pub struct TestState {
   pub files: HashMap<String, TestAsset>

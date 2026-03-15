@@ -120,7 +120,7 @@ impl BoardElement {
     let bar_width = 32;
     // The garbage bar, located to the left of the board
     let mut garbage_bar = (border*-2 + bar_width*-1, 0, border*2 + bar_width, block*height + border);
-    let has_garbage_bar = [BoardElement::GarbageBar, BoardElement::Garbage, BoardElement::PendingGarbage].iter()
+    let has_garbage_bar = [BoardElement::GarbageBar, BoardElement::Garbage, BoardElement::PendingGarbage, BoardElement::GarbageCap].iter()
       .any(|x| opts.board_elements.contains(x));
     if !has_garbage_bar { garbage_bar.2 = 0; }
     // The progress bar, located to the right of the board
@@ -128,7 +128,7 @@ impl BoardElement {
     let has_progress_bar = [BoardElement::ProgressBar, BoardElement::Progress].iter()
       .any(|x| opts.board_elements.contains(x));
     if !has_progress_bar { progress_bar.2 = 0; }
-    // How many pixels to bad the bar contents by
+    // How many pixels to pad the bar contents by
     let bar_pad = 4;
 
     match self {
@@ -156,6 +156,7 @@ impl BoardElement {
         let (x, y, w, h) = garbage_bar;
         let ymod = block*6;
         let height = border;
+        
         (x, y + (h - border - ymod - height/2), w, height)
       },
       Self::Warning => {
@@ -185,7 +186,14 @@ impl BoardElement {
         let (px, _, pw, _) = progress_bar;
         (px + pw - border /* overlapping border */, 0, width, height)
       },
-      Self::Replay => (0, 0, 0, 0) // TODO
+      Self::Replay => {
+        // Replay is in the top left of the internal board area and
+        // stretches about 4.25 blocks away from the right edge.
+        // It's located about 0.5 blocks from the top and is about 80% of a block tall.
+        let width = block * 17/4;
+        let height = block * 8/10;
+        (board_internal.2 - width, block/2, width, height)
+      }
     }
   }
 
