@@ -50,12 +50,12 @@ impl SoftwareTextureHandle {
   }
   pub fn get2<T>(&self, other: &Self, handler: impl FnOnce(&mut SubImage<&mut DynamicImage>, &mut SubImage<&mut DynamicImage>) -> T) -> T {
     let mut map = TEX_STORE.lock().unwrap();
-    let Some([inner1, inner2]) = map.get_disjoint_mut([self.0.0, other.0.0]) else {
+    let Some([self_tex, other_tex]) = map.get_disjoint_mut([self.0.0, other.0.0]) else {
       panic!("attempted to use an image method with itself as an extra parameter");
     };
-    let mut subimage1 = SubImage::new(inner1, self.1[0], self.1[1], self.1[2], self.1[3]);
-    let mut subimage2 = SubImage::new(inner2, other.1[0], other.1[1], other.1[2], other.1[3]);
-    handler(&mut subimage1, &mut subimage2)
+    let mut self_slice = SubImage::new(self_tex, self.1[0], self.1[1], self.1[2], self.1[3]);
+    let mut other_slice = SubImage::new(other_tex, other.1[0], other.1[1], other.1[2], other.1[3]);
+    handler(&mut self_slice, &mut other_slice)
   }
 }
 impl TextureHandle for SoftwareTextureHandle {
@@ -99,19 +99,19 @@ impl TextureHandle for SoftwareTextureHandle {
   }
   fn draw_line(&self, start: (f32, f32), end: (f32, f32), color: [u8; 4]) {
     self.get(|image| {
-      imageproc::drawing::draw_line_segment_mut(image.inner_mut(), start, end, color.into());
+      imageproc::drawing::draw_line_segment_mut(&mut **image, start, end, color.into());
     });
   }
   fn draw_text(&self, color: [u8; 4], x: i32, y: i32, scale: f32, text: &str) {
     static FONT: LazyLock<FontRef> = LazyLock::new(|| FontRef::try_from_slice(include_bytes!("../../assets/pfw.ttf")).unwrap());
     self.get(|image| {
-      imageproc::drawing::draw_text_mut(image.inner_mut(), color.into(), x, y, scale, &*FONT, text);
+      imageproc::drawing::draw_text_mut(&mut **image, color.into(), x, y, scale, &*FONT, text);
     });
   }
   async fn encode_png(&self) -> Result<Arc<[u8]>, Self::Error> {    
     self.get(|image| {
       let mut buffer = vec![];
-      match image.inner().write_to(Cursor::new(&mut buffer), ImageFormat::Png) {
+      match image.to_image().write_to(&mut Cursor::new(&mut buffer), ImageFormat::Png) {
         Err(err) => {
           log::error!("failed to encode frame: {err}");
           Err(SoftwareRenderingError::ErasedError(Box::new(err)))
@@ -127,26 +127,24 @@ impl TextureHandle for SoftwareTextureHandle {
     Ok(self.get(|x| x.height()))
   }
   fn overlay(&self, with_image: &Self, x: i64, y: i64) {
-    self.get2(with_image, |a, b| {
-      overlay(a.inner_mut(), b.inner(), x, y);
+    self.get2(with_image, |this, that| {
+      overlay(&mut **this, &**that, x, y);
     });
   }
   fn resized(&self, width: u32, height: u32) -> Self {
     let resized = self.get(|image| {
-      resize(image.inner_mut(), width, height, FilterType::CatmullRom)
+      resize(&**image, width, height, FilterType::CatmullRom)
     });
     Self::new(resized.into())
   }
   fn slice(&self, x: u32, y: u32, w: u32, h: u32) -> Self {
     let arc = self.0.clone();
     let [ix, iy, iw, ih] = self.1;
-    self.get(|_image| {
-      let nx = ix.saturating_add(x);
-      let ny = iy.saturating_add(y);
-      assert!(nx as u64 + w as u64 <= ix as u64 + iw as u64);
-      assert!(ny as u64 + h as u64 <= iy as u64 + ih as u64);
-      Self(arc, [nx, ny, w, h])
-    })
+    let nx = ix.saturating_add(x);
+    let ny = iy.saturating_add(y);
+    assert!(nx as u64 + w as u64 <= ix as u64 + iw as u64);
+    assert!(ny as u64 + h as u64 <= iy as u64 + ih as u64);
+    Self(arc, [nx, ny, w, h])
   }
   fn tinted(&self, [r, g, b, a]: [u8; 4]) -> Self {
     Self::new(self.get(|image| {
