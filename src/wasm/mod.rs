@@ -5,6 +5,7 @@ use crate::accel::traits::TPSEAccelerator;
 use crate::accel::wasm_asset_provider::WasmAssetProvider;
 use crate::render::RenderContext;
 use crate::tpse::TPSE;
+use crate::wasm::wasm_tpse_provider::WasmTPSEProvider;
 
 mod tpse;
 mod render;
@@ -33,9 +34,9 @@ unsafe extern "C" {
   unsafe fn import_log(level: u8, tpse: u32, ptr: *const u8, len: usize);
   /// Obtains a key from browser storage, or a null pointer for null.
   /// The buffer will be deallocated internally.
-  unsafe fn tpse_get(key_ptr: *const u8, key_len: usize) -> *const u8;
+  unsafe fn tpse_get(extern_tpse_id: u32, key_ptr: *const u8, key_len: usize) -> *const u8;
   /// Writes a key into browser storage
-  unsafe fn tpse_set(key_ptr: *const u8, key_len: usize, data_ptr: *const u8, data_len: usize);
+  unsafe fn tpse_set(extern_tpse_id: u32, key_ptr: *const u8, key_len: usize, data_ptr: *const u8, data_len: usize);
 }
 
 #[derive(Debug, Clone)]
@@ -76,23 +77,38 @@ pub(in crate) struct TPSEState {
 
 #[derive(Default)]
 struct TPSEContext {
+  status: TPSEStatus,
   render_data: Option<RenderContext<WasmGlobalAccelerator>>,
-  import_status: ImportStatus,
   staged_files: Vec<StagedFile>
 }
-/// The import status of the TPSE. While the import is running, the import task temporarily
-/// takes ownership of the actual TPSE in order to do async writes against it. Thus, other
-/// operations that affect the TPSE are not valid during import.
 #[derive(Debug)]
-enum ImportStatus {
+enum TPSEStatus {
   IdleInternal(TPSE),
-  Running
+  IdleExternal(WasmTPSEProvider),
+  /// The TPSE is busy and unavailable because an import is running
+  Busy
 }
-impl Default for ImportStatus {
+impl Default for TPSEStatus {
   fn default() -> Self {
     Self::IdleInternal(Default::default())
   }
 }
+
+pub enum ActiveTPSEStatus {
+  IdleInternal(TPSE),
+  IdleExternal(WasmTPSEProvider)
+}
+macro_rules! over_tpse_status {
+  ($type:ident, $expr:expr, $bind:ident, $body:block$(, $default:block)?) => {
+    match $expr {
+      $type::IdleInternal($bind) => $body,
+      $type::IdleExternal($bind) => $body,
+      $(_ => $default)?
+    }
+  }
+}
+pub(in crate) use over_tpse_status;
+
 
 #[derive(Default, Debug)]
 struct StagedFile {

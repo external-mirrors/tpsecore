@@ -7,7 +7,8 @@ use crate::accel::wasm_asset_provider::WasmAssetProvider;
 use crate::import::{import, ImportContext, ImportType};
 use crate::log::ImportLogger;
 use crate::tpse::tpse_key::merge;
-use crate::wasm::{BUFFER_STATE, ImportStatus, StagedFile, TPSE_STATE, TPSEContext, WasmGlobalAccelerator, import_log, report_import_done};
+use crate::wasm::wasm_tpse_provider::WasmTPSEProvider;
+use crate::wasm::{ActiveTPSEStatus, BUFFER_STATE, StagedFile, TPSE_STATE, TPSEContext, TPSEStatus, WasmGlobalAccelerator, import_log, over_tpse_status, report_import_done};
 
 #[unsafe(no_mangle)]
 pub extern "C" fn dump_loaded_asset_debug() {
@@ -15,7 +16,7 @@ pub extern "C" fn dump_loaded_asset_debug() {
   
   let tpse_state = TPSE_STATE.lock().unwrap();
   for (id, tpse) in &tpse_state.tpses {
-    log::info!("tpse {id} status={:?} render_data={} staged_files={:?}", tpse.import_status, tpse.render_data.is_some(), tpse.staged_files);
+    log::info!("tpse {id} status={:?} render_data={} staged_files={:?}", tpse.status, tpse.render_data.is_some(), tpse.staged_files);
   }
   drop(tpse_state);
   
@@ -23,6 +24,19 @@ pub extern "C" fn dump_loaded_asset_debug() {
   for (id, buf) in &buffer_state.buffers {
     log::info!("buffer {id} len={} head={:?}", buf.len(), &buf[0..16.min(buf.len())]);
   }
+}
+
+/// Allocates an _external_ tpse which is read and updated via [tpse_get] and [tpse_set]
+/// and which has some usage restrictions on other methods.
+#[unsafe(no_mangle)]
+pub extern "C" fn allocate_extern_tpse() -> u32 {
+  let mut state = TPSE_STATE.lock().unwrap();
+  let id = state.next_id();
+  state.tpses.insert(id, TPSEContext {
+    status: TPSEStatus::IdleExternal(WasmTPSEProvider(id)),
+    ..Default::default()
+  });
+  id
 }
 
 #[unsafe(no_mangle)]
@@ -115,8 +129,12 @@ pub extern "C" fn queue_import(tpse_id: u32) -> usize {
   let mut tpse_state = TPSE_STATE.lock().unwrap();
   let buffer_state = BUFFER_STATE.lock().unwrap();
   let Some(tpse) = tpse_state.tpses.get_mut(&tpse_id) else { return 1 };
-  let ImportStatus::IdleInternal(mut tpse_data) = replace(&mut tpse.import_status, ImportStatus::Running) else {
-    return 3; // tpse already running, can't get a handle to it
+  
+  let status = replace(&mut tpse.status, TPSEStatus::Busy);
+  let mut tpse_data = match status {
+    TPSEStatus::IdleInternal(tpse) => ActiveTPSEStatus::IdleInternal(tpse),
+    TPSEStatus::IdleExternal(wasm) => ActiveTPSEStatus::IdleExternal(wasm),
+    TPSEStatus::Busy => return 3 // tpse already running, can't get a handle to it
   };
   let Ok(cloned) = tpse.staged_files.iter()
     .map(|file| Ok((
@@ -146,29 +164,29 @@ pub extern "C" fn queue_import(tpse_id: u32) -> usize {
     let merge_result = match result {
       Err(err) => {
         logger.log(Level::Error, format_args!("import failed: {err}"));
-        Err(1) // import failed
+        Some(1) // import failed
       }
       Ok(new_tpse) => {
-        match merge(&mut tpse_data, &new_tpse).await {
-          Err(err) => {
-            logger.log(Level::Error, format_args!("failed to merge final import result upon TPSE: {err}"));
-            Err(1) // import failed
+        over_tpse_status!(ActiveTPSEStatus, &mut tpse_data, tpse, {
+          match merge(tpse, &new_tpse).await {
+            Err(err) => {
+              logger.log(Level::Error, format_args!("failed to merge final import result upon TPSE: {err}"));
+              Some(1) // import failed
+            }
+            Ok(()) => None
           }
-          Ok(()) => Ok(())
-        }
-        
+        })
       },
     };
     
-    let code = match (TPSE_STATE.lock().unwrap().tpses.get_mut(&tpse_id), merge_result) {
-      (None, _) => 2, // tpse disappeared
-      (Some(tpse), Err(code)) => {
-        tpse.import_status = ImportStatus::IdleInternal(tpse_data);
-        code
-      }
-      (Some(tpse), Ok(())) => {
-        tpse.import_status = ImportStatus::IdleInternal(tpse_data);
-        0 // success!
+    let code = match TPSE_STATE.lock().unwrap().tpses.get_mut(&tpse_id) {
+      None => 2, // tpse disappeared
+      Some(tpse) => {
+        tpse.status = match tpse_data {
+          ActiveTPSEStatus::IdleInternal(tpse) => TPSEStatus::IdleInternal(tpse),
+          ActiveTPSEStatus::IdleExternal(wasm) => TPSEStatus::IdleExternal(wasm)
+        };
+        merge_result.unwrap_or(0 /* succcess! */)
       }
     };
     
@@ -178,12 +196,12 @@ pub extern "C" fn queue_import(tpse_id: u32) -> usize {
 }
 
 /// Serializes a TPSE and returns a pointer to the buffer holding the serialized data.
-/// Returns 0 if the TPSE handle is invalid or the TPSE is busy importing
+/// Returns 0 if the TPSE handle is invalid, busy importing, or external
 #[unsafe(no_mangle)]
 pub extern "C" fn export_tpse(tpse_id: u32) -> *const u8 {
   let tpse_state = TPSE_STATE.lock().unwrap();
   let Some(tpse) = tpse_state.tpses.get(&tpse_id) else { return null() };
-  let ImportStatus::IdleInternal(tpse) = &tpse.import_status else { return null() };
+  let TPSEStatus::IdleInternal(tpse) = &tpse.status else { return null() };
   let encoded = serde_json::to_vec(&tpse).unwrap();
   drop(tpse_state);
   

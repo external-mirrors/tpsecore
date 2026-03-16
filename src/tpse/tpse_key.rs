@@ -39,7 +39,7 @@ impl<'a, 'b, B, S> TPSEProviderWrapper<'a, 'b, B, S> {
     where K: TPSEKey, B: TPSEProvider<K>, S: TPSEProvider<K>
   {
     match self.base.get(key).await {
-      Err(err@TPSEProviderError::Failed) => Err(StorageError {
+      Err(err) => Err(StorageError {
         method: StorageMethod::Get,
         side: StorageSide::Base,
         key: key.key().to_string(),
@@ -53,7 +53,7 @@ impl<'a, 'b, B, S> TPSEProviderWrapper<'a, 'b, B, S> {
     where K: TPSEKey, B: TPSEProvider<K>, S: TPSEProvider<K>
   {
     match self.source.get(key).await {
-      Err(err@TPSEProviderError::Failed) => Err(StorageError {
+      Err(err) => Err(StorageError {
         method: StorageMethod::Get,
         side: StorageSide::Source,
         key: key.key().to_string(),
@@ -67,7 +67,7 @@ impl<'a, 'b, B, S> TPSEProviderWrapper<'a, 'b, B, S> {
     where K: TPSEKey, B: TPSEProvider<K>, S: TPSEProvider<K>
   {
     match self.base.set(key, value).await {
-      Err(err@TPSEProviderError::Failed) => Err(StorageError {
+      Err(err) => Err(StorageError {
         method: StorageMethod::Get,
         side: StorageSide::Base,
         key: key.key().to_string(),

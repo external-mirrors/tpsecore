@@ -67,8 +67,8 @@ pub struct StorageError {
 
 #[derive(Debug, thiserror::Error)]
 pub enum TPSEProviderError {
-  #[error("unspecified failure")]
-  Failed
+  #[error("tpse key (de)serialization error: {0}")]
+  SerializationError(serde_json::Error)
 }
 
 #[derive(Debug)]
