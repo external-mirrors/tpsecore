@@ -7,7 +7,7 @@ use crate::import::radiance::parse_radiance_sound_definition;
 use crate::import::skin_splicer::Piece;
 use crate::render::{BoardElement, FrameInfo, RenderContext, RenderOptions};
 use crate::wasm::asynch::spawn;
-use crate::wasm::{ImportStatus, STATE, State, report_frame_render_done};
+use crate::wasm::{BUFFER_STATE, ImportStatus, TPSE_STATE, report_frame_render_done};
 
 /// Returns the sound effect atlas from the given tpse slot
 ///
@@ -15,11 +15,14 @@ use crate::wasm::{ImportStatus, STATE, State, report_frame_render_done};
 /// containing serialized atlas. The returned buffer should be deallocated via [deallocate_buffer].
 #[unsafe(no_mangle)]
 pub extern "C" fn get_atlas(tpse: u32) -> *const u8 {
-  let mut state = STATE.lock().unwrap();
+  let state = TPSE_STATE.lock().unwrap();
   let Some(tpse) = state.tpses.get(&tpse) else { return null() };
-  let ImportStatus::Idle(tpse) = &tpse.import_status else { return null() };
+  let ImportStatus::IdleInternal(tpse) = &tpse.import_status else { return null() };
   let buffer = serde_json::to_vec(&tpse.custom_sound_atlas).unwrap();
+  drop(state);
   
+  
+  let mut state = BUFFER_STATE.lock().unwrap();
   let id = state.next_id();
   state.buffers.insert(id, buffer.into());
   state.buffers.get(&id).unwrap().as_ptr()
@@ -31,7 +34,7 @@ pub extern "C" fn get_atlas(tpse: u32) -> *const u8 {
 /// The returned buffer should be deallocated via [deallocate_buffer].
 #[unsafe(no_mangle)]
 pub extern "C" fn parse_radiance_atlas(rsd_buffer: *mut u8) -> *const u8 {
-  let mut state = STATE.lock().unwrap();
+  let mut state = BUFFER_STATE.lock().unwrap();
   let Some(id) = state.lookup_buffer(rsd_buffer) else { return null() };
   let rsd_buffer = state.buffers.get(&id).unwrap();
   
@@ -57,10 +60,9 @@ pub extern "C" fn parse_radiance_atlas(rsd_buffer: *mut u8) -> *const u8 {
 /// Return codes: 0=ok, 1=no such tpse, 2=loading failed, 3=tpse busy importing
 #[unsafe(no_mangle)]
 pub extern "C" fn prepare_render_data(tpse_id: u32) -> u32 {
-  let mut state = STATE.lock().unwrap();
-  let State { tpses, .. } = &mut *state;
-  let Some(tpse) = tpses.get_mut(&tpse_id) else { return 1 };
-  let ImportStatus::Idle(tpse_data) = &tpse.import_status else { return 3 };
+  let mut state = TPSE_STATE.lock().unwrap();
+  let Some(tpse) = state.tpses.get_mut(&tpse_id) else { return 1 };
+  let ImportStatus::IdleInternal(tpse_data) = &tpse.import_status else { return 3 };
   match RenderContext::try_from_tpse(&tpse_data) {
     Err(_err) => {
       // todo: report error text
@@ -77,9 +79,8 @@ pub extern "C" fn prepare_render_data(tpse_id: u32) -> u32 {
 /// Return codes: 0=ok, 1=no such tpse
 #[unsafe(no_mangle)]
 pub extern "C" fn discard_render_data(tpse_id: u32) -> u32 {
-  let mut state = STATE.lock().unwrap();
-  let State { tpses, .. } = &mut *state;
-  let Some(tpse) = tpses.get_mut(&tpse_id) else { return 1 };
+  let mut state = TPSE_STATE.lock().unwrap();
+  let Some(tpse) = state.tpses.get_mut(&tpse_id) else { return 1 };
   tpse.render_data = None;
   0
 }
@@ -105,9 +106,14 @@ struct RenderFrameArgs {
 // return code 0=queued 1=no such tpse 2=tpse lacks render data 3=no such argument buffer 4=unparseable arguments
 #[unsafe(no_mangle)]
 pub extern "C" fn render_frame(tpse_id: u32, argument_buffer: *mut u8, nonce: u64) -> u32 {
-  let state = STATE.lock().unwrap();
-  let Some(id) = state.lookup_buffer(argument_buffer) else { return 2 };
-  let argument_buffer = state.buffers.get(&id).unwrap();
+  let tpse_state = TPSE_STATE.lock().unwrap();
+  let Some(tpse) = tpse_state.tpses.get(&tpse_id) else { return 1 };
+  let Some(ctx) = tpse.render_data.clone() else { return 2 };
+  drop(tpse_state);
+  
+  let buffer_state = BUFFER_STATE.lock().unwrap();
+  let Some(id) = buffer_state.lookup_buffer(argument_buffer) else { return 2 };
+  let argument_buffer = buffer_state.buffers.get(&id).unwrap();
   let args: RenderFrameArgs = match serde_json::from_slice(&argument_buffer) {
     Ok(res) => res,
     Err(err) => {
@@ -115,8 +121,7 @@ pub extern "C" fn render_frame(tpse_id: u32, argument_buffer: *mut u8, nonce: u6
       return 4;
     }
   };
-  let Some(tpse) = state.tpses.get(&tpse_id) else { return 1 };
-  let Some(ctx) = tpse.render_data.clone() else { return 2 };
+  drop(buffer_state);
   
   spawn(async move {
     let frame = ctx.render_frame(&FrameInfo {
@@ -141,7 +146,7 @@ pub extern "C" fn render_frame(tpse_id: u32, argument_buffer: *mut u8, nonce: u6
     };
     let len = buffer.len();
     
-    let mut state = STATE.lock().unwrap();
+    let mut state = BUFFER_STATE.lock().unwrap();
     let id = state.next_id();
     state.buffers.insert(id, buffer);
     let ptr = state.buffers.get_mut(&id).unwrap().as_ptr();

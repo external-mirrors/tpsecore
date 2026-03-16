@@ -32,7 +32,7 @@ unsafe extern "C" {
   /// Level is 1=error 2=warn 3=info 4=debug 5=trace
   unsafe fn import_log(level: u8, tpse: u32, ptr: *const u8, len: usize);
   /// Obtains a key from browser storage, or a null pointer for null.
-  /// The buffer should be deallocated manually with [deallocate_buffer].
+  /// The buffer will be deallocated internally.
   unsafe fn tpse_get(key_ptr: *const u8, key_len: usize) -> *const u8;
   /// Writes a key into browser storage
   unsafe fn tpse_set(key_ptr: *const u8, key_len: usize, data_ptr: *const u8, data_len: usize);
@@ -53,16 +53,25 @@ impl TPSEAccelerator for WasmGlobalAccelerator {
   type Audio = SoftwareAudioHandle;
 }
 
-pub(in crate) static STATE: LazyLock<Mutex<State>> = LazyLock::new(|| {
+pub(in crate) static BUFFER_STATE: LazyLock<Mutex<BufferState>> = LazyLock::new(|| {
+  let _ = *TPSE_STATE; // ensure other_initialization is called
+  Default::default()
+});
+pub(in crate) static TPSE_STATE: LazyLock<Mutex<TPSEState>> = LazyLock::new(|| {
   other_initialization();
   Default::default()
 });
 
 #[derive(Default)]
-pub(in crate) struct State {
+pub(in crate) struct BufferState {
+  id_counter: u32,
+  pub(in crate) buffers: HashMap<u32, Arc<[u8]>>
+}
+
+#[derive(Default)]
+pub(in crate) struct TPSEState {
   id_counter: u32,
   tpses: HashMap<u32, TPSEContext>,
-  pub(in crate) buffers: HashMap<u32, Arc<[u8]>>
 }
 
 #[derive(Default)]
@@ -76,12 +85,12 @@ struct TPSEContext {
 /// operations that affect the TPSE are not valid during import.
 #[derive(Debug)]
 enum ImportStatus {
-  Idle(TPSE),
+  IdleInternal(TPSE),
   Running
 }
 impl Default for ImportStatus {
   fn default() -> Self {
-    Self::Idle(Default::default())
+    Self::IdleInternal(Default::default())
   }
 }
 
@@ -91,7 +100,7 @@ struct StagedFile {
   content: u32
 }
 
-impl State {
+impl BufferState {
   pub(in crate) fn next_id(&mut self) -> u32 {
     // realistically we should never reach this; tpsecore is initialized,
     // user manually drops files, then closes the window. If you actually
@@ -104,10 +113,17 @@ impl State {
       else { panic!("out of IDs") };
     std::mem::replace(&mut self.id_counter, new_id)
   }
-  pub(in crate) fn lookup_buffer(&self, ptr: *mut u8) -> Option<u32> {
+  pub(in crate) fn lookup_buffer(&self, ptr: *const u8) -> Option<u32> {
     self.buffers.iter()
       .find(|(_, v)| v.as_ptr() == ptr)
       .map(|(k, _)| *k)
+  }
+}
+impl TPSEState {
+  pub(in crate) fn next_id(&mut self) -> u32 {
+    let Some(new_id) = self.id_counter.checked_add(1)
+      else { panic!("out of IDs") };
+    std::mem::replace(&mut self.id_counter, new_id)
   }
 }
 

@@ -4,7 +4,7 @@ use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 use async_channel::Sender;
 
 use crate::accel::traits::TextureHandle;
-use crate::wasm::STATE as TPSE_STATE;
+use crate::wasm::BUFFER_STATE;
 use crate::wasm::wasm_wakeable::{WasmWakeable, WasmWakeableSize, provide_wakeable};
 
 #[derive(Clone, Debug)]
@@ -152,7 +152,7 @@ impl WasmTextureHandle {
       unsafe { fetch_dimensions(self.0.id, &mut code, &mut width, &mut height) };
       
       if code != 0 {
-        let mut state = TPSE_STATE.lock().unwrap();
+        let mut state = BUFFER_STATE.lock().unwrap();
         let buf_id = state.lookup_buffer(code as *mut u8).unwrap();
         let data = state.buffers.remove(&buf_id).unwrap();
         let message = String::from_utf8_lossy(&*data).into_owned();
@@ -204,7 +204,7 @@ impl TextureHandle for WasmTextureHandle {
       panic!("incorrect size provided or sender dropped for encode_png wakeup, got: {:?}", result);
     };
     
-    let mut state = TPSE_STATE.lock().unwrap();
+    let mut state = BUFFER_STATE.lock().unwrap();
     let buf_id = state.lookup_buffer(ptr as *mut u8).unwrap();
     let buffer = state.buffers.remove(&buf_id).unwrap();
     match error {
