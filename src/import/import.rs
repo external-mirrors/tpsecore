@@ -6,6 +6,7 @@ use crate::import::{ImportContextEntry, ImportError, ImportTaskContextEntry, Imp
 use crate::import::import_types::ImportContext;
 use crate::import::stages::{decide_specific_type, execute_task, reduce_types};
 use crate::tpse::TPSE;
+use crate::tpse::tpse_key::merge;
 
 pub async fn import<T: TPSEAccelerator>
   (files: impl IntoIterator<Item = (ImportType, &str, Arc<[u8]>)>, context: ImportContext<'_, T>)
@@ -24,7 +25,7 @@ pub async fn import<T: TPSEAccelerator>
   let mut tpse = TPSE::default();
   for task in tasks {
     let context = context.with_context(ImportTaskContextEntry::from(&task).into());
-    tpse.merge(execute_task::<T>(task, context).await?);
+    merge(&mut tpse, &execute_task::<T>(task, context).await?);
   }
 
   Ok(tpse)

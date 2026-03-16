@@ -10,6 +10,7 @@ use crate::import::import_task::ImportTask;
 use crate::import::{Asset, ImportContext, ImportContextEntry, ImportError, ImportErrorType, ImportType, MediaLoadError, SkinType, SpecificImportType, import};
 use crate::import::radiance::parse_radiance_sound_definition;
 use crate::import::skin_splicer::{SkinSplicer};
+use crate::tpse::tpse_key::merge;
 use crate::tpse::{AnimMeta, Background, File, MiscTPSEValue, Song, SongMetadata, TPSE};
 
 /// Executes an import task
@@ -226,13 +227,13 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: ImportConte
               .collect::<Vec<_>>();
             let context = ctx.with_context(ImportContextEntry::ZipFolder(folder));
             let new_tpse = Box::pin(import::<T>(files, context)).await?;
-            tpse.merge(new_tpse);
+            merge(&mut tpse, &new_tpse);
           }
         },
         SpecificImportType::TPSE => {
-          tpse.merge(serde_json::from_slice(&file.binary).map_err(|err| {
-            ImportErrorType::InvalidTPSE(err.to_string())
-          }).map_err(|err| ctx.wrap(err))?);
+          let new_tpse: TPSE = serde_json::from_slice(&file.binary)
+            .map_err(|err| ctx.wrap(ImportErrorType::InvalidTPSE(err.to_string())))?;
+          merge(&mut tpse, &new_tpse);
         },
         SpecificImportType::Skin(skin_type) => {
           let (minos, ghost) = splice_to_t61::<T>(skin_type, file.binary.clone())

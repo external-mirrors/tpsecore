@@ -1,5 +1,5 @@
 /// A background metadata object. Does not contain the background itself.
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Background {
   /// The unique ID of the background, used to name the actual file
   /// accessible at the `background-${id}` key in storage.
@@ -15,7 +15,7 @@ pub struct Background {
 /// Note: the animated background type is stored separately, at the top level of the TPSE.
 /// Distinct from but similar to `crate::import::import_types::Background`, which is for configuring
 /// imports, whereas this struct is for the value stored inside a TPSE file.
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BackgroundType {
   /// Regular image backgrounds injected directly into the game

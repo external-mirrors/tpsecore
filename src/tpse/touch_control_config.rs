@@ -1,4 +1,4 @@
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TouchControlConfig {
   /// What mode touch controls are in
   pub mode: TouchControlMode,
@@ -11,7 +11,7 @@ pub struct TouchControlConfig {
   pub deadzone: f64,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TouchControlKey {
   pub behavior: KeyBehavior,
   pub bind: InputType,
@@ -25,7 +25,7 @@ pub struct TouchControlKey {
   pub h: f64
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum KeyBehavior {
   /// An active touch can move over the key to trigger it
@@ -34,7 +34,7 @@ pub enum KeyBehavior {
   Tap
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TouchControlMode {
   /// Touchpad mode is enabled, enabling two joystick-like touch surfaces.
@@ -45,7 +45,7 @@ pub enum TouchControlMode {
   Keys
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TouchControlBinding {
   #[serde(rename = "L_down")]
   pub left_pad_down: InputType,
@@ -65,7 +65,7 @@ pub struct TouchControlBinding {
   pub right_pad_up: InputType
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum InputType {
   #[serde(rename = "hardDrop")]
   HardDrop,
