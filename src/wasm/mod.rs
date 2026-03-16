@@ -67,16 +67,22 @@ pub(in crate) struct State {
 
 #[derive(Default)]
 struct TPSEContext {
-  tpse: TPSE,
   render_data: Option<RenderContext<WasmGlobalAccelerator>>,
   import_status: ImportStatus,
   staged_files: Vec<StagedFile>
 }
-#[derive(Default, Debug)]
+/// The import status of the TPSE. While the import is running, the import task temporarily
+/// takes ownership of the actual TPSE in order to do async writes against it. Thus, other
+/// operations that affect the TPSE are not valid during import.
+#[derive(Debug)]
 enum ImportStatus {
-  #[default]
-  Idle,
+  Idle(TPSE),
   Running
+}
+impl Default for ImportStatus {
+  fn default() -> Self {
+    Self::Idle(Default::default())
+  }
 }
 
 #[derive(Default, Debug)]

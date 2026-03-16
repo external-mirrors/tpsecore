@@ -25,7 +25,8 @@ pub async fn import<T: TPSEAccelerator>
   let mut tpse = TPSE::default();
   for task in tasks {
     let context = context.with_context(ImportTaskContextEntry::from(&task).into());
-    merge(&mut tpse, &execute_task::<T>(task, context).await?);
+    merge(&mut tpse, &execute_task::<T>(task, &context).await?)
+      .await.map_err(|err| context.wrap(err.into()))?;
   }
 
   Ok(tpse)

@@ -51,7 +51,46 @@ pub enum ImportErrorType<T: TPSEAccelerator> {
   #[error("encoding image failed")]
   TextureEncodeFailed(<T::Texture as TextureHandle>::Error),
   #[error("encoding audio failed: {0}")]
-  AudioEncodeFailed(<T::Audio as AudioHandle>::Error)
+  AudioEncodeFailed(<T::Audio as AudioHandle>::Error),
+  #[error("storage error: {0}")]
+  StorageError(#[from] StorageError)
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("failed to {method} key {key} on {side}: {error}")]
+pub struct StorageError {
+  pub method: StorageMethod,
+  pub side: StorageSide,
+  pub key: String,
+  pub error: TPSEProviderError
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum TPSEProviderError {
+  #[error("unspecified failure")]
+  Failed
+}
+
+#[derive(Debug)]
+pub enum StorageSide { Base, Source }
+impl Display for StorageSide {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    match self {
+      Self::Base => write!(f, "base"),
+      Self::Source => write!(f, "source")
+    }
+  }
+}
+
+#[derive(Debug)]
+pub enum StorageMethod { Get, Set }
+impl Display for StorageMethod {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    match self {
+      Self::Get => write!(f, "get"),
+      Self::Set => write!(f, "set")
+    }
+  }
 }
 
 /// An error indicating failure to parse base game asset metadata

@@ -7,17 +7,18 @@ use crate::import::radiance::parse_radiance_sound_definition;
 use crate::import::skin_splicer::Piece;
 use crate::render::{BoardElement, FrameInfo, RenderContext, RenderOptions};
 use crate::wasm::asynch::spawn;
-use crate::wasm::{STATE, State, report_frame_render_done};
+use crate::wasm::{ImportStatus, STATE, State, report_frame_render_done};
 
 /// Returns the sound effect atlas from the given tpse slot
 ///
-/// Return value: null if no such tpse, otherwise buffer containing serialized atlas
-/// The returned buffer should be deallocated via [deallocate_buffer].
+/// Return value: null if no such tpse or if the tpse is busy importing, otherwise buffer
+/// containing serialized atlas. The returned buffer should be deallocated via [deallocate_buffer].
 #[unsafe(no_mangle)]
 pub extern "C" fn get_atlas(tpse: u32) -> *const u8 {
   let mut state = STATE.lock().unwrap();
   let Some(tpse) = state.tpses.get(&tpse) else { return null() };
-  let buffer = serde_json::to_vec(&tpse.tpse.custom_sound_atlas).unwrap();
+  let ImportStatus::Idle(tpse) = &tpse.import_status else { return null() };
+  let buffer = serde_json::to_vec(&tpse.custom_sound_atlas).unwrap();
   
   let id = state.next_id();
   state.buffers.insert(id, buffer.into());
@@ -53,13 +54,14 @@ pub extern "C" fn parse_radiance_atlas(rsd_buffer: *mut u8) -> *const u8 {
 /// Prepares render data for a given tpse, which involves decoding assets into directly useable buffers.
 /// When no longer necessary, data can be discarded with [discard_render_data]. Data is also freed when
 /// the TPSE is deallocated.
-/// Return codes: 0=ok, 1=no such tpse, 2=loading failed
+/// Return codes: 0=ok, 1=no such tpse, 2=loading failed, 3=tpse busy importing
 #[unsafe(no_mangle)]
 pub extern "C" fn prepare_render_data(tpse_id: u32) -> u32 {
   let mut state = STATE.lock().unwrap();
   let State { tpses, .. } = &mut *state;
   let Some(tpse) = tpses.get_mut(&tpse_id) else { return 1 };
-  match RenderContext::try_from_tpse(&tpse.tpse) {
+  let ImportStatus::Idle(tpse_data) = &tpse.import_status else { return 3 };
+  match RenderContext::try_from_tpse(&tpse_data) {
     Err(_err) => {
       // todo: report error text
       2

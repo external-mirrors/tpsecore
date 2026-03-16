@@ -14,7 +14,7 @@ use crate::tpse::tpse_key::merge;
 use crate::tpse::{AnimMeta, Background, File, MiscTPSEValue, Song, SongMetadata, TPSE};
 
 /// Executes an import task
-pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: ImportContext<'_, T>) -> Result<TPSE, ImportError<T>> {
+pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &ImportContext<'_, T>) -> Result<TPSE, ImportError<T>> {
   ctx.log(Level::Info, format_args!("Executing import task {:?}", task));
   let mut tpse = TPSE::default();
   match task {
@@ -227,13 +227,13 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: ImportConte
               .collect::<Vec<_>>();
             let context = ctx.with_context(ImportContextEntry::ZipFolder(folder));
             let new_tpse = Box::pin(import::<T>(files, context)).await?;
-            merge(&mut tpse, &new_tpse);
+            merge(&mut tpse, &new_tpse).await.map_err(|err| ctx.wrap(err.into()))?;
           }
         },
         SpecificImportType::TPSE => {
           let new_tpse: TPSE = serde_json::from_slice(&file.binary)
             .map_err(|err| ctx.wrap(ImportErrorType::InvalidTPSE(err.to_string())))?;
-          merge(&mut tpse, &new_tpse);
+          merge(&mut tpse, &new_tpse).await.map_err(|err| ctx.wrap(err.into()))?;
         },
         SpecificImportType::Skin(skin_type) => {
           let (minos, ghost) = splice_to_t61::<T>(skin_type, file.binary.clone())
