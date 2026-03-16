@@ -12,4 +12,4 @@ pub use background::{Background, BackgroundType};
 pub use tpse::*;
 pub use tpse_key::TPSE;
 pub use misc_tpse_values::MiscTPSEValue;
-pub use touch_control_config::{TouchControlConfig, TouchControlMode, TouchControlBinding, InputType};
+pub use touch_control_config::{WrappedTouchControlsConfig, TouchControlConfig, TouchControlMode, TouchControlBinding, InputType};

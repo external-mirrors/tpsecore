@@ -3,6 +3,7 @@ use std::ptr::null;
 use crate::accel::wasm_asset_provider::WasmAssetProvider;
 use crate::import::{import, ImportContext, ImportType};
 use crate::log::ImportLogger;
+use crate::tpse::tpse_key::merge;
 use crate::wasm::{ImportStatus, STATE, StagedFile, State, TPSEContext, WasmGlobalAccelerator, import_log, report_import_done};
 
 
@@ -136,7 +137,7 @@ pub extern "C" fn queue_import(tpse_id: u32) -> usize {
     
     let code = match (STATE.lock().unwrap().tpses.get_mut(&tpse_id), result) {
       (Some(tpse), Ok(new_tpse)) => {
-        tpse.tpse.merge(new_tpse);
+        merge(&mut tpse.tpse, &new_tpse);
         tpse.import_status = ImportStatus::Idle;
         0
       }

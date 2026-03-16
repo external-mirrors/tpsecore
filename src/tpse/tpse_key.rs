@@ -2,14 +2,13 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 
 use crate::tpse::music_graph::Node;
-use crate::tpse::{AnimMeta, AnimatedBackground, Background, CustomSoundAtlas, File, MiscTPSEValue, Song, TouchControlConfig};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde::de::{DeserializeOwned, Error as _};
-use serde::ser::Error as _;
+use crate::tpse::{AnimMeta, AnimatedBackground, Background, CustomSoundAtlas, File, MiscTPSEValue, Song, WrappedTouchControlsConfig};
+
+use serde::{Serialize, Deserialize};
+use serde::de::DeserializeOwned;
 
 /// An index into a single value of tetrio plus configuration data.
-/// A TPSEKey describes the key (possibly parametrically), the data stored there, and how to merge the
-/// data between two [TPSEProvider]s.
+/// A TPSEKey describes the key (possibly parametrically) and the type of data stored there
 pub trait TPSEKey: Clone + Sized {
   type Data: Serialize + DeserializeOwned + Clone;
   fn key(&self) -> &str;
@@ -38,15 +37,13 @@ macro_rules! merge_logic {
 
 /// Initializes most of the [TPSE] struct and accompanying [TPSEKey]s for every field in it
 macro_rules! tpse_keys {
-  ([
-    $(
-      $(#[$($extra_annotations:tt)+])*
-      ($name:ident, $key:expr, $data:ty $(, $custom_merge_logic:expr)?)
-    ),*
-  ], {
-    extra_struct_keys={$($extra_struct_keys:tt)+},
-    extra_merge_bounds={$($extra_bounds:tt)+}
-  }) => {
+  (
+    [  $(($name:ident, $key:expr, $data:ty $(, merge=$custom_merge_logic:expr)?)),*  ],
+    {
+      extra_struct_keys={$($extra_struct_keys:tt)+},
+      extra_merge_bounds={$($extra_bounds:tt)+}
+    }    
+  ) => {
     $(
       #[allow(unused, non_camel_case_types)]
       #[derive(Clone, Debug)]
@@ -67,15 +64,10 @@ macro_rules! tpse_keys {
       }
     )+
     
-    #[allow(unused)]
     #[serde_with::skip_serializing_none]
-    #[serde_with::serde_as]
     #[derive(Debug, Default, Serialize, Deserialize)]
     pub struct TPSE {
-      $(
-        $(#[$($extra_annotations)+])*
-        pub $name: Option<$data>,
-      )+
+      $(pub $name: Option<$data>,)+
       $($extra_struct_keys)+
     }
 
@@ -163,12 +155,11 @@ tpse_keys!([
   (ghost_anim_meta, "ghostAnimMeta", AnimMeta),
   (custom_sound_atlas, "customSoundAtlas", CustomSoundAtlas),
   (custom_sounds, "customSounds", File),
-  (backgrounds, "backgrounds", Vec<Background>, merge_backgrounds),
+  (backgrounds, "backgrounds", Vec<Background>, merge=merge_backgrounds),
   (animated_background, "animatedBackground", AnimatedBackground),
-  (music, "music", Vec<Song>, merge_music),
-  (music_graph, "musicGraph", Vec<Node>, merge_music_graphs),
-  #[serde(deserialize_with = "deserialize_as_string", serialize_with = "serialize_as_string")]
-  (touch_control_config, "touchControlConfig", TouchControlConfig)
+  (music, "music", Vec<Song>, merge=merge_music),
+  (music_graph, "musicGraph", Vec<Node>, merge=merge_music_graphs),
+  (touch_control_config, "touchControlConfig", WrappedTouchControlsConfig)
 ], {
   extra_struct_keys={
     /// Other TPSE keys
@@ -178,17 +169,6 @@ tpse_keys!([
   },
   extra_merge_bounds={TPSEProvider<IDFileEntry>}
 });
-
-fn serialize_as_string<T, S>(value: &T, ser: S) -> Result<S::Ok, S::Error> where T: Serialize, S: Serializer {
-  match serde_json::to_string(value) {
-    Ok(string) => Ok(ser.serialize_str(&string)?),
-    Err(err) => Err(S::Error::custom(err))
-  }
-}
-
-fn deserialize_as_string<'a, T, D>(de: D) -> Result<T, D::Error> where T: DeserializeOwned, D: Deserializer<'a> {
-  serde_json::from_str(&String::deserialize(de)?).map_err(D::Error::custom)
-}
 
 fn merge_music<A, B>(base: &mut A, source: &B) where
   A: TPSEProvider<music> + TPSEProvider<IDFileEntry>,

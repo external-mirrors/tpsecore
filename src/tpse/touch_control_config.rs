@@ -1,3 +1,8 @@
+/// tetrio plus double serializes touch control configuration, so we need a wrapper
+/// to ensure it's also double serialized by tpsecore
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct WrappedTouchControlsConfig(String);
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TouchControlConfig {
   /// What mode touch controls are in
@@ -89,4 +94,41 @@ pub enum InputType {
   Retry,
   #[serde(rename = "fullscreen")]
   Fullscreen,
+}
+
+
+impl From<TouchControlConfig> for WrappedTouchControlsConfig {
+  fn from(value: TouchControlConfig) -> Self {
+    Self(serde_json::to_string(&value).expect("serialization should never fail"))
+  }
+}
+impl From<WrappedTouchControlsConfig> for TouchControlConfig {
+  fn from(value: WrappedTouchControlsConfig) -> Self {
+    match serde_json::from_str(&value.0) {
+      Err(err) => {
+        log::error!("failed to unwrap touch controls config: {err}");
+        TouchControlConfig::default()
+      }
+      Ok(res) => res
+    }
+  }
+}
+impl Default for TouchControlConfig {
+  fn default() -> Self {
+    Self {
+      mode: TouchControlMode::Touchpad,
+      binding: TouchControlBinding {
+        left_pad_down: InputType::SoftDrop,
+        left_pad_left: InputType::MoveLeft,
+        left_pad_right: InputType::MoveRight,
+        left_pad_up: InputType::HardDrop,
+        right_pad_down: InputType::Hold,
+        right_pad_left: InputType::RotateCCW,
+        right_pad_right: InputType::RotateCW,
+        right_pad_up: InputType::Rotate180
+      },
+      keys: vec![],
+      deadzone: 100.0
+    }
+  }
 }

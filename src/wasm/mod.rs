@@ -10,6 +10,7 @@ mod tpse;
 mod render;
 pub(in crate) mod asynch;
 pub(in crate) mod wasm_wakeable;
+pub(in crate) mod wasm_tpse_provider;
 
 #[link(wasm_import_module="tpsecore")]
 unsafe extern "C" {
@@ -30,6 +31,11 @@ unsafe extern "C" {
   /// Prints a log associated with a specific tpse instance  
   /// Level is 1=error 2=warn 3=info 4=debug 5=trace
   unsafe fn import_log(level: u8, tpse: u32, ptr: *const u8, len: usize);
+  /// Obtains a key from browser storage, or a null pointer for null.
+  /// The buffer should be deallocated manually with [deallocate_buffer].
+  unsafe fn tpse_get(key_ptr: *const u8, key_len: usize) -> *const u8;
+  /// Writes a key into browser storage
+  unsafe fn tpse_set(key_ptr: *const u8, key_len: usize, data_ptr: *const u8, data_len: usize);
 }
 
 #[derive(Debug, Clone)]
