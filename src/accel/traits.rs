@@ -54,7 +54,7 @@ pub trait AudioHandle: Clone + Debug {
   type Error: std::error::Error + Send + Sync + 'static;
   
   fn new_from_samples(samples: Arc<[f32]>) -> Self;
-  async fn decode_audio(buffer: Arc<[u8]>, extension: Option<&str>) -> Result<Self, Self::Error>;
+  async fn decode_audio(buffer: Arc<[u8]>, mime_type: Option<&str>) -> Result<Self, Self::Error>;
   
   fn slice(&self, slice: Range<usize>) -> Self;
   /// Returns the length of the buffer in samples.

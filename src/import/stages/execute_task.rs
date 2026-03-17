@@ -147,8 +147,7 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &ImportCont
 
         ctx.log(Level::Trace, format_args!("Decoding {}: {} bytes", sfx.filename, sfx.file.binary.len()));
 
-        let ext = mime_guess::get_mime_extensions_str(&sfx.file.mime).and_then(|x| x.first()).map(|x| *x);
-        let handle = T::Audio::decode_audio(sfx.file.binary.clone(), ext).await
+        let handle = T::Audio::decode_audio(sfx.file.binary.clone(), Some(&sfx.file.mime)).await
           .map_err(|err| ctx.wrap(MediaLoadError::AudioError(err).into()))?;
         let samples = handle.length().await
           .map_err(|err| ctx.wrap(MediaLoadError::AudioError(err).into()))?;
@@ -170,7 +169,7 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &ImportCont
 
         ctx.log(Level::Trace, format_args!("Decoding {}: {} bytes", Asset::TetrioRSD, rsd_asset.len()));
 
-        let handle = T::Audio::decode_audio(rsd.audio_buffer.into(), Some("ogg")).await
+        let handle = T::Audio::decode_audio(rsd.audio_buffer.into(), Some("audio/ogg")).await
           .map_err(|err| ctx.wrap(ImportErrorType::AssetSoundEffectsDecode(err).into()))?;
           
         for sfx_name in unvisited {

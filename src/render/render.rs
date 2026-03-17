@@ -1,6 +1,5 @@
 use std::borrow::Cow;
 use std::io::Cursor;
-use std::ops::Deref;
 use hound::{SampleFormat, WavSpec};
 use crate::accel::traits::{TPSEAccelerator, TextureHandle, AudioHandle};
 use crate::import::{ImportErrorType, MediaLoadError, SkinType};
@@ -67,12 +66,9 @@ impl TetrioAtlasDecoder {
   async fn decode_from_tpse<T: TPSEAccelerator>(tpse: &TPSE) -> Result<Option<Self>, <T::Audio as AudioHandle>::Error> {
     let Some(atlas) = tpse.custom_sound_atlas.clone() else { return Ok(None) };
     let Some(file) = tpse.custom_sounds.clone() else { return Ok(None) };
-    let ext = mime_guess::get_mime_extensions_str(&file.mime)
-      .and_then(|mime| mime.first())
-      .map(Deref::deref);
       
     debug_assert!(file.binary.get(0..4) != Some(&[0x74, 0x52, 0x25, 0x44]), "decode was passed a tRSD file");
-    let decoded = T::Audio::decode_audio(file.binary.clone(), ext).await?;
+    let decoded = T::Audio::decode_audio(file.binary.clone(), Some(&file.mime)).await?;
     let length = decoded.length().await?;
     let mut buffer = Vec::with_capacity(length);
     decoded.read(|sample| buffer.push(sample)).await?;

@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, Mutex};
-use crate::accel::software_audio_handle::SoftwareAudioHandle;
 use crate::accel::traits::TPSEAccelerator;
 use crate::accel::wasm_asset_provider::WasmAssetProvider;
+use crate::accel::wasm_audio_handle::WasmAudioHandle;
 use crate::render::RenderContext;
 use crate::tpse::TPSE;
 use crate::wasm::wasm_tpse_provider::WasmTPSEProvider;
@@ -51,7 +51,7 @@ impl TPSEAccelerator for WasmGlobalAccelerator {
   #[cfg(feature = "wasm_rendering")]
   type Texture = crate::accel::wasm_texture_handle::WasmTextureHandle;
   
-  type Audio = SoftwareAudioHandle;
+  type Audio = WasmAudioHandle;
 }
 
 pub(in crate) static BUFFER_STATE: LazyLock<Mutex<BufferState>> = LazyLock::new(|| {

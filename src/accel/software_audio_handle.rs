@@ -33,10 +33,15 @@ impl AudioHandle for SoftwareAudioHandle {
     Self(samples, range)
   }
   
-  async fn decode_audio(buffer: Arc<[u8]>, extension: Option<&str>) -> Result<Self, Self::Error> {
+  async fn decode_audio(buffer: Arc<[u8]>, mime_type: Option<&str>) -> Result<Self, Self::Error> {
     let mut hint = Hint::new();
-    if let Some(extension) = extension {
-      hint.with_extension(extension);
+    if let Some(mime_type) = mime_type {
+      // use the last mime type; they're alphabetically sorted and last seems to be generally
+      // a better guess than first (e.g. m2a vs mp3)
+      let ext = mime_guess::get_mime_extensions_str(&mime_type).and_then(|x| x.last()).map(|x| *x);
+      if let Some(ext) = ext {
+        hint.with_extension(ext);
+      }
     }
 
     // requires a boxed byte source which is annoying since that needs a copy
