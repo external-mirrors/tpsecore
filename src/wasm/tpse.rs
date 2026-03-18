@@ -156,17 +156,13 @@ pub extern "C" fn queue_import(tpse_id: u32) -> usize {
     let options = ImportContext::new(&source, 5).with_logger(&logger);
   
     let result = import::<WasmGlobalAccelerator>(files, options).await;
-    match &result {
-      Err(error) => logger.log(log::Level::Error, format_args!("import failed: {error}")),
-      Ok(_) => logger.log(log::Level::Info, format_args!("import finished"))
-    };
-    
     let merge_result = match result {
       Err(err) => {
         logger.log(Level::Error, format_args!("import failed: {err}"));
         Some(1) // import failed
       }
       Ok(new_tpse) => {
+        logger.log(log::Level::Info, format_args!("import finished"));
         over_tpse_status!(ActiveTPSEStatus, &mut tpse_data, tpse, {
           match merge(tpse, &new_tpse).await {
             Err(err) => {

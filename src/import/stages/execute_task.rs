@@ -1,5 +1,5 @@
 use std::io::Read;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::io::Cursor;
 use std::sync::Arc;
 use std::time::Duration;
@@ -131,19 +131,18 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &ImportCont
         .map_err(|err| ctx.wrap(ImportErrorType::AssetFetchFailed(err)))?;
       let rsd = parse_radiance_sound_definition(&asset).map_err(|err| ctx.wrap(err.into()))?;
       
-      let mut atlas = rsd.to_old_style_atlas();
-      let mut unvisited = atlas.keys().cloned().collect::<HashSet<_>>();
+      let mut old_atlas = rsd.to_old_style_atlas();
+      let mut new_atlas = HashMap::new();
       let mut encoding_queue = Vec::with_capacity(sound_effects.len());
       let mut encoder_position = 0;
       
       for sfx in &sound_effects {
         // todo: ensure we've stripped file extension by this point
         let with_filekey_removed = sfx.name.replace(ImportType::SoundEffects.filekey(), "");
-        let Some((offset, duration)) = atlas.get_mut(&with_filekey_removed) else {
+        let Some((_offset, _duration)) = old_atlas.remove(&with_filekey_removed) else {
           ctx.log(Level::Warn, format_args!("Skipping unknown sound effect {}", sfx.name));
           continue;
         };
-        unvisited.remove(&with_filekey_removed);
 
         ctx.log(Level::Trace, format_args!("Decoding {}: {} bytes", sfx.filename, sfx.file.binary.len()));
 
@@ -155,12 +154,13 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &ImportCont
         
         assert!(samples % 2 == 0);
         
-        *offset = encoder_position as f64 / atlas_entry_to_sample_ratio;
-        *duration = samples as f64 / atlas_entry_to_sample_ratio;
+        let new_offset = encoder_position as f64 / atlas_entry_to_sample_ratio;
+        let new_duration = samples as f64 / atlas_entry_to_sample_ratio;
         encoder_position += samples;
+        new_atlas.insert(with_filekey_removed, (new_offset, new_duration));
       }
       
-      if !unvisited.is_empty() {
+      if !old_atlas.is_empty() {
         let rsd_asset = ctx.asset_source.provide(Asset::TetrioRSD).await
           .map_err(|err| ctx.wrap(ImportErrorType::AssetFetchFailed(err)))?;
           
@@ -172,14 +172,15 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &ImportCont
         let handle = T::Audio::decode_audio(rsd.audio_buffer.into(), Some("audio/ogg")).await
           .map_err(|err| ctx.wrap(ImportErrorType::AssetSoundEffectsDecode(err).into()))?;
           
-        for sfx_name in unvisited {
-          let (offset, duration) = atlas.get_mut(&sfx_name).unwrap();
-          let offset_samples = (*offset * atlas_entry_to_sample_ratio) as usize;
-          let duration_samples = (*duration * atlas_entry_to_sample_ratio) as usize;
+        ctx.log(Level::Info, format_args!("populating remaining base game sound effects: {:?}", old_atlas.keys().collect::<Vec<_>>()));
+        for (sfx_name, (offset, duration)) in old_atlas.into_iter() {
+          let offset_samples = (offset * atlas_entry_to_sample_ratio) as usize;
+          let duration_samples = (duration * atlas_entry_to_sample_ratio) as usize;
           let subhandle = handle.slice(offset_samples..offset_samples + duration_samples);
           encoding_queue.push(subhandle);
-          *offset = encoder_position as f64 / atlas_entry_to_sample_ratio;
-          *duration = duration_samples as f64 / atlas_entry_to_sample_ratio;
+          let new_offset = encoder_position as f64 / atlas_entry_to_sample_ratio;
+          let new_duration = duration_samples as f64 / atlas_entry_to_sample_ratio;
+          new_atlas.insert(sfx_name, (new_offset, new_duration));
           encoder_position += duration_samples;
         }
       }
@@ -192,7 +193,7 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &ImportCont
         binary: encoded,
         mime: "audio/wav".to_string()
       });
-      tpse.custom_sound_atlas = Some(atlas);
+      tpse.custom_sound_atlas = Some(new_atlas);
     },
     ImportTask::Basic { import_type, filename, file } => {
       match import_type {

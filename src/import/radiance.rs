@@ -19,7 +19,7 @@ impl RadianceSoundDefinition<'_> {
     self.sprites.iter().map(|sprite| {
       (
         sprite.name.to_string(),
-        (sprite.offset as f64 / 1000.0, sprite.duration as f64 / 1000.0)
+        (sprite.offset as f64 * 1000.0, sprite.duration as f64 * 1000.0)
       )
     }).collect()
   }
