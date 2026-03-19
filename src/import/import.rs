@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::accel::traits::TPSEAccelerator;
-use crate::import::{ImportContextEntry, ImportError, ImportTaskContextEntry, ImportType};
+use crate::import::{ImportContextEntry, ImportError, ImportErrorWrapHelper, ImportTaskContextEntry, ImportType, err};
 
 use crate::import::import_types::ImportContext;
 use crate::import::stages::{decide_specific_type, execute_task, reduce_types};
@@ -25,8 +25,7 @@ pub async fn import<T: TPSEAccelerator>
   let mut tpse = TPSE::default();
   for task in tasks {
     let mut guard = context.enter_context(ImportTaskContextEntry::from(&task).into());
-    merge(&mut tpse, &execute_task::<T>(task, &mut *guard).await?)
-      .await.map_err(|err| guard.wrap(err.into()))?;
+    merge(&mut tpse, &execute_task::<T>(task, &mut *guard).await?).await.wrap(err!(guard))?;
   }
 
   Ok(tpse)

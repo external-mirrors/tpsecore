@@ -6,7 +6,7 @@ use image::{AnimationDecoder, ImageError, ImageFormat};
 use image::codecs::gif::GifDecoder;
 
 use crate::accel::traits::{TPSEAccelerator, TextureHandle};
-use crate::import::MediaLoadError;
+use crate::import::{ImportErrorType, MediaLoadError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ExtraSoftwareDecoderError<T: TPSEAccelerator> {
@@ -22,6 +22,11 @@ impl<T: TPSEAccelerator> From<ExtraSoftwareDecoderError<T>> for MediaLoadError<T
       ExtraSoftwareDecoderError::Tex(tex) => Self::TextureError(tex),
       ExtraSoftwareDecoderError::ImageError(image_error) => Self::Other(image_error.to_string())
     }
+  }
+}
+impl<T: TPSEAccelerator> From<ExtraSoftwareDecoderError<T>> for ImportErrorType<T> {
+  fn from(value: ExtraSoftwareDecoderError<T>) -> Self {
+    ImportErrorType::LoadError(value.into())
   }
 }
 

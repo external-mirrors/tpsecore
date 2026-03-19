@@ -133,3 +133,55 @@ pub enum RenderFailure {
   #[error("tpse has no such sound effect {0}")]
   NoSoundSoundEffect(String)
 }
+
+/// Accompanying macro for building [ImportErrorWrapHelper] shorthands.
+/// Usage: `err!(context, ...transformations)`
+macro_rules! err {
+  ($ctx:expr $(, $wrapper:tt)*) => {
+    (&$ctx, |ctx, value| {
+      match value {
+        Ok(value) => Ok(value),
+        Err(error) => {
+          $( let error = err!(@transform $wrapper error); )*
+          Err(ctx.wrap_error(error.into()))
+        }
+      }
+    })
+  };
+  (@transform assetfetchfail $expr:expr) => {
+    ImportErrorType::AssetFetchFailed($expr.into())
+  };
+  (@transform rsd_decode $expr:expr) => {
+    ImportErrorType::AssetSoundEffectsDecode($expr.into())
+  };
+  (@transform tex_encode $expr:expr) => {
+    ImportErrorType::TextureEncodeFailed($expr.into())
+  };
+  (@transform audio_encode $expr:expr) => {
+    ImportErrorType::AudioEncodeFailed($expr.into())
+  };
+  (@transform bad_tpse $expr:expr) => {
+    ImportErrorType::InvalidTPSE($expr.to_string())
+  };
+  (@transform tex $expr:expr) => {
+    MediaLoadError::TextureError($expr.into())
+  };
+  (@transform audio $expr:expr) => {
+    MediaLoadError::AudioError($expr.into())
+  };
+  (@transform zip $expr:expr) => {
+    MediaLoadError::Zip($expr.into())
+  };
+}
+pub(crate) use err;
+
+/// A shorthand for wrapping errors in the appropriate type, assisted by [err]
+pub trait ImportErrorWrapHelper {
+  /// Expected usage: `.wrap(err!(ctx, ...transformations))`
+  fn wrap<Wrapped, Ctx>(self, wrap: (Ctx, fn(Ctx, Self) -> Wrapped)) -> Wrapped;
+}
+impl<S> ImportErrorWrapHelper for S {
+  fn wrap<Wrapped, Ctx>(self, (ctx, wrapper): (Ctx, fn(Ctx, Self) -> Wrapped)) -> Wrapped {
+    wrapper(ctx, self)
+  }
+}

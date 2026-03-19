@@ -139,13 +139,13 @@ pub fn reduce_types<T: TPSEAccelerator>
     import_tasks.push(ImportTask::SoundEffects(sound_effects));
   }
   if ambiguous_mino_skin_errors.len() > 0 {
-    return Err(ctx.wrap(ImportErrorType::AmbiguousAnimatedSkinResults(
+    return Err(ctx.wrap_error(ImportErrorType::AmbiguousAnimatedSkinResults(
       Cow::from("mino"),
       ambiguous_mino_skin_errors
     )));
   }
   if ambiguous_ghost_skin_errors.len() > 0 {
-    return Err(ctx.wrap(ImportErrorType::AmbiguousAnimatedSkinResults(
+    return Err(ctx.wrap_error(ImportErrorType::AmbiguousAnimatedSkinResults(
       Cow::from("ghost"),
       ambiguous_mino_skin_errors
     )));

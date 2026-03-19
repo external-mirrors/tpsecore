@@ -47,7 +47,7 @@ impl<'ctx_deps, T: TPSEAccelerator> ImportContext<'ctx_deps, T> {
   }
 
   /// Wraps an ImportErrorType with this `ImportContext`'s context
-  pub fn wrap(&self, error: ImportErrorType<T>) -> ImportError<T> {
+  pub fn wrap_error(&self, error: ImportErrorType<T>) -> ImportError<T> {
     ImportError {
       context: self.context.clone(),
       error
