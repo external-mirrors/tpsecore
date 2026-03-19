@@ -3,40 +3,40 @@ use std::collections::HashMap;
 use std::io::Cursor;
 use std::sync::Arc;
 use std::time::Duration;
-use log::Level;
 use zip::ZipArchive;
 use crate::accel::traits::{AssetProvider, TPSEAccelerator, TextureHandle, AudioHandle};
 use crate::import::import_task::ImportTask;
 use crate::import::{Asset, ImportContext, ImportContextEntry, ImportError, ImportErrorType, ImportType, MediaLoadError, SkinType, SpecificImportType, import};
 use crate::import::radiance::parse_radiance_sound_definition;
 use crate::import::skin_splicer::{SkinSplicer};
+use crate::log::LogLevel;
 use crate::tpse::tpse_key::merge;
 use crate::tpse::{AnimMeta, Background, File, MiscTPSEValue, Song, SongMetadata, TPSE};
 
 /// Executes an import task
-pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &ImportContext<'_, T>) -> Result<TPSE, ImportError<T>> {
-  ctx.log(Level::Info, format_args!("Executing import task {:?}", task));
+pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut ImportContext<'_, T>) -> Result<TPSE, ImportError<T>> {
+  ctx.log(LogLevel::Info, format_args!("Executing import task {:?}", task));
   let mut tpse = TPSE::default();
   match task {
     ImportTask::AnimatedSkinFrames(skin_type, frames) => {
       let mut decoded_frames = vec![];
       for (i, frame) in frames.into_iter().enumerate() {
-        let ctx = ctx.with_context(ImportContextEntry::FrameSource(i, frame.filename));
+        let guard = ctx.enter_context(ImportContextEntry::FrameSource { frame: i, file: frame.filename });
         let decoded = match frame.file.mime.as_str() {
           #[cfg(feature = "extra_software_decoders")]
           "image/gif" => {
             crate::accel::extra_software_decoders::decode_gif::<T>(&frame.file.binary)
-              .map_err(|err| ctx.wrap(ImportErrorType::LoadError(err.into()).into()))?
+              .map_err(|err| guard.wrap(ImportErrorType::LoadError(err.into()).into()))?
           }
           #[cfg(feature = "extra_software_decoders")]
           "image/webp" => {
             crate::accel::extra_software_decoders::decode_webp::<T>(&frame.file.binary)
-              .map_err(|err| ctx.wrap(ImportErrorType::LoadError(err.into()).into()))?
+              .map_err(|err| guard.wrap(ImportErrorType::LoadError(err.into()).into()))?
           }
           // other single frame image
           _ => T::Texture::decode_texture(frame.file.binary)
             .map(|frame| vec![(frame, Duration::from_secs(1))])
-            .map_err(|err| ctx.wrap(MediaLoadError::TextureError(err).into()))?
+            .map_err(|err| guard.wrap(MediaLoadError::TextureError(err).into()))?
         };
         decoded_frames.extend(decoded)
       };
@@ -140,11 +140,11 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &ImportCont
         // todo: ensure we've stripped file extension by this point
         let with_filekey_removed = sfx.name.replace(ImportType::SoundEffects.filekey(), "");
         let Some((_offset, _duration)) = old_atlas.remove(&with_filekey_removed) else {
-          ctx.log(Level::Warn, format_args!("Skipping unknown sound effect {}", sfx.name));
+          ctx.log(LogLevel::Warn, format_args!("Skipping unknown sound effect {}", sfx.name));
           continue;
         };
 
-        ctx.log(Level::Trace, format_args!("Decoding {}: {} bytes", sfx.filename, sfx.file.binary.len()));
+        ctx.log(LogLevel::Trace, format_args!("Decoding {}: {} bytes", sfx.filename, sfx.file.binary.len()));
 
         let handle = T::Audio::decode_audio(sfx.file.binary.clone(), Some(&sfx.file.mime)).await
           .map_err(|err| ctx.wrap(MediaLoadError::AudioError(err).into()))?;
@@ -167,12 +167,14 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &ImportCont
         let rsd = parse_radiance_sound_definition(&rsd_asset)
           .map_err(|err| ctx.wrap(err.into()))?;
 
-        ctx.log(Level::Trace, format_args!("Decoding {}: {} bytes", Asset::TetrioRSD, rsd_asset.len()));
+        ctx.log(LogLevel::Status, format_args!("Decoding {}: {} bytes", Asset::TetrioRSD, rsd_asset.len()));
 
         let handle = T::Audio::decode_audio(rsd.audio_buffer.into(), Some("audio/ogg")).await
           .map_err(|err| ctx.wrap(ImportErrorType::AssetSoundEffectsDecode(err).into()))?;
           
-        ctx.log(Level::Info, format_args!("populating remaining base game sound effects: {:?}", old_atlas.keys().collect::<Vec<_>>()));
+        ctx.log(LogLevel::Info, format_args!("populating {} remaining unreplaced base game sound effects", old_atlas.keys().len()));
+        ctx.log(LogLevel::Debug, format_args!("populating remaining unreplaced base game sound effects: {:?}", old_atlas.keys().collect::<Vec<_>>()));
+        
         for (sfx_name, (offset, duration)) in old_atlas.into_iter() {
           let offset_samples = (offset * atlas_entry_to_sample_ratio) as usize;
           let duration_samples = (duration * atlas_entry_to_sample_ratio) as usize;
@@ -185,7 +187,7 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &ImportCont
         }
       }
       
-      ctx.log(Level::Trace, format_args!("Encoding..."));
+      ctx.log(LogLevel::Info, format_args!("Encoding audio"));
       let encoded = T::Audio::encode_ogg(&encoding_queue).await
         .map_err(|err| ctx.wrap(ImportErrorType::AudioEncodeFailed(err).into()))?;
 
@@ -225,9 +227,9 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &ImportCont
             let files = files.iter()
               .map(|(it, name, bytes)| (*it, name.as_ref(), bytes.clone()))
               .collect::<Vec<_>>();
-            let context = ctx.with_context(ImportContextEntry::ZipFolder(folder));
-            let new_tpse = Box::pin(import::<T>(files, context)).await?;
-            merge(&mut tpse, &new_tpse).await.map_err(|err| ctx.wrap(err.into()))?;
+            let mut guard = ctx.enter_context(ImportContextEntry::ZipFolder { folder });
+            let new_tpse = Box::pin(import::<T>(files, &mut *guard)).await?;
+            merge(&mut tpse, &new_tpse).await.map_err(|err| guard.wrap(err.into()))?;
           }
         },
         SpecificImportType::TPSE => {

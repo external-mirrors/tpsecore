@@ -3,7 +3,7 @@ use crate::import::{BackgroundType, OtherSkinType, SkinType};
 
 /// A distilled copy of an import type that's been rendered
 /// to a more specific form than the public API.
-#[derive(Debug, Hash, Eq, PartialEq, Copy, Clone)]
+#[derive(Debug, Hash, Eq, PartialEq, Copy, Clone, serde_with::SerializeDisplay)]
 pub enum SpecificImportType {
   Zip,
   TPSE,

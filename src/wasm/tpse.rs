@@ -1,11 +1,12 @@
+use std::fmt::Display;
 use std::mem::replace;
 use std::ptr::null;
 
-use log::Level;
+use serde_json::json;
 
 use crate::accel::wasm_asset_provider::WasmAssetProvider;
-use crate::import::{import, ImportContext, ImportType};
-use crate::log::ImportLogger;
+use crate::import::{ImportContext, ImportContextEntry, ImportType, import};
+use crate::log::{ImportLogger, LogLevel};
 use crate::tpse::tpse_key::merge;
 use crate::wasm::wasm_tpse_provider::WasmTPSEProvider;
 use crate::wasm::{ActiveTPSEStatus, BUFFER_STATE, StagedFile, TPSE_STATE, TPSEContext, TPSEStatus, WasmGlobalAccelerator, import_log, over_tpse_status, report_import_done};
@@ -153,20 +154,20 @@ pub extern "C" fn queue_import(tpse_id: u32) -> usize {
   
     let source = WasmAssetProvider;
     let logger = WasmImportLogger { tpse_id };
-    let options = ImportContext::new(&source, 5).with_logger(&logger);
+    let mut context = ImportContext::new(&source, 5).with_logger(&logger);
   
-    let result = import::<WasmGlobalAccelerator>(files, options).await;
+    let result = import::<WasmGlobalAccelerator>(files, &mut context).await;
     let merge_result = match result {
       Err(err) => {
-        logger.log(Level::Error, format_args!("import failed: {err}"));
+        logger.log(LogLevel::Error, &[], &format_args!("import failed: {err}"));
         Some(1) // import failed
       }
       Ok(new_tpse) => {
-        logger.log(log::Level::Info, format_args!("import finished"));
+        logger.log(LogLevel::Info, &[], &"import finished");
         over_tpse_status!(ActiveTPSEStatus, &mut tpse_data, tpse, {
           match merge(tpse, &new_tpse).await {
             Err(err) => {
-              logger.log(Level::Error, format_args!("failed to merge final import result upon TPSE: {err}"));
+              logger.log(LogLevel::Error, &[], &format_args!("failed to merge final import result upon TPSE: {err}"));
               Some(1) // import failed
             }
             Ok(()) => None
@@ -209,11 +210,15 @@ pub extern "C" fn export_tpse(tpse_id: u32) -> *const u8 {
   
 struct WasmImportLogger { tpse_id: u32 }
 impl ImportLogger for WasmImportLogger {
-  fn log(&self, level: log::Level, msg: std::fmt::Arguments) {
-    let formatted = msg.to_string();
-    let bytes = formatted.as_bytes();
+  fn log(&self, level: LogLevel, context: &[ImportContextEntry], msg: &dyn Display) {
+    let info = serde_json::to_string(&json!({
+      "level": level,
+      "context": context,
+      "message": msg.to_string()
+    })).unwrap();
+    let bytes = info.as_bytes();
     unsafe {
-      import_log(level as u8, self.tpse_id, bytes.as_ptr(),   bytes.len());
+      import_log(self.tpse_id, bytes.as_ptr(), bytes.len());
     }
   }
 }

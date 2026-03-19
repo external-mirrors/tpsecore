@@ -29,9 +29,8 @@ unsafe extern "C" {
   /// Prints a log not associated with any specific tpse instance  
   /// Level is 1=error 2=warn 3=info 4=debug 5=trace
   unsafe fn log(level: u8, ptr: *const u8, len: usize);
-  /// Prints a log associated with a specific tpse instance  
-  /// Level is 1=error 2=warn 3=info 4=debug 5=trace
-  unsafe fn import_log(level: u8, tpse: u32, ptr: *const u8, len: usize);
+  /// Prints a log associated with a specific tpse instance, with all log related metadata in the provided buffer
+  unsafe fn import_log(tpse: u32, ptr: *const u8, len: usize);
   /// Obtains a key from browser storage, or a null pointer for null.
   /// The buffer will be deallocated internally.
   unsafe fn tpse_get(extern_tpse_id: u32, key_ptr: *const u8, key_len: usize) -> *const u8;

@@ -1,32 +1,67 @@
+use serde_with::{serde_as, DisplayFromStr};
 use crate::import::{ImportType, SkinType, SpecificImportType};
 use crate::import::import_task::ImportTask;
 
-#[derive(Debug, Clone, thiserror::Error)]
+// ImportContextEntry serializes into a format meant mainly for interpolating into logs,
+// and thus has no deserialize impl
+#[serde_as]
+#[derive(Debug, Clone, thiserror::Error, serde::Serialize)]
+#[serde(tag = "kind", rename_all="kebab-case")]
 pub enum ImportContextEntry {
-  #[error("file `{0}` (as {1:?})")]
-  ImportFile(String, ImportType),
-  #[error("frame source {0} from file `{1}`")]
-  FrameSource(usize, String),
-  #[error("zip folder {0}")]
-  ZipFolder(String),
-  #[error("with filekey {0:?}")]
-  WithFilekey(ImportType),
-  #[error("with guessed type {0:?}")]
-  WithGuessedType(ImportType),
-  #[error("task {0}")]
-  Task(#[from] ImportTaskContextEntry),
+  #[error("file `{file}` (as {as_type:?})")]
+  ImportFile {
+    file: String,
+    #[serde(rename="type")]
+    #[serde_as(as = "DisplayFromStr")]
+    as_type: ImportType
+  },
+  #[error("frame source {frame} from file `{file}`")]
+  FrameSource {
+    frame: usize,
+    file: String
+  },
+  #[error("zip folder {folder}")]
+  ZipFolder {
+    folder: String
+  },
+  #[error("with filekey {filekey:?}")]
+  WithFilekey {
+    #[serde_as(as = "DisplayFromStr")]
+    filekey: ImportType
+  },
+  #[error("with guessed type {as_type:?}")]
+  WithGuessedType {
+    #[serde(rename="type")]
+    #[serde_as(as = "DisplayFromStr")]
+    as_type: ImportType
+  },
+  #[error("task {task}")]
+  Task {
+    #[from]
+    #[serde(flatten)]
+    task: ImportTaskContextEntry
+  },
   #[error("reducing types")]
   ReduceTypes
 }
 
-#[derive(Debug, Clone, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error, serde::Serialize)]
 pub enum ImportTaskContextEntry {
-  #[error("{0:?} animated skin from frames: {1:?}")]
-  AnimatedSkinFrames(SkinType, Vec<String>),
-  #[error("sound effects from files: {0:?}")]
-  SoundEffects(Vec<String>),
-  #[error("`{1}` (as {0:?})")]
-  Basic(SpecificImportType, String)
+  #[error("{skin_type:?} animated skin from frames: {frame_files:?}")]
+  AnimatedSkinFrames {
+    skin_type: SkinType,
+    frame_files: Vec<String>
+  },
+  #[error("sound effects from files: {files:?}")]
+  SoundEffects {
+    files: Vec<String>
+  },
+  #[error("`{file}` (as {as_type:?})")]
+  Basic {
+    #[serde(rename="type")]
+    as_type: SpecificImportType,
+    file: String
+  }
 }
 
 impl ImportTaskContextEntry {
@@ -34,13 +69,14 @@ impl ImportTaskContextEntry {
     match task {
       ImportTask::AnimatedSkinFrames(skin_type, files) => {
         let files = files.iter().map(|file| file.filename.clone()).collect();
-        Self::AnimatedSkinFrames(*skin_type, files)
+        Self::AnimatedSkinFrames { skin_type: *skin_type, frame_files: files }
       }
       ImportTask::SoundEffects(effects) => {
-        Self::SoundEffects(effects.iter().map(|sfx| sfx.filename.clone()).collect())
+        let files = effects.iter().map(|sfx| sfx.filename.clone()).collect();
+        Self::SoundEffects { files }
       }
       ImportTask::Basic { import_type, filename, .. } => {
-        Self::Basic(*import_type, filename.clone())
+        Self::Basic { as_type: *import_type, file: filename.clone() }
       }
     }
   }

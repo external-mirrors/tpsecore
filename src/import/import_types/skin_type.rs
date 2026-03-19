@@ -1,9 +1,9 @@
 use std::borrow::Cow;
 use std::ops::Sub;
 use std::path::Path;
-use log::Level;
 use crate::accel::traits::TPSEAccelerator;
 use crate::import::{AnimatedOptions, ImportContext};
+use crate::log::LogLevel;
 
 #[derive(Debug, Hash, Eq, PartialEq, Copy, Clone, serde::Serialize, serde::Deserialize, thiserror::Error)]
 #[serde(tag = "subtype", rename_all = "snake_case")]
@@ -69,7 +69,7 @@ impl SkinType {
       (    _,   _,   _,    _) if ratio(9.0/20.0) => Some(JstrisConnected),
       _ => None
     };
-    ctx.log(Level::Debug, format_args!(
+    ctx.log(LogLevel::Debug, format_args!(
       "Guessing format for ext={} w={} h={} anim={}: {:?}",
       ext, width, height, likely_animated, result
     ));

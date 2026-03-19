@@ -26,6 +26,21 @@ pub enum ImportType {
   Music
 }
 
+// this display impl is used for serializing the import type as part of ImportContextEntry
+impl std::fmt::Display for ImportType {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      Self::Automatic => write!(f, "automatic"),
+      Self::Skin { subtype } => write!(f, "{subtype} skin"),
+      Self::OtherSkin { subtype } => write!(f, "{subtype} skin"),
+      Self::SoundEffects => write!(f, "sound effect"),
+      Self::Background { subtype: BackgroundType::Video } => write!(f, "video background"),
+      Self::Background { subtype: BackgroundType::Image } => write!(f, "background"),
+      Self::Music => write!(f, "music"),
+    }
+  }
+}
+
 // todo: maybe generate this with a macro from the below switch statement?
 const POSSIBILITIES: [fn(AnimatedOptions) -> ImportType; 50] = [
   //|_opts| Automatic,
