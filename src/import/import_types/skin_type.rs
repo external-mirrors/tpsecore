@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::ops::Sub;
 use std::path::Path;
 use crate::accel::traits::TPSEAccelerator;
@@ -9,12 +8,17 @@ use crate::log::LogLevel;
 #[serde(tag = "subtype", rename_all = "snake_case")]
 pub enum SkinType {
   // The new tetrio formats used after TETR.IO v6.1.0
+  // all of these also have double resolution formats available at `{tetrio,connected}.2x.png`
+  /// https://tetr.io/res/skins/minos/tetrio.png
   #[error("tetrio v6.1 unconnected minos")]
   Tetrio61,
+  /// https://tetr.io/res/skins/ghost/tetrio.png
   #[error("tetrio v6.1 unconnected ghost")]
   Tetrio61Ghost,
+  // https://tetr.io/res/skins/minos/connected.png
   #[error("tetrio v6.1 connected minos")]
   Tetrio61Connected,
+  /// https://tetr.io/res/skins/ghost/connected.png
   #[error("tetrio v6.1 connected ghost")]
   Tetrio61ConnectedGhost,
   #[error("tetrio v6.1 connected animated {opts}")]
@@ -43,34 +47,36 @@ pub enum SkinType {
 }
 
 impl SkinType {
-  pub fn guess_format<T: TPSEAccelerator>(filename: &str, width: u32, height: u32, ctx: &ImportContext<T>) -> Option<SkinType> {
-    let ext = Path::new(&filename).extension()
-      .map(|ext| ext.to_string_lossy())
-      .unwrap_or(Cow::from(filename));
+  pub fn guess_format<T: TPSEAccelerator>(filename: &Path, width: u32, height: u32, ctx: &ImportContext<T>) -> Option<SkinType> {
+    let ext = Path::new(&filename).extension().and_then(|x| x.to_str());
     let opts = AnimatedOptions::from(filename);
     use SkinType::*;
-    let likely_animated = ext.as_ref() == "gif" || opts.has_fields();
+    let likely_animated = ext == Some("gif") || opts.has_fields();
     let ratio = |target: f64| (width as f64 / height as f64).sub(target).abs() < 0.1;
-    let result = match (ext.as_ref(), width, height, likely_animated) {
-      (    _, 256, 256, true) => Some(Tetrio61ConnectedAnimated { opts }),
-      (    _, 256, 256,    _) => Some(Tetrio61Connected),
-      (    _, 128, 128, true) => Some(Tetrio61ConnectedGhostAnimated { opts }),
-      (    _, 128, 128,    _) => Some(Tetrio61ConnectedGhost),
-      (    _, 372,  30, true) => Some(TetrioAnimated { opts }),
-      ("svg", 372,  30,    _) => Some(TetrioSVG),
-      (    _, 372,  30,    _) => Some(TetrioRaster),
-      (    _, 288, 640,    _) => Some(JstrisConnected), // 32px size
-      (    _, 216, 480,    _) => Some(JstrisConnected), // 24px size
-      (    _,   _,   _, true) if ratio(12.4) => Some(TetrioAnimated { opts }),
-      ("svg",   _,   _,    _) if ratio(12.4) => Some(TetrioSVG),
-      (    _,   _,   _,    _) if ratio(12.4) => Some(TetrioRaster),
-      (    _,   _,   _, true) if ratio(9.0) => Some(JstrisAnimated { opts }),
-      (    _,   _,   _,    _) if ratio(9.0) => Some(JstrisConnected),
-      (    _,   _,   _,    _) if ratio(9.0/20.0) => Some(JstrisConnected),
+    let result = match (ext, width, height, likely_animated) {
+      // format guessing intentionally doesn't account for 2x sized textures
+      // as they cause multiple ambiguities due to many textures being those exact ratios
+      (          _,1024,1024, true) => Some(Tetrio61ConnectedAnimated { opts }),
+      (          _,1024,1024,    _) => Some(Tetrio61Connected),
+      (          _, 512, 512, true) => Some(Tetrio61ConnectedGhostAnimated { opts }),
+      (          _, 512, 512,    _) => Some(Tetrio61ConnectedGhost),
+      (          _, 256, 256,    _) => Some(Tetrio61),
+      (          _, 128, 128,    _) => Some(Tetrio61Ghost),
+      (          _, 372,  30, true) => Some(TetrioAnimated { opts }),
+      (Some("svg"), 372,  30,    _) => Some(TetrioSVG),
+      (          _, 372,  30,    _) => Some(TetrioRaster),
+      (          _, 288, 640,    _) => Some(JstrisConnected), // 32px size
+      (          _, 216, 480,    _) => Some(JstrisConnected), // 24px size
+      (          _,   _,   _, true) if ratio(12.4) => Some(TetrioAnimated { opts }),
+      (Some("svg"),   _,   _,    _) if ratio(12.4) => Some(TetrioSVG),
+      (          _,   _,   _,    _) if ratio(12.4) => Some(TetrioRaster),
+      (          _,   _,   _, true) if ratio(9.0) => Some(JstrisAnimated { opts }),
+      (          _,   _,   _,    _) if ratio(9.0) => Some(JstrisConnected),
+      (          _,   _,   _,    _) if ratio(9.0/20.0) => Some(JstrisConnected),
       _ => None
     };
     ctx.log(LogLevel::Debug, format_args!(
-      "Guessing format for ext={} w={} h={} anim={}: {:?}",
+      "Guessing format for ext={:?} w={} h={} anim={}: {:?}",
       ext, width, height, likely_animated, result
     ));
     result

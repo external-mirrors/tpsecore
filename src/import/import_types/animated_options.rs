@@ -1,4 +1,5 @@
 use std::fmt::{Display, Formatter};
+use std::path::Path;
 use std::sync::LazyLock;
 use regex::Regex;
 
@@ -31,6 +32,13 @@ impl Display for AnimatedOptions {
         Some(false) => "unoptimized (replace)"
       }
     )
+  }
+}
+
+impl From<&Path> for AnimatedOptions {
+  fn from(value: &Path) -> Self {
+    // attempt to extract valid filekeys as hard as possible
+    value.to_string_lossy().as_ref().into()
   }
 }
 

@@ -334,14 +334,15 @@ impl TPSEProvider<IDFileEntry> for TPSE {
   }
 }
 
-#[test]
-fn null_merge_test() {
+#[cfg(test)]
+#[tokio::test]
+async fn null_merge_test() {
   struct NullTPSEProvider;
   impl<T: TPSEKey> TPSEProvider<T> for NullTPSEProvider {
-    async fn get(&self, key: &T) -> Result<Option<Cow<'_, T::Data>>, TPSEProviderError> { Ok(None) }
+    async fn get(&self, _: &T) -> Result<Option<Cow<'_, T::Data>>, TPSEProviderError> { Ok(None) }
     // into the bitbucket it goes
-    async fn set(&mut self, key: &T, value: Option<T::Data>) -> Result<(), TPSEProviderError> { unreachable!(); }
+    async fn set(&mut self, _: &T, _: Option<T::Data>) -> Result<(), TPSEProviderError> { unreachable!(); }
   }
   
-  merge(&mut NullTPSEProvider, &NullTPSEProvider);
+  merge(&mut NullTPSEProvider, &NullTPSEProvider).await.unwrap();
 }

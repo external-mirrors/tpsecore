@@ -1,12 +1,9 @@
-use std::io::Read;
 use std::collections::HashMap;
-use std::io::Cursor;
 use std::sync::Arc;
 use std::time::Duration;
-use zip::ZipArchive;
-use crate::accel::traits::{AssetProvider, TPSEAccelerator, TextureHandle, AudioHandle};
-use crate::import::import_task::ImportTask;
-use crate::import::{Asset, ImportContext, ImportContextEntry, ImportError, ImportErrorType, ImportErrorWrapHelper, ImportType, MediaLoadError, SkinType, SpecificImportType, err, import};
+use crate::accel::traits::{TPSEAccelerator, TextureHandle, AudioHandle};
+use crate::import::inter_stage_data::{ImportTask, SpecificImportType};
+use crate::import::{Asset, ImportContext, ImportContextEntry, ImportError, ImportErrorType, ImportErrorWrapHelper, ImportType, MediaLoadError, SkinType, err};
 use crate::import::radiance::parse_radiance_sound_definition;
 use crate::import::skin_splicer::{SkinSplicer};
 use crate::log::LogLevel;
@@ -21,18 +18,19 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut Import
     ImportTask::AnimatedSkinFrames(skin_type, frames) => {
       let mut decoded_frames = vec![];
       for (i, frame) in frames.into_iter().enumerate() {
-        let guard = ctx.enter_context(ImportContextEntry::FrameSource { frame: i, file: frame.filename });
-        let decoded = match frame.file.mime.as_str() {
+        let mime = mime_guess::from_path(&frame.path).first_or_octet_stream();
+        let guard = ctx.enter_context(ImportContextEntry::FrameSource { frame: i, file: frame.path });
+        let decoded = match mime.essence_str() {
           #[cfg(feature = "extra_software_decoders")]
           "image/gif" => {
-            crate::accel::extra_software_decoders::decode_gif::<T>(&frame.file.binary).wrap(err!(guard))?
+            crate::accel::extra_software_decoders::decode_gif::<T>(&frame.binary).wrap(err!(guard))?
           }
           #[cfg(feature = "extra_software_decoders")]
           "image/webp" => {
-            crate::accel::extra_software_decoders::decode_webp::<T>(&frame.file.binary).wrap(err!(guard))?
+            crate::accel::extra_software_decoders::decode_webp::<T>(&frame.binary).wrap(err!(guard))?
           }
           // other single frame image
-          _ => T::Texture::decode_texture(frame.file.binary)
+          _ => T::Texture::decode_texture(frame.binary.into())
             .map(|frame| vec![(frame, Duration::from_secs(1))])
             .wrap(err!(guard, tex))?
         };
@@ -120,7 +118,7 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut Import
       // Multiply by this constant to get from atlas timings to sample timings.
       let atlas_entry_to_sample_ratio: f64 = 1.0/1000.0 * sample_rate as f64 * channels as f64;
 
-      let asset = ctx.asset_source.provide(Asset::TetrioRSD).await.wrap(err!(ctx, assetfetchfail))?;
+      let asset = ctx.provide_asset(Asset::TetrioRSD).await?;
       let rsd = parse_radiance_sound_definition(&asset).wrap(err!(ctx))?;
       
       let mut old_atlas = rsd.to_old_style_atlas();
@@ -136,9 +134,11 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut Import
           continue;
         };
 
-        ctx.log(LogLevel::Trace, format_args!("Decoding {}: {} bytes", sfx.filename, sfx.file.binary.len()));
+        ctx.log(LogLevel::Trace, format_args!("Decoding {:?}: {} bytes", sfx.path, sfx.binary.len()));
 
-        let handle = T::Audio::decode_audio(sfx.file.binary.clone(), Some(&sfx.file.mime)).await.wrap(err!(ctx, audio))?;
+        let mime = mime_guess::from_path(&sfx.path).first();
+        let mime = mime.as_ref().map(|s| s.essence_str());
+        let handle = T::Audio::decode_audio(sfx.binary.clone(), mime).await.wrap(err!(ctx, audio))?;
         let samples = handle.length().await.wrap(err!(ctx, audio))?;
         encoding_queue.push(handle);
         
@@ -151,7 +151,7 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut Import
       }
       
       if !old_atlas.is_empty() {
-        let rsd_asset = ctx.asset_source.provide(Asset::TetrioRSD).await.wrap(err!(ctx, assetfetchfail))?;
+        let rsd_asset = ctx.provide_asset(Asset::TetrioRSD).await?;
           
         let rsd = parse_radiance_sound_definition(&rsd_asset).wrap(err!(ctx))?;
 
@@ -174,7 +174,7 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut Import
         }
       }
       
-      ctx.log(LogLevel::Info, format_args!("Encoding audio"));
+      ctx.log(LogLevel::Status, format_args!("Encoding audio"));
       let encoded = T::Audio::encode_ogg(&encoding_queue).await.wrap(err!(ctx, audio_encode))?;
 
       tpse.custom_sounds = Some(File {
@@ -183,39 +183,10 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut Import
       });
       tpse.custom_sound_atlas = Some(new_atlas);
     },
-    ImportTask::Basic { import_type, filename, file } => {
+    ImportTask::Basic { import_type, path, binary } => {
+      let mime = mime_guess::from_path(&path).first_or_octet_stream().essence_str().to_string();
+      let file = File { binary: binary.into(), mime };
       match import_type {
-        SpecificImportType::Zip => {
-          // todo: optimeiz
-
-          let mut groups: HashMap<String, Vec<(ImportType, String, Arc<[u8]>)>> = HashMap::new();
-          let zip = ZipArchive::new(Cursor::new(&file.binary)).wrap(err!(ctx, zip))?;
-          for i in 0..zip.len() {
-            let mut zip = zip.clone();
-            let mut file = zip.by_index(i).unwrap();
-            if !file.is_file() {
-              continue;
-            }
-            let (folder, filename) = file.name().rsplit_once("/").unwrap_or(("", file.name()));
-            groups.entry(folder.to_string()).or_default().push((
-              ImportType::Automatic,
-              filename.to_string(),
-              {
-                let mut bytes = Vec::new();
-                file.read_to_end(&mut bytes).wrap(err!(ctx, zip))?;
-                bytes.into()
-              }
-            ));
-          }
-          for (folder, files) in groups {
-            let files = files.iter()
-              .map(|(it, name, bytes)| (*it, name.as_ref(), bytes.clone()))
-              .collect::<Vec<_>>();
-            let mut guard = ctx.enter_context(ImportContextEntry::ZipFolder { folder });
-            let new_tpse = Box::pin(import::<T>(files, &mut *guard)).await?;
-            merge(&mut tpse, &new_tpse).await.wrap(err!(guard))?;
-          }
-        },
         SpecificImportType::TPSE => {
           let new_tpse: TPSE = serde_json::from_slice(&file.binary).wrap(err!(ctx, bad_tpse))?;
           merge(&mut tpse, &new_tpse).await.wrap(err!(ctx))?;
@@ -244,7 +215,11 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut Import
         SpecificImportType::Background(bg_type) => {
           let id = format!("background-{}", file.sha256_hex());
           tpse.other.insert(id.clone(), MiscTPSEValue::File(file));
-          let bg = Background { id, filename, background_type: bg_type.into() };
+          let bg = Background {
+            id,
+            filename: path.file_name().unwrap_or(path.as_os_str()).to_string_lossy().into_owned(),
+            background_type: bg_type.into()
+          };
           tpse.backgrounds.get_or_insert(Default::default()).push(bg);
         },
         SpecificImportType::Music => {
@@ -252,10 +227,10 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut Import
           tpse.other.insert(id.clone(), MiscTPSEValue::File(file));
           let song = Song {
             id,
-            filename: filename.clone(),
+            filename: path.file_name().unwrap_or(path.as_os_str()).to_string_lossy().into_owned(),
             song_override: None,
             metadata: SongMetadata {
-              name: filename,
+              name: path.file_stem().unwrap_or(path.as_os_str()).to_string_lossy().into_owned(),
               ..Default::default()
             }
           };

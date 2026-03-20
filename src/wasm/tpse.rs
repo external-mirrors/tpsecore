@@ -1,10 +1,12 @@
 use std::fmt::Display;
 use std::mem::replace;
+use std::path::PathBuf;
 use std::ptr::null;
 
 use serde_json::json;
 
 use crate::accel::wasm_asset_provider::WasmAssetProvider;
+use crate::import::inter_stage_data::QueuedFile;
 use crate::import::{ImportContext, ImportContextEntry, ImportType, import};
 use crate::log::{ImportLogger, LogLevel};
 use crate::tpse::tpse_key::merge;
@@ -146,17 +148,17 @@ pub extern "C" fn queue_import(tpse_id: u32) -> usize {
     else { return 2 };
   
   crate::wasm::asynch::spawn(async move {
-    let files = cloned.iter().map(|(filename, content)| (
-      ImportType::Automatic,
-      str::from_utf8(&filename).unwrap(),
-      content.clone()
-    )).collect::<Vec<_>>();
+    let files = cloned.iter().map(|(filename, content)| QueuedFile {
+      kind: ImportType::Automatic,
+      path: PathBuf::from(str::from_utf8(&filename).unwrap()),
+      binary: content.clone()
+    }).collect::<Vec<_>>();
   
     let source = WasmAssetProvider;
     let logger = WasmImportLogger { tpse_id };
-    let mut context = ImportContext::new(&source, 5).with_logger(&logger);
+    let mut context = ImportContext::new(&source).with_logger(&logger);
   
-    let result = import::<WasmGlobalAccelerator>(files, &mut context).await;
+    let result = import::<WasmGlobalAccelerator>(&mut context, files).await;
     let merge_result = match result {
       Err(err) => {
         logger.log(LogLevel::Error, &[], &format_args!("import failed: {err}"));

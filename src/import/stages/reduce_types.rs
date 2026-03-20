@@ -1,19 +1,17 @@
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
-use std::ffi::OsStr;
-use std::path::Path;
 use crate::accel::traits::TPSEAccelerator;
-use crate::import::{ImportContext, ImportError, ImportErrorType, ImportResult, SkinType, SpecificImportType};
-use crate::import::import_task::{AnimatedSkinFrame, ImportTask, SoundEffect};
+use crate::import::inter_stage_data::{AnimatedSkinFrame, ImportTask, ProcessedQueuedFile, SoundEffect, SpecificImportType};
+use crate::import::{ImportContext, ImportError, ImportErrorType, SkinType};
 
 /// Collates multiple import results into a list of import tasks
 pub fn reduce_types<T: TPSEAccelerator>
-  (results: &[ImportResult], ctx: &mut ImportContext<'_, T>)
+  (results: &[ProcessedQueuedFile], ctx: &mut ImportContext<'_, T>)
    -> Result<Vec<ImportTask>, ImportError<T>>
 {
-  let mut map: HashMap<SpecificImportType, Vec<ImportResult>> = HashMap::new();
+  let mut map: HashMap<SpecificImportType, Vec<ProcessedQueuedFile>> = HashMap::new();
   for res in results {
-    map.entry(res.specific_import_type).or_default().push(res.clone());
+    map.entry(res.specific_kind).or_default().push(res.clone());
   }
 
   // The import tasks to be performed
@@ -22,8 +20,8 @@ pub fn reduce_types<T: TPSEAccelerator>
   // Duplicate order is undefined
   let mut sound_effects: Vec<SoundEffect> = vec![];
   // Minos and ghosts are collated to allow for animated-from-frames style textures
-  let mut animated_minos: Option<(SkinType, Vec<ImportResult>)> = None;
-  let mut animated_ghost: Option<(SkinType, Vec<ImportResult>)> = None;
+  let mut animated_minos: Option<(SkinType, Vec<ProcessedQueuedFile>)> = None;
+  let mut animated_ghost: Option<(SkinType, Vec<ProcessedQueuedFile>)> = None;
   // If animated minos/ghosts encounter a _different_ type of skin that qualifies as animated,
   // an error is logged here. This is then shoved into one giant error message.
   let mut ambiguous_mino_skin_errors: HashSet<SkinType> = HashSet::new();
@@ -32,21 +30,12 @@ pub fn reduce_types<T: TPSEAccelerator>
   for (key, mut files) in map {
     use SpecificImportType as SIT;
     match key {
-      SpecificImportType::Zip => {
-        import_tasks.extend(files.into_iter().map(|import_result| {
-          ImportTask::Basic {
-            import_type: SIT::Zip,
-            filename: import_result.filename,
-            file: import_result.file
-          }
-        }));
-      },
       SpecificImportType::TPSE => {
         import_tasks.extend(files.into_iter().map(|import_result| {
           ImportTask::Basic {
             import_type: SIT::TPSE,
-            filename: import_result.filename,
-            file: import_result.file
+            path: import_result.path,
+            binary: import_result.binary.into()
           }
         }));
       },
@@ -85,8 +74,8 @@ pub fn reduce_types<T: TPSEAccelerator>
           import_tasks.extend(files.into_iter().map(|import_result| {
             ImportTask::Basic {
               import_type: SIT::Skin(skin_type),
-              filename: import_result.filename,
-              file: import_result.file
+              path: import_result.path,
+              binary: import_result.binary.into()
             }
           }));
         }
@@ -95,22 +84,22 @@ pub fn reduce_types<T: TPSEAccelerator>
         import_tasks.extend(files.into_iter().map(|import_result| {
           ImportTask::Basic {
             import_type: SIT::OtherSkin(skin_type),
-            filename: import_result.filename,
-            file: import_result.file
+            path: import_result.path,
+            binary: import_result.binary.into()
           }
         }));
       }
       SpecificImportType::SoundEffects => {
         sound_effects.extend(files.into_iter().map(|import_result| {
-          let name = Path::new(&import_result.filename)
+          let name = import_result.path
             .file_stem()
-            .unwrap_or(OsStr::new(&import_result.filename))
+            .unwrap_or(import_result.path.as_os_str())
             .to_string_lossy()
             .to_string();
           SoundEffect {
             name,
-            filename: import_result.filename,
-            file: import_result.file
+            path: import_result.path,
+            binary: import_result.binary.into()
           }
         }));
       }
@@ -118,8 +107,8 @@ pub fn reduce_types<T: TPSEAccelerator>
         import_tasks.extend(files.into_iter().map(|import_result| {
           ImportTask::Basic {
             import_type: SIT::Background(bg_type),
-            filename: import_result.filename,
-            file: import_result.file
+            path: import_result.path,
+            binary: import_result.binary.into()
           }
         }));
       }
@@ -127,8 +116,8 @@ pub fn reduce_types<T: TPSEAccelerator>
         import_tasks.extend(files.into_iter().map(|import_result| {
           ImportTask::Basic {
             import_type: SIT::Music,
-            filename: import_result.filename,
-            file: import_result.file
+            path: import_result.path,
+            binary: import_result.binary.into()
           }
         }));
       }
@@ -154,7 +143,7 @@ pub fn reduce_types<T: TPSEAccelerator>
     if let Some((ghost_type, results)) = animated_ghost {
       let files = results
         .into_iter()
-        .map(|res| AnimatedSkinFrame { filename: res.filename, file: res.file })
+        .map(|res| AnimatedSkinFrame { path: res.path, binary: res.binary.into() })
         .collect();
       import_tasks.push(ImportTask::AnimatedSkinFrames(ghost_type, files))
     }
@@ -162,10 +151,11 @@ pub fn reduce_types<T: TPSEAccelerator>
   if let Some((mino_type, results)) = animated_minos {
     let files = results
       .into_iter()
-      .map(|res| AnimatedSkinFrame { filename: res.filename, file: res.file })
+      .map(|res| AnimatedSkinFrame { path: res.path, binary: res.binary.into() })
       .collect();
     import_tasks.push(ImportTask::AnimatedSkinFrames(mino_type, files))
   }
 
   Ok(import_tasks)
 }
+

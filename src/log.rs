@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use crate::import::ImportContextEntry;
 
-#[derive(serde::Serialize)]
+#[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum LogLevel {
   /// Messages describing a direct cause of an import failure

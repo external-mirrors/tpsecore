@@ -1,6 +1,8 @@
+use std::path::PathBuf;
+
 use serde_with::{serde_as, DisplayFromStr};
-use crate::import::{ImportType, SkinType, SpecificImportType};
-use crate::import::import_task::ImportTask;
+use crate::import::inter_stage_data::{ImportTask, SpecificImportType};
+use crate::import::{Asset, ImportType, SkinType};
 
 // ImportContextEntry serializes into a format meant mainly for interpolating into logs,
 // and thus has no deserialize impl
@@ -10,7 +12,7 @@ use crate::import::import_task::ImportTask;
 pub enum ImportContextEntry {
   #[error("file `{file}` (as {as_type:?})")]
   ImportFile {
-    file: String,
+    file: PathBuf,
     #[serde(rename="type")]
     #[serde_as(as = "DisplayFromStr")]
     as_type: ImportType
@@ -18,11 +20,11 @@ pub enum ImportContextEntry {
   #[error("frame source {frame} from file `{file}`")]
   FrameSource {
     frame: usize,
-    file: String
+    file: PathBuf
   },
   #[error("zip folder {folder}")]
   ZipFolder {
-    folder: String
+    folder: PathBuf
   },
   #[error("with filekey {filekey:?}")]
   WithFilekey {
@@ -41,6 +43,12 @@ pub enum ImportContextEntry {
     #[serde(flatten)]
     task: ImportTaskContextEntry
   },
+  #[error("provide asset {asset}")]
+  ProvideAsset {
+    asset: Asset
+  },
+  #[error("exploring files")]
+  ExploreFiles,
   #[error("reducing types")]
   ReduceTypes
 }
@@ -50,17 +58,17 @@ pub enum ImportTaskContextEntry {
   #[error("{skin_type:?} animated skin from frames: {frame_files:?}")]
   AnimatedSkinFrames {
     skin_type: SkinType,
-    frame_files: Vec<String>
+    frame_files: Vec<PathBuf>
   },
   #[error("sound effects from files: {files:?}")]
   SoundEffects {
-    files: Vec<String>
+    files: Vec<PathBuf>
   },
   #[error("`{file}` (as {as_type:?})")]
   Basic {
     #[serde(rename="type")]
     as_type: SpecificImportType,
-    file: String
+    file: PathBuf
   }
 }
 
@@ -68,15 +76,15 @@ impl ImportTaskContextEntry {
   pub fn from(task: &ImportTask) -> Self {
     match task {
       ImportTask::AnimatedSkinFrames(skin_type, files) => {
-        let files = files.iter().map(|file| file.filename.clone()).collect();
+        let files = files.iter().map(|file| file.path.clone()).collect();
         Self::AnimatedSkinFrames { skin_type: *skin_type, frame_files: files }
       }
       ImportTask::SoundEffects(effects) => {
-        let files = effects.iter().map(|sfx| sfx.filename.clone()).collect();
+        let files = effects.iter().map(|sfx| sfx.path.clone()).collect();
         Self::SoundEffects { files }
       }
-      ImportTask::Basic { import_type, filename, .. } => {
-        Self::Basic { as_type: *import_type, file: filename.clone() }
+      ImportTask::Basic { import_type, path, .. } => {
+        Self::Basic { as_type: *import_type, file: path.clone() }
       }
     }
   }

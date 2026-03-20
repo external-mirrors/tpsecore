@@ -1,7 +1,7 @@
 use std::fmt::{Debug, Display, Formatter};
 
 #[repr(u8)]
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, serde::Deserialize)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Asset {
   /// The main TETR.IO source code file, located at https://tetr.io/js/tetrio.js
   #[serde(alias = "tetrio.js")]

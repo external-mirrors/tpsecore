@@ -1,23 +1,23 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::fmt::Arguments;
+use std::fmt::Display;
 use std::fs::read;
-use std::io::Cursor;
+use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 use hex_literal::hex;
-use log::{Level, LevelFilter};
+use log::LevelFilter;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use simple_logger::SimpleLogger;
 use crate::accel::cached_asset_provider::CachedAssetProvider;
 use crate::accel::ffmpeg_audio_handle::FFmpegAudioHandle;
-use crate::accel::software_audio_handle::SoftwareAudioHandle;
 use crate::accel::software_texture_handle::SoftwareTextureHandle;
 use crate::accel::traits::{TPSEAccelerator, TextureHandle};
-use crate::import::{Asset, import, ImportContext, ImportType};
+use crate::import::inter_stage_data::QueuedFile;
+use crate::import::{Asset, ImportContext, ImportContextEntry, ImportType, import};
 use crate::import::skin_splicer::Piece;
-use crate::log::ImportLogger;
+use crate::log::{ImportLogger, LogLevel};
 use crate::render::{BoardElement, BoardMap, FrameInfo, RenderContext, RenderOptions, example_maps};
 
 pub struct TestState {
@@ -144,38 +144,45 @@ async fn import_tests() {
 
   struct LogLogger;
   impl ImportLogger for LogLogger {
-    fn log(&self, level: Level, msg: Arguments) {
-      log::log!(level, "Import: {}", msg);
+    fn log(&self, level: LogLevel, context: &[ImportContextEntry], msg: &dyn Display) {
+      log::info!("Import level={level:?} - {}", msg);
     }
   }
-  let opts = ImportContext::<TestAccelerator>::new(&provider, 5).with_logger(&LogLogger);
+  let mut ctx = ImportContext::<TestAccelerator>::new(&provider).with_logger(&LogLogger);
 
   log::info!("--- Test: render --- ({:?})", start.elapsed());
-  let tpse = import(vec![(
-    ImportType::Automatic,
-    "SHIMMERING_CYCLONE.zip",
-    state.get("yhf/SHIMMERING_CYCLONE.zip").content.clone()
-  ), (
-    ImportType::Automatic,
-    "Concrete.png",
-    state.get("yhf/Concrete.png").content.clone()
-  ), (
-    ImportType::Automatic,
-    "_board.png",
-    state.get("vanilla/board.png").content.clone()
-  ), (
-    ImportType::Automatic,
-    "_grid.png",
-    state.get("vanilla/grid.png").content.clone()
-  ), (
-    ImportType::Automatic,
-    "_queue.png",
-    state.get("vanilla/queue.png").content.clone()
-  ), (
-    ImportType::SoundEffects,
-    "this_will_be_ignored_but_will_trigger_default_values_to_populate.wav",
-    include_bytes!("../assets/empty_2c.wav").to_vec().into()
-  )], opts).await.unwrap();
+  let tpse = import(&mut ctx, vec![
+    QueuedFile {
+      kind: ImportType::Automatic,
+      path: PathBuf::from("SHIMMERING_CYCLONE.zip"),
+      binary: state.get("yhf/SHIMMERING_CYCLONE.zip").content.clone()
+    },
+    QueuedFile {
+      kind: ImportType::Automatic,
+      path: PathBuf::from("Concrete.png"),
+      binary: state.get("yhf/Concrete.png").content.clone()
+    },
+    QueuedFile {
+      kind: ImportType::Automatic,
+      path: PathBuf::from("_board.png"),
+      binary: state.get("vanilla/board.png").content.clone()
+    },
+    QueuedFile {
+      kind: ImportType::Automatic,
+      path: PathBuf::from("_grid.png"),
+      binary: state.get("vanilla/grid.png").content.clone()
+    },
+    QueuedFile {
+      kind: ImportType::Automatic,
+      path: PathBuf::from("_queue.png"),
+      binary: state.get("vanilla/queue.png").content.clone()
+    },
+    QueuedFile {
+      kind: ImportType::SoundEffects,
+      path: PathBuf::from("this_will_be_ignored_but_will_trigger_default_values_to_populate.wav"),
+      binary: include_bytes!("../assets/empty_2c.wav").to_vec().into()
+    }
+  ]).await.unwrap();
   std::fs::write("./testdata/result/custom_sounds.wav", &tpse.custom_sounds.as_ref().unwrap().binary).unwrap();
   std::fs::write("./testdata/result/render_result.tpse", &serde_json::to_string(&tpse).unwrap()).unwrap();
 

@@ -64,7 +64,7 @@ impl AudioHandle for FFmpegAudioHandle {
   
   fn slice(&self, slice: std::ops::Range<usize>) -> Self {
     let start = self.1.start + slice.start;
-    Self(self.0.clone(), start..start+slice.end)
+    Self(self.0.clone(), start..start+(slice.end - slice.start))
   }
   
   async fn length(&self) -> Result<usize, Self::Error> {

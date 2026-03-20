@@ -1,39 +1,49 @@
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::ops::{Deref, DerefMut};
-use crate::accel::traits::TPSEAccelerator;
-use crate::import::{ImportContextEntry, ImportError, ImportErrorType, SpecificImportType};
+use std::path::PathBuf;
+use std::sync::Arc;
+use crate::accel::traits::{AssetProvider, TPSEAccelerator};
+use crate::import::inter_stage_data::SpecificImportTypeWithZip;
+use crate::import::{Asset, ImportContextEntry, ImportError, ImportErrorType, ImportErrorWrapHelper, err};
 use crate::log::{ImportLogger, LogLevel};
 
 /// Stores metadata and context associated with an import process, tracking the stack location
 /// (e.g. nested zip files) and base game asset provider.
 pub struct ImportContext<'ctx_deps, T: TPSEAccelerator> {
   /// The asset provider providing `Asset`s for the importer
-  pub asset_source: &'ctx_deps T::Asset,
+  asset_source: &'ctx_deps T::Asset,
+  asset_cache: HashMap<Asset, Arc<[u8]>>,
   /// The maximum depth the context stack is allowed to reach before bailing
-  pub depth_limit: u8,
+  depth_limit: usize,
   /// A stack of context describing the current item the importer is working on
-  pub context: Vec<ImportContextEntry>,
-  pub flags: ImportFlags,
+  context: Vec<ImportContextEntry>,
   /// An outlet for diagnostic/progress messages
-  pub logger: Option<&'ctx_deps (dyn ImportLogger + Send + Sync)>
+  logger: Option<&'ctx_deps (dyn ImportLogger + Send + Sync)>,
+  pub flags: ImportFlags,
 }
 
 /// Stores 'flags' raised during import which are used to supplement logs
 #[derive(Default, serde::Serialize)]
 pub struct ImportFlags {
-  pub guessed_files: HashMap<String, SpecificImportType>
+  pub guessed_files: HashMap<PathBuf, SpecificImportTypeWithZip>
 }
 
 impl<'ctx_deps, T: TPSEAccelerator> ImportContext<'ctx_deps, T> {
-  pub fn new(asset_source: &'ctx_deps T::Asset, depth_limit: u8) -> ImportContext<'ctx_deps, T> {
+  pub fn new(asset_source: &'ctx_deps T::Asset) -> ImportContext<'ctx_deps, T> {
     Self {
-      depth_limit,
+      depth_limit: 15,
+      asset_cache: Default::default(),
       asset_source,
       context: Default::default(),
       flags: Default::default(),
       logger: None
     }
+  }
+  
+  pub fn with_depth_limit(mut self, limit: usize) -> Self {
+    self.depth_limit = limit;
+    self
   }
 
   pub fn with_logger(self, logger: &'ctx_deps (dyn ImportLogger + Send + Sync)) -> Self {
@@ -44,6 +54,17 @@ impl<'ctx_deps, T: TPSEAccelerator> ImportContext<'ctx_deps, T> {
     if let Some(logger) = self.logger {
       logger.log(level, &self.context, &message);
     }
+  }
+  
+  pub async fn provide_asset(&mut self, asset: Asset) -> Result<Arc<[u8]>, ImportError<T>> {
+    if !self.asset_cache.contains_key(&asset) {
+      let guard = self.enter_context(ImportContextEntry::ProvideAsset { asset });
+      guard.log(LogLevel::Status, format_args!("Gathering asset {asset}"));
+      let fetched = guard.asset_source.provide(asset).await.wrap(err!(guard, assetfetchfail))?;
+      drop(guard);
+      self.asset_cache.insert(asset, fetched);
+    }
+    Ok(self.asset_cache.get(&asset).unwrap().clone())
   }
 
   /// Wraps an ImportErrorType with this `ImportContext`'s context
@@ -56,7 +77,7 @@ impl<'ctx_deps, T: TPSEAccelerator> ImportContext<'ctx_deps, T> {
 
   /// Checks if the context stack is at or beyond its depth limit
   pub fn is_too_deep(&self) -> bool {
-    self.context.len() >= self.depth_limit as usize
+    self.context.len() >= self.depth_limit
   }
 
   /// Enters a new context, keeping it on the context stack until the returned guard is dropped.

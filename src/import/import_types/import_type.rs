@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use crate::import::{AnimatedOptions, BackgroundType, SkinType, OtherSkinType};
 use crate::import::SkinType::*;
 use crate::import::OtherSkinType::*;
@@ -162,8 +164,9 @@ impl ImportType {
 
   /// Creates an `ImportType` by parsing filekeys from the given filename
   /// Note that longer filekeys win - e.g. `_old_tetrio_svg` beats `_old_tetrio`.
-  pub fn parse_filekey(filename: &str) -> Option<Self> {
-    let opts = AnimatedOptions::from(filename);
+  pub fn parse_filekey(filename: &Path) -> Option<Self> {
+    let filename = filename.to_string_lossy(); // get that filekey no matter how mangled the filename is
+    let opts = AnimatedOptions::from(filename.as_ref());
     POSSIBILITIES.iter()
       .map(|el| (el)(opts))
       .filter(|el| filename.contains(el.filekey()))
@@ -173,15 +176,17 @@ impl ImportType {
 
 #[cfg(test)]
 mod test {
+  use std::path::Path;
+
   use crate::import::{AnimatedOptions, SkinType, ImportType};
   // use crate::import::import_types::import_type::POSSIBILITIES;
   use crate::import::ImportType::Skin;
 
   #[test]
   fn test_parse_filekey() {
-    assert_eq!(ImportType::parse_filekey("foo"), None);
+    assert_eq!(ImportType::parse_filekey(Path::new("foo")), None);
     assert_eq!(
-      ImportType::parse_filekey("_animated_connected_minos_delay=20_combine=false"),
+      ImportType::parse_filekey(Path::new("_animated_connected_minos_delay=20_combine=false")),
       Some(Skin {
         subtype: SkinType::Tetrio61ConnectedAnimated {
           opts: AnimatedOptions { delay: Some(20), combine: Some(false)}
