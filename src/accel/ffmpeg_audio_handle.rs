@@ -32,7 +32,7 @@ impl AudioHandle for FFmpegAudioHandle {
         "-f", "f32le",
         "-acodec", "pcm_f32le",
         "-ac", "2",
-        "-ar", "44100",
+        "-ar", "48000",
         "pipe:1",
       ])
       .stdin(Stdio::piped())
@@ -83,7 +83,7 @@ impl AudioHandle for FFmpegAudioHandle {
       .args([
         "-f", "f32le",
         "-ac", "2",
-        "-ar", "44100",
+        "-ar", "48000",
         "-i", "pipe:0",
         
         "-f", "ogg",

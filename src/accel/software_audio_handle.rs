@@ -105,7 +105,7 @@ impl AudioHandle for SoftwareAudioHandle {
     // "ogg"
     let mut encoder = hound::WavWriter::new(&mut cursor, WavSpec {
       channels: 2,
-      sample_rate: 44100,
+      sample_rate: 48000,
       bits_per_sample: 32,
       sample_format: SampleFormat::Float
     }).unwrap();

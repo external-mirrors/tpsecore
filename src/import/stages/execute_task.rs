@@ -113,7 +113,7 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut Import
     },
     ImportTask::SoundEffects(sound_effects) => {
       let channels: usize = 2;
-      let sample_rate: usize = 44100;
+      let sample_rate: usize = 48000;
       // Atlas entries are in floating point milliseconds, but we primarily work in samples here.
       // Multiply by this constant to get from atlas timings to sample timings.
       let atlas_entry_to_sample_ratio: f64 = 1.0/1000.0 * sample_rate as f64 * channels as f64;
@@ -162,9 +162,27 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut Import
         ctx.log(LogLevel::Info, format_args!("populating {} remaining unreplaced base game sound effects", old_atlas.keys().len()));
         ctx.log(LogLevel::Debug, format_args!("populating remaining unreplaced base game sound effects: {:?}", old_atlas.keys().collect::<Vec<_>>()));
         
-        for (sfx_name, (offset, duration)) in old_atlas.into_iter() {
-          let offset_samples = (offset * atlas_entry_to_sample_ratio) as usize;
-          let duration_samples = (duration * atlas_entry_to_sample_ratio) as usize;
+        let mut iter = old_atlas.into_iter().enumerate();
+        while let Some((i, (sfx_name, (offset, duration)))) = iter.next() {
+          let mut offset_samples = (offset * atlas_entry_to_sample_ratio) as usize;
+          let mut duration_samples = (duration * atlas_entry_to_sample_ratio) as usize;
+          log::trace!("calculated base offset: {sfx_name} {offset} {duration} -> {offset_samples} + {duration_samples} (position: {i}, remain: {})", iter.len());
+          
+          // You would think the amount of math we're doing is absolutely trivial, but it seems to be enough
+          // to force the final sample to round incorrectly. Seems to be pretty reliable (at least with the
+          // rsd file at the time of writing) and there's not really anything else to fix, so... do it the
+          // dumb way.
+          // I originally thought it was just the final sample, but as it turns out a bunch of other sprites
+          // end up on odd numbers. Fix them via brute force.
+          if offset_samples % 2 != 0 {
+            log::debug!("sprite {sfx_name} offset samples not multiple of 2, fixing: {offset_samples}");
+            offset_samples -= 1;
+          }
+          if duration_samples % 2 != 0 {
+            log::debug!("sprite {sfx_name} duration samples not multiple of 2, fixing: {duration_samples}");
+            duration_samples -= 1;
+          }
+          
           let subhandle = handle.slice(offset_samples..offset_samples + duration_samples);
           encoding_queue.push(subhandle);
           let new_offset = encoder_position as f64 / atlas_entry_to_sample_ratio;
