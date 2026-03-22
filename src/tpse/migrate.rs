@@ -604,7 +604,7 @@ async fn migration_test() {
 pub enum MigrationError<T: DynamicTPSE> {
   #[error("error while preparing migration: {0}")]
   Setup(#[source] MigrationErrorKind<T>),
-  #[error("error in migration {1}: {1}")]
+  #[error("error in migration v{0}: {1}")]
   Run(Version, #[source] MigrationErrorKind<T>)
 }
 

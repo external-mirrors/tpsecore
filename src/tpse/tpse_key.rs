@@ -13,6 +13,10 @@ use serde::de::DeserializeOwned;
 pub trait TPSEKey: Clone + Sized {
   type Data: Serialize + DeserializeOwned + Clone + 'static;
   fn key(&self) -> &str;
+  /// whether this key should generate a warning when it's merged into another tpse source
+  fn warn_import(&self) -> bool { false }
+  /// whether attempting to merge this key into another tpse source should be denied
+  fn deny_import(&self) -> bool { false }
 }
 
 /// A TPSEProvider is an interface to an abstract store of tetrio plus data indexed by [TPSEKey]s.
@@ -79,21 +83,35 @@ impl<'a, 'b, B, S> TPSEProviderWrapper<'a, 'b, B, S> {
 }
 
 macro_rules! merge_logic {
-  ($key:expr, $base:expr, $source:expr) => {
+  ($stats:expr, $key:expr, $base:expr, $source:expr) => {
     let mut wrapper = TPSEProviderWrapper::new($base, $source);
-    if let Some(value) = wrapper.source_get(&$key).await? {
-      wrapper.base_set(&$key, Some(value.into_owned())).await?;
+    if let Some(value) = wrapper.source_get(&$key).await? {  
+      if $key.warn_import() {
+        $stats.keys_with_warnings.push($key.key().to_string());
+      }
+      if $key.deny_import() {
+        $stats.denied_keys_skipped.push($key.key().to_string());
+      } else {
+        wrapper.base_set(&$key, Some(value.into_owned())).await?;
+      }
     }
   };
-  ($key:expr, $base:expr, $source:expr, $custom_merge_logic:expr) => {
+  ($stats:expr, $key:expr, $base:expr, $source:expr, $custom_merge_logic:expr) => {
+    if $key.warn_import() { unreachable!(); }
+    if $key.deny_import() { unreachable!(); }
     $custom_merge_logic($base, $source).await?
   };
+}
+
+macro_rules! parse_allow_import {
+  (warn) => { fn warn_import(&self) -> bool { true } };
+  (deny) => { fn deny_import(&self) -> bool { true } };
 }
 
 /// Initializes most of the [TPSE] struct and accompanying [TPSEKey]s for every field in it
 macro_rules! tpse_keys {
   (
-    [  $(($name:ident, $key:expr, $data:ty $(, merge=$custom_merge_logic:expr)?)),*  ],
+    [  $(($name:ident, $key:expr, $data:ty $(, import=$allow_import:tt)? $(, merge=$custom_merge_logic:expr)?)),*  ],
     {
       extra_struct_keys={$($extra_struct_keys:tt)+},
       extra_merge_bounds={$($extra_bounds:tt)+}
@@ -108,7 +126,10 @@ macro_rules! tpse_keys {
         fn key(&self) -> &str {
           $key
         }
+        
+        $( parse_allow_import!($allow_import); )?
       }
+      
       impl TPSEProvider<$name> for TPSE {
         async fn get(&self, _key: &$name) -> Result<Option<Cow<'_, $data>>, TPSEProviderError> {
           Ok(self.$name.as_ref().map(|x| Cow::Borrowed(x)))
@@ -118,6 +139,15 @@ macro_rules! tpse_keys {
           Ok(())
         }
       }
+      
+      // fail when import=warn/import=deny is used together with merge=...
+      #[allow(unused)]
+      macro_rules! deny_if_import_flag_set {
+        () => {
+          $(compile_error!(concat!("import=", stringify!($allow_import), " is not compatible with custom merge logic"));)?
+        }
+      }
+      $( const _: &str = stringify!($custom_merge_logic); deny_if_import_flag_set!(); )?
     )+
     
     #[serde_with::skip_serializing_none]
@@ -128,16 +158,23 @@ macro_rules! tpse_keys {
     }
 
     // non-plain keys are merged by the specialized behavior of the [backgrounds] and [music] keys
-    pub async fn merge<A, B>(base: &mut A, source: &B) -> Result<(), StorageError> where
+    pub async fn merge<A, B>(base: &mut A, source: &B) -> Result<MergeResult, StorageError> where
       $(A: TPSEProvider<$name>,)+
       $(B: TPSEProvider<$name>,)+
       A: $($extra_bounds)+,
       B: $($extra_bounds)+,
     {
-      $( merge_logic!($name, base, source$(, $custom_merge_logic)?); )+
-      Ok(())
+      let mut stats = MergeResult::default();
+      $( merge_logic!(stats, $name, base, source$(, $custom_merge_logic)?); )+
+      Ok(stats)
     }
   }
+}
+
+#[derive(Default)]
+pub struct MergeResult {
+  pub keys_with_warnings: Vec<String>,
+  pub denied_keys_skipped: Vec<String>
 }
 
 tpse_keys!([
@@ -156,12 +193,12 @@ tpse_keys!([
   (transparent_bg_enabled, "transparentBgEnabled", bool),
   (opaque_transparent_background, "opaqueTransparentBackground", bool),
   (open_devtools_on_start, "openDevtoolsOnStart", bool),
-  (tetrio_plus_enabled, "tetrioPlusEnabled", bool),
-  (hide_tetrio_plus_on_startup, "hideTetrioPlusOnStartup", bool),
-  (allow_url_pack_loader, "allowURLPackLoader", bool),
-  (whitelisted_loader_domains, "whitelistedLoaderDomains", Vec<String>),
-  (enable_custom_css, "enableCustomCss", bool),
-  (custom_css, "customCss", String),
+  (tetrio_plus_enabled, "tetrioPlusEnabled", bool, import=warn),
+  (hide_tetrio_plus_on_startup, "hideTetrioPlusOnStartup", bool, import=warn),
+  (allow_url_pack_loader, "allowURLPackLoader", bool, import=deny),
+  (whitelisted_loader_domains, "whitelistedLoaderDomains", Vec<String>, import=deny),
+  (enable_custom_css, "enableCustomCss", bool, import=deny),
+  (custom_css, "customCss", String, import=deny),
   (enable_all_song_tweaker, "enableAllSongTweaker", bool),
   (show_legacy_options, "showLegacyOptions", bool),
   (bypass_bootstrapper, "bypassBootstrapper", bool),
@@ -171,7 +208,7 @@ tpse_keys!([
   (window_title_status, "windowTitleStatus", bool),
   (music_graph_background, "musicGraphBackground", bool),
   (board, "board", File),
-  (winter_compat_enabled, "winterCompatEnabled", bool),
+  (winter_compat_enabled, "winterCompatEnabled", bool, import=warn),
   (queue, "queue", File),
   (grid, "grid", File),
   (particle_beam, "particle_beam", File),
@@ -333,6 +370,18 @@ impl TPSEProvider<IDFileEntry> for TPSE {
     };
     Ok(())
   }
+}
+
+#[cfg(test)]
+#[tokio::test]
+async fn deny_merge_test() {
+  let mut a = TPSE::default();
+  let mut b = TPSE::default();
+  b.enable_custom_css = Some(true);
+  let result = merge(&mut a, &mut b).await.unwrap();
+  assert_eq!(result.denied_keys_skipped, ["enableCustomCss"]);
+  assert_eq!(a.enable_custom_css, None);
+  assert_eq!(b.enable_custom_css, Some(true));
 }
 
 #[cfg(test)]
