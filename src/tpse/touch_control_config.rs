@@ -1,8 +1,3 @@
-/// tetrio plus double serializes touch control configuration, so we need a wrapper
-/// to ensure it's also double serialized by tpsecore
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct WrappedTouchControlsConfig(String);
-
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TouchControlConfig {
   /// What mode touch controls are in
@@ -96,23 +91,6 @@ pub enum InputType {
   Fullscreen,
 }
 
-
-impl From<TouchControlConfig> for WrappedTouchControlsConfig {
-  fn from(value: TouchControlConfig) -> Self {
-    Self(serde_json::to_string(&value).expect("serialization should never fail"))
-  }
-}
-impl From<WrappedTouchControlsConfig> for TouchControlConfig {
-  fn from(value: WrappedTouchControlsConfig) -> Self {
-    match serde_json::from_str(&value.0) {
-      Err(err) => {
-        log::error!("failed to unwrap touch controls config: {err}");
-        TouchControlConfig::default()
-      }
-      Ok(res) => res
-    }
-  }
-}
 impl Default for TouchControlConfig {
   fn default() -> Self {
     Self {

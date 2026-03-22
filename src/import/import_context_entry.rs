@@ -54,6 +54,7 @@ pub enum ImportContextEntry {
 }
 
 #[derive(Debug, Clone, thiserror::Error, serde::Serialize)]
+#[serde(tag = "task", rename_all="snake_case")]
 pub enum ImportTaskContextEntry {
   #[error("{skin_type:?} animated skin from frames: {frame_files:?}")]
   AnimatedSkinFrames {

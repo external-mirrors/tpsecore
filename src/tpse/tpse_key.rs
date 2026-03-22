@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use crate::import::{StorageError, StorageMethod, StorageSide, TPSEProviderError};
 use crate::tpse::music_graph::Node;
-use crate::tpse::{AnimMeta, AnimatedBackground, Background, CustomSoundAtlas, File, MiscTPSEValue, Song, WrappedTouchControlsConfig};
+use crate::tpse::{AnimMeta, AnimatedBackground, Background, CustomSoundAtlas, File, MiscTPSEValue, Song, TouchControlConfig};
 
 use serde::{Serialize, Deserialize};
 use serde::de::DeserializeOwned;
@@ -123,7 +123,7 @@ macro_rules! tpse_keys {
     #[serde_with::skip_serializing_none]
     #[derive(Debug, Default, Serialize, Deserialize)]
     pub struct TPSE {
-      $(pub $name: Option<$data>,)+
+      $(#[serde(rename=$key)] pub $name: Option<$data>,)+
       $($extra_struct_keys)+
     }
 
@@ -141,6 +141,7 @@ macro_rules! tpse_keys {
 }
 
 tpse_keys!([
+  (version, "version", String),
   (sfx_enabled, "sfxEnabled", bool),
   (music_enabled, "musicEnabled", bool),
   (music_graph_enabled, "musicGraphEnabled", bool),
@@ -216,7 +217,7 @@ tpse_keys!([
   (animated_background, "animatedBackground", AnimatedBackground),
   (music, "music", Vec<Song>, merge=merge_music),
   (music_graph, "musicGraph", Vec<Node>, merge=merge_music_graphs),
-  (touch_control_config, "touchControlConfig", WrappedTouchControlsConfig)
+  (touch_control_config, "touchControlConfig", TouchControlConfig)
 ], {
   extra_struct_keys={
     /// Other TPSE keys
