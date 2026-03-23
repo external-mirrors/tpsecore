@@ -18,6 +18,10 @@ unsafe extern "C" {
   /// Reports that an import has completed and that the results are now visible to `export_tpse`.  
   /// Code values: 0=success 1=failure 2=tpse disappeared before completion
   unsafe fn report_import_done(tpse: u32, code: u32);
+  /// Reports that a migration has completed and that the results are now visible.
+  /// Failures will be logged to the standard `log` function.
+  /// Code values: 0=success 1=failure 2=tpse disappeared before completion (but operation completed)
+  unsafe fn report_migration_done(tpse: u32, code: u32);
   /// Reports that rendering of a frame has been finished.
   /// Gives back the nonce used to identify the frame and the location of the buffer containing
   /// either the rendered frame (when status=0) or an error string (when status=1)
@@ -31,11 +35,15 @@ unsafe extern "C" {
   unsafe fn log(level: u8, ptr: *const u8, len: usize);
   /// Prints a log associated with a specific tpse instance, with all log related metadata in the provided buffer
   unsafe fn import_log(tpse: u32, ptr: *const u8, len: usize);
-  /// Obtains a key from browser storage, or a null pointer for null.
-  /// The buffer will be deallocated internally.
-  unsafe fn tpse_get(extern_tpse_id: u32, key_ptr: *const u8, key_len: usize) -> *const u8;
-  /// Writes a key into browser storage
-  unsafe fn tpse_set(extern_tpse_id: u32, key_ptr: *const u8, key_len: usize, data_ptr: *const u8, data_len: usize);
+  /// Obtains a key from browser storage. A status code (0=ok 1=novalue 2=fail) and buffer (result or error) should be
+  /// provided asynchronously. The buffer will be deallocated internally.
+  unsafe fn tpse_get(extern_tpse_id: u32, key_ptr: *const u8, key_len: usize, wake_id: u64);
+  /// Writes a key into browser storage. A status code (0=ok other=pointer to error buffer) should be
+  /// provided asynchronously. The buffer will be deallocated internally.
+  unsafe fn tpse_set(extern_tpse_id: u32, key_ptr: *const u8, key_len: usize, data_ptr: *const u8, data_len: usize, wake_id: u64);
+  /// Writes a key into browser storage. A status code (0=ok other=pointer to error buffer) should be
+  /// provided asynchronously. The buffer will be deallocated internally.
+  unsafe fn tpse_delete(extern_tpse_id: u32, key_ptr: *const u8, key_len: usize, wake_id: u64);
 }
 
 #[derive(Debug, Clone)]

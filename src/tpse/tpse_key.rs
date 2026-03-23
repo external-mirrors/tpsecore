@@ -19,6 +19,22 @@ pub trait TPSEKey: Clone + Sized {
   fn deny_import(&self) -> bool { false }
 }
 
+/// A raw index for working with potentially malformed TPSE data, such as data from an older
+/// version that needs to be migrated before it can be accessed through non-raw keys.
+#[derive(Clone)]
+pub struct RawTPSEKey(pub String);
+impl RawTPSEKey {
+  pub fn from_cooked<T: TPSEKey>(key: &T) -> Self {
+    Self(key.key().to_string())
+  }
+}
+impl TPSEKey for RawTPSEKey {
+  type Data = serde_json::Value;
+  fn key(&self) -> &str {
+    &self.0
+  }
+}
+
 /// A TPSEProvider is an interface to an abstract store of tetrio plus data indexed by [TPSEKey]s.
 /// The basic form of TPSEProvider is the [TPSE] struct, which stores everything in one big struct in memory.
 /// More complex forms of TPSEProvider involve moving data key-by-key to and from an external source such

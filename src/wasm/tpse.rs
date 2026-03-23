@@ -7,11 +7,12 @@ use serde_json::json;
 
 use crate::accel::wasm_asset_provider::WasmAssetProvider;
 use crate::import::inter_stage_data::QueuedFile;
-use crate::import::{ImportContext, ImportContextEntry, ImportType, import};
+use crate::import::{ImportContext, ImportContextEntry, ImportType, TPSEProviderError, import};
 use crate::log::{ImportLogger, LogLevel};
-use crate::tpse::tpse_key::merge;
+use crate::tpse::{DynamicTPSE, migrate};
+use crate::tpse::tpse_key::{TPSEProvider, RawTPSEKey, merge};
 use crate::wasm::wasm_tpse_provider::WasmTPSEProvider;
-use crate::wasm::{ActiveTPSEStatus, BUFFER_STATE, StagedFile, TPSE_STATE, TPSEContext, TPSEStatus, WasmGlobalAccelerator, import_log, over_tpse_status, report_import_done};
+use crate::wasm::{ActiveTPSEStatus, BUFFER_STATE, StagedFile, TPSE_STATE, TPSEContext, TPSEStatus, WasmGlobalAccelerator, import_log, over_tpse_status, report_import_done, report_migration_done};
 
 #[unsafe(no_mangle)]
 pub extern "C" fn dump_loaded_asset_debug() {
@@ -190,6 +191,54 @@ pub extern "C" fn queue_import(tpse_id: u32) -> usize {
     };
     
     unsafe { report_import_done(tpse_id, code); }
+  });
+  0
+}
+
+/// Return codes: 0=migration queued, 1=no such tpse, 2=tpse not extern, 3=import or migration already running
+#[unsafe(no_mangle)]
+pub extern "C" fn migrate_extern_tpse(tpse_id: u32) -> usize {
+  let mut tpse_state = TPSE_STATE.lock().unwrap();
+  let Some(tpse) = tpse_state.tpses.get_mut(&tpse_id) else { return 1 };
+  let tpse_data = match replace(&mut tpse.status, TPSEStatus::Busy) {
+    TPSEStatus::IdleInternal(_) => return 2,
+    TPSEStatus::IdleExternal(wasm) => wasm,
+    TPSEStatus::Busy => return 3 // tpse already running, can't get a handle to it
+  };
+  
+  #[derive(Debug)]
+  struct WasmTPSEProviderDynamicTPSEWrapper(WasmTPSEProvider);
+  impl DynamicTPSE for WasmTPSEProviderDynamicTPSEWrapper {
+    type Error = TPSEProviderError;
+    async fn get(&self, key: &str) -> Result<Option<serde_json::Value>, Self::Error> {
+      self.0.get(&RawTPSEKey(key.to_string())).await.map(|res_ok| res_ok.map(|opt_some| opt_some.into_owned()))
+    }
+    async fn set(&mut self, key: &str, value: Option<serde_json::Value>) -> Result<(), Self::Error> {
+      self.0.set(&RawTPSEKey(key.to_string()), value).await
+    }
+  }
+  
+  crate::wasm::asynch::spawn(async move {
+    let mut source = WasmTPSEProviderDynamicTPSEWrapper(tpse_data);
+    let result = migrate(&mut source).await;
+    
+    let code = match TPSE_STATE.lock().unwrap().tpses.get_mut(&tpse_id) {
+      None => { 2 } // tpse disappeared
+      Some(tpse) => {
+        tpse.status = TPSEStatus::IdleExternal(source.0);
+        match result {
+          Ok(versions) => {
+            log::info!("migrate_extern_tpse success, performed migrations: {versions:?}");
+            0
+          }
+          Err(err) => {
+            log::error!("migrate_extern_tpse failed: {:?}", err);
+            1
+          },
+        }
+      }
+    };
+    unsafe { report_migration_done(tpse_id, code); }
   });
   0
 }
