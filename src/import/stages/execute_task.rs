@@ -1,14 +1,17 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
+use itertools::Itertools;
+use serde_json::Value;
+
 use crate::accel::traits::{TPSEAccelerator, TextureHandle, AudioHandle};
 use crate::import::inter_stage_data::{ImportTask, SpecificImportType};
-use crate::import::{Asset, ImportContext, ImportContextEntry, ImportError, ImportErrorType, ImportErrorWrapHelper, ImportType, MediaLoadError, SkinType, err};
+use crate::import::{Asset, ImportContext, ImportContextEntry, ImportError, ImportErrorType, ImportErrorWrapHelper, ImportType, MediaLoadError, SkinType, err, TPSELoadError};
 use crate::import::radiance::parse_radiance_sound_definition;
 use crate::import::skin_splicer::{SkinSplicer};
 use crate::log::LogLevel;
 use crate::tpse::tpse_key::merge;
-use crate::tpse::{AnimMeta, Background, File, MiscTPSEValue, Song, SongMetadata, TPSE};
+use crate::tpse::{AnimMeta, Background, File, MiscTPSEValue, Song, SongMetadata, TPSE, migrate};
 
 /// Executes an import task
 pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut ImportContext<'_, T>) -> Result<TPSE, ImportError<T>> {
@@ -206,8 +209,20 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut Import
       let file = File { binary: binary.into(), mime };
       match import_type {
         SpecificImportType::TPSE => {
-          let new_tpse: TPSE = serde_json::from_slice(&file.binary).wrap(err!(ctx, bad_tpse))?;
-          merge(&mut tpse, &new_tpse).await.wrap(err!(ctx))?;
+          use TPSELoadError::*;
+          let mut raw_tpse: Value = serde_json::from_slice(&file.binary).wrap(err!(ctx, (with |x| BadJson(x))))?;
+          let migrations = migrate(&mut raw_tpse).await.wrap(err!(ctx, (with |x| MigrationFailed(x))))?;
+          if !migrations.is_empty() {
+            ctx.log(LogLevel::Info, format_args!("TPSE migrations applied: {}", migrations.iter().format(" > ")));
+          }
+          let new_tpse: TPSE = serde_json::from_value(raw_tpse).wrap(err!(ctx, (with |x| ParseFailed(x))))?;
+          let result = merge(&mut tpse, &new_tpse).await.wrap(err!(ctx))?;
+          for key in result.keys_with_warnings {
+            ctx.log(LogLevel::Warn, format_args!("TPSE contains key {key}, which may cause setting changes that are not what you expect when using it as a content pack. For TPSEs used to transfer settings between TETR.IO PLUS installs or which would otherwise require this setting, you can ignore this warning."));
+          }
+          for key in result.denied_keys_skipped {
+            ctx.log(LogLevel::Warn, format_args!("TPSE contains auto-deny key {key}, which was skipped. This key is security-sensitive and must be transferred manually."));
+          }
         },
         SpecificImportType::Skin(skin_type) => {
           let (minos, ghost) = splice_to_t61::<T>(skin_type, file.binary.clone()).await.wrap(err!(ctx))?;

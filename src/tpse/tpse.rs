@@ -25,7 +25,10 @@ pub struct SongMetadata {
   #[serde(rename = "loopStart")]
   pub loop_start: u32,
   #[serde(rename = "loopLength")]
-  pub loop_length: u32
+  pub loop_length: u32,
+  pub hidden: bool,
+  #[serde(rename = "normalizeDb")]
+  pub normalize_db: f64
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

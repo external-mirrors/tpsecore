@@ -254,6 +254,9 @@ tpse_keys!([
   (animated_background, "animatedBackground", AnimatedBackground),
   (music, "music", Vec<Song>, merge=merge_music),
   (music_graph, "musicGraph", Vec<Node>, merge=merge_music_graphs),
+  (music_graph_node_limit, "musicGraphNodeLimit", f64, import=warn),
+  (music_graph_reported_event_rate_limit, "musicGraphReportedEventRateLimit", f64, import=warn),
+  (music_graph_hard_event_rate_limit, "musicGraphHardEventRateLimit", f64, import=warn),
   (touch_control_config, "touchControlConfig", TouchControlConfig)
 ], {
   extra_struct_keys={

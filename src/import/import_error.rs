@@ -4,9 +4,11 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::str::Utf8Error;
 use itertools::Itertools;
+use serde_json::Value;
 
 use crate::accel::traits::{AssetProvider, AudioHandle, TPSEAccelerator, TextureHandle};
 use crate::import::{ImportContextEntry, SkinType};
+use crate::tpse::MigrationError;
 
 /// An error tracking both the actual error and the import context in which it occurred
 #[derive(Debug)]
@@ -33,7 +35,7 @@ pub enum ImportErrorType<T: TPSEAccelerator> {
   #[error("unknown file type")]
   UnknownFileType,
   #[error("invalid TPSE: {0}")]
-  InvalidTPSE(String),
+  InvalidTPSE(TPSELoadError),
   #[error("files were nested too deeply")]
   TooMuchNesting,
   #[error("failed to load files: {0}")]
@@ -54,6 +56,16 @@ pub enum ImportErrorType<T: TPSEAccelerator> {
   AudioEncodeFailed(<T::Audio as AudioHandle>::Error),
   #[error("storage error: {0}")]
   StorageError(#[from] StorageError)
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum TPSELoadError {
+  #[error("invalid json: {0}")]
+  BadJson(serde_json::Error),
+  #[error("error during migration: {0}")]
+  MigrationFailed(MigrationError<Value>),
+  #[error("parsing failure after migration: {0}")]
+  ParseFailed(serde_json::Error)
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -148,6 +160,9 @@ macro_rules! err {
       }
     })
   };
+  (@transform (with $wrapper:expr) $expr:expr) => {
+    ImportErrorType::InvalidTPSE($wrapper($expr.into()).into())
+  };
   (@transform assetfetchfail $expr:expr) => {
     ImportErrorType::AssetFetchFailed($expr.into())
   };
@@ -159,9 +174,6 @@ macro_rules! err {
   };
   (@transform audio_encode $expr:expr) => {
     ImportErrorType::AudioEncodeFailed($expr.into())
-  };
-  (@transform bad_tpse $expr:expr) => {
-    ImportErrorType::InvalidTPSE($expr.to_string())
   };
   (@transform tex $expr:expr) => {
     MediaLoadError::TextureError($expr.into())

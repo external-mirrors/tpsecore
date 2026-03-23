@@ -9,8 +9,8 @@ use serde_json::{Value, json};
 #[allow(async_fn_in_trait)]
 pub trait DynamicTPSE {
   type Error: std::error::Error;
-  async fn get(&self, key: &str) -> Result<Option<Value>, Self::Error>;
-  async fn set(&mut self, key: &str, value: Option<Value>) -> Result<(), Self::Error>;
+  fn get(&self, key: &str) -> impl Future<Output = Result<Option<Value>, Self::Error>> + Send + Sync;
+  fn set(&mut self, key: &str, value: Option<Value>) -> impl Future<Output = Result<(), Self::Error>> + Send + Sync;
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -52,9 +52,9 @@ pub enum MigrationErrorKind<T: DynamicTPSE> {
 #[derive(Debug)]
 pub enum FieldAccess { Read, Write }
 
-struct Migration<T: DynamicTPSE> {
+struct Migration<T: DynamicTPSE + Send + Sync> {
   version: Version,
-  migrate: for<'a> fn(&'a mut T) -> Pin<Box<dyn Future<Output = Result<(), MigrationErrorKind<T>>> + 'a>>
+  migrate: for<'a> fn(&'a mut T) -> Pin<Box<dyn Future<Output = Result<(), MigrationErrorKind<T>>> + Send + Sync + 'a>>
 }
 
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Copy, Clone)]
@@ -162,7 +162,7 @@ macro_rules! access {
   }};
 }
 
-const fn migrations<T>() -> [Migration<T>; 18] where T: DynamicTPSE {[
+const fn migrations<T>() -> [Migration<T>; 18] where T: DynamicTPSE + Send + Sync {[
   /*
     v0.10.0 - Introduced migrations
     All this version adds is a version tag
@@ -380,7 +380,7 @@ const fn migrations<T>() -> [Migration<T>; 18] where T: DynamicTPSE {[
   },
   
   /*
-    v0.20.1 - Music graph variables betterer
+    v0.21.1 - Music graph variables betterer
 
     + musicGraph[].triggers[].predicateExpression
     = musicGraph[].triggers[].value -> timePassedDuration or predicate
@@ -389,7 +389,7 @@ const fn migrations<T>() -> [Migration<T>; 18] where T: DynamicTPSE {[
     = musicGraph[].triggers[].variable -> setVariable
   */
   Migration {
-    version: version!(0,20,1),
+    version: version!(0,21,1),
     migrate: |tpse| Box::pin(async {
       
       access!(tpse, get, "musicGraph", deserialize, as_array_mut, as graph);
@@ -614,7 +614,7 @@ async fn parse_version<T>(tpse: &mut T) -> Result<Version, MigrationErrorKind<T>
     None => Ok(version!(0,0,0)),
     Some(version) => {
       let mut iter = version.split(".");
-      let err = ||MigrationErrorKind::FieldParseFailure { field: "version" };
+      let err = || MigrationErrorKind::FieldParseFailure { field: "version" };
       let version = Version {
         major: iter.next().ok_or(err())?.parse().map_err(|_| err())?,
         minor: iter.next().ok_or(err())?.parse().map_err(|_| err())?,
@@ -633,13 +633,15 @@ async fn set_version<T>(tpse: &mut T, version: Version) -> Result<(), MigrationE
 }
 
 
-pub async fn migrate<T>(tpse: &mut T) -> Result<(), MigrationError<T>> where T: DynamicTPSE {
+pub async fn migrate<T>(tpse: &mut T) -> Result<Vec<Version>, MigrationError<T>> where T: DynamicTPSE + Send + Sync {
   let parsed_version = parse_version(tpse).await.map_err(|err| MigrationError::Setup(err))?;
+  let mut applied = vec![];
   for migration in migrations() {
     if parsed_version < migration.version {
       (migration.migrate)(tpse).await.map_err(|err| MigrationError::Run(migration.version, err))?;
       set_version(tpse, migration.version).await.map_err(|err| MigrationError::Run(migration.version, err))?;
+      applied.push(migration.version);
     }
   }
-  Ok(())
+  Ok(applied)
 }

@@ -172,7 +172,7 @@ pub extern "C" fn queue_import(tpse_id: u32) -> usize {
               logger.log(LogLevel::Error, &[], &format_args!("failed to merge final import result upon TPSE: {err}"));
               Some(1) // import failed
             }
-            Ok(()) => None
+            Ok(_) => None
           }
         })
       },

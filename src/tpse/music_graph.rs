@@ -11,6 +11,8 @@ pub struct Node {
   pub background: Option<String>,
   #[serde(rename = "backgroundLayer")]
   pub background_layer: f64,
+  #[serde(rename = "backgroundArea")]
+  pub background_area: BackgroundArea,
 
   #[serde(rename = "audioStart")]
   pub audio_start: f64,
@@ -38,13 +40,27 @@ pub enum NodeType { Normal, Root }
 
 #[derive(Debug, Clone, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub enum BackgroundArea {
+  /// The element appears behind the main game canvas
+  Background,
+  /// The element appears in front of the main game canvas
+  Foreground
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum TriggerMode { Fork, Goto, Kill, Random, Dispatch, Set }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Trigger {
-  pub mode: TriggerMode,
   pub event: String,
+  #[serde(rename = "timePassedDuration")]
+  pub time_passed_duration: f64,
+  
+  #[serde(rename = "predicateExpression")]
+  pub predicate_expression: String,
 
+  pub mode: TriggerMode,
   pub target: u64,
   #[serde(rename = "dispatchEvent")]
   pub dispatch_event: String, // these aren't allowed to be null, but they can be empty strings
@@ -54,7 +70,7 @@ pub struct Trigger {
   pub set_variable: String,
   #[serde(rename = "setExpression")]
   pub set_expression: String,
-
+  
   pub crossfade: bool,
   #[serde(rename = "preserveLocation")]
   pub preserve_location: bool,
