@@ -753,13 +753,12 @@ const wasm = await WebAssembly.instantiateStreaming(fetch(tpsecore_url), {
       
       console.log("fetch_asset", asset_id);
       let asset = null;
-      let localhost = globalThis?.location?.hostname == 'localhost';
       let electron = globalThis?.location?.href?.startsWith('tetrio-plus-internal://');
       let backend = (
         // environment-defined route
         globalThis.TPSECORE_EXTERNAL_ASSET_BACKEND_FORMATTER ? globalThis.TPSECORE_EXTERNAL_ASSET_BACKEND_FORMATTER :
         // this route bypasses CORS on TETR.IO Desktop
-        electron ? (folder, asset) => `tetrio-plus://tetrio-plus/${folder}/${asset}` :
+        electron ? (folder, asset) => `tetrio-plus://tetrio-plus/${folder}/${asset}?bypass-tetrio-plus` :
         // general fallback mainly used from within tetrio plus on firefox,
         // where CORS are relaxed due to explicit site privilege in extension manifest
         (folder, asset) => `https://tetr.io/${folder}/${asset}?bypass-tetrio-plus`
