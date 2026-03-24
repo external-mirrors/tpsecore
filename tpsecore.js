@@ -753,10 +753,20 @@ const wasm = await WebAssembly.instantiateStreaming(fetch(tpsecore_url), {
       
       console.log("fetch_asset", asset_id);
       let asset = null;
-      let localhost = globalThis.location.hostname == 'localhost';
+      let localhost = globalThis?.location?.hostname == 'localhost';
+      let electron = globalThis?.location?.href?.startsWith('tetrio-plus-internal://');
+      let backend = (
+        // environment-defined route
+        globalThis.TPSECORE_EXTERNAL_ASSET_BACKEND_FORMATTER ? globalThis.TPSECORE_EXTERNAL_ASSET_BACKEND_FORMATTER :
+        // this route bypasses CORS on TETR.IO Desktop
+        electron ? (folder, asset) => `tetrio-plus://tetrio-plus/${folder}/${asset}` :
+        // general fallback mainly used from within tetrio plus on firefox,
+        // where CORS are relaxed due to explicit site privilege in extension manifest
+        (folder, asset) => `https://tetr.io/${folder}/${asset}?bypass-tetrio-plus`
+      );
       switch(asset_id) {
-        case 0: asset = localhost ? '/assets/tetrio.js' : 'https://tetr.io/js/tetrio.js?bypass-tetrio-plus'; break;
-        case 1: asset = localhost ? '/assets/tetrio.opus.rsd' : 'https://tetr.io/sfx/tetrio.opus.rsd?bypass-tetrio-plus'; break;
+        case 0: asset = backend('js', 'tetrio.js'); break;
+        case 1: asset = backend('sfx', 'tetrio.opus.rsd'); break;
         case 2: throw new Error("unknown asset #" + asset_id);
       }
       try {
