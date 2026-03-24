@@ -9,7 +9,7 @@ use crate::accel::wasm_asset_provider::WasmAssetProvider;
 use crate::import::inter_stage_data::QueuedFile;
 use crate::import::{ImportContext, ImportContextEntry, ImportType, TPSEProviderError, import};
 use crate::log::{ImportLogger, LogLevel};
-use crate::tpse::{DynamicTPSE, migrate};
+use crate::tpse::{DynamicTPSE, TPSE, migrate};
 use crate::tpse::tpse_key::{TPSEProvider, RawTPSEKey, merge};
 use crate::wasm::wasm_tpse_provider::WasmTPSEProvider;
 use crate::wasm::{ActiveTPSEStatus, BUFFER_STATE, StagedFile, TPSE_STATE, TPSEContext, TPSEStatus, WasmGlobalAccelerator, import_log, over_tpse_status, report_import_done, report_migration_done};
@@ -49,6 +49,18 @@ pub extern "C" fn allocate_tpse() -> u32 {
   let id = state.next_id();
   state.tpses.insert(id, TPSEContext::default());
   id
+}
+
+/// Wipes a tpse file by handle. This does not unstage files or clear cached render data - it only clears out
+/// the main tpse key/value store.
+/// Return codes: 0=ok, 1=no such tpse, 2=tpse busy or external
+#[unsafe(no_mangle)]
+pub extern "C" fn wipe_tpse(tpse_id: u32) -> u32 {
+  let mut state = TPSE_STATE.lock().unwrap();
+  let Some(tpse) = state.tpses.get_mut(&tpse_id) else { return 1 };
+  let TPSEStatus::IdleInternal(status) = &mut tpse.status else { return 2 };
+  *status = TPSE::default();
+  0
 }
 
 /// Return codes: 0=ok, 1=no such tpse
