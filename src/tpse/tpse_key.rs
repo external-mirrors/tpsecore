@@ -172,13 +172,13 @@ macro_rules! tpse_keys {
       $(#[serde(rename=$key)] pub $name: Option<$data>,)+
       $($extra_struct_keys)+
     }
+    
+    pub trait AllKnownKeys: $(TPSEProvider<$name> +)+ $($extra_bounds +)+ {}
+    impl<T> AllKnownKeys for T where T: $(TPSEProvider<$name> +)+ $($extra_bounds +)+ {}
 
     // non-plain keys are merged by the specialized behavior of the [backgrounds] and [music] keys
-    pub async fn merge<A, B>(base: &mut A, source: &B) -> Result<MergeResult, StorageError> where
-      $(A: TPSEProvider<$name>,)+
-      $(B: TPSEProvider<$name>,)+
-      A: $($extra_bounds)+,
-      B: $($extra_bounds)+,
+    pub async fn merge<A, B>(base: &mut A, source: &B) -> Result<MergeResult, StorageError>
+      where A: AllKnownKeys, B: AllKnownKeys
     {
       let mut stats = MergeResult::default();
       $( merge_logic!(stats, $name, base, source$(, $custom_merge_logic)?); )+
@@ -281,7 +281,7 @@ tpse_keys!([
     #[serde(flatten)]
     pub other: HashMap<String, MiscTPSEValue>
   },
-  extra_merge_bounds={TPSEProvider<IDFileEntry>}
+  extra_merge_bounds={(TPSEProvider<IDFileEntry>)}
 });
 
 async fn merge_music<A, B>(base: &mut A, source: &B)

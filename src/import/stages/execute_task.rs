@@ -15,7 +15,7 @@ use crate::tpse::{AnimMeta, Background, File, MigrationOptions, MiscTPSEValue, S
 
 /// Executes an import task
 pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut ImportContext<'_, T>) -> Result<TPSE, ImportError<T>> {
-  ctx.log(LogLevel::Info, format_args!("Executing import task {:?}", task));
+  ctx.log(LogLevel::Status, format_args!("Executing import task"));
   let mut tpse = TPSE::default();
   match task {
     ImportTask::AnimatedSkinFrames(skin_type, frames) => {
@@ -162,8 +162,8 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut Import
 
         let handle = T::Audio::decode_audio(rsd.audio_buffer.into(), Some("audio/ogg")).await.wrap(err!(ctx, rsd_decode))?;
           
-        ctx.log(LogLevel::Info, format_args!("populating {} remaining unreplaced base game sound effects", old_atlas.keys().len()));
-        ctx.log(LogLevel::Debug, format_args!("populating remaining unreplaced base game sound effects: {:?}", old_atlas.keys().collect::<Vec<_>>()));
+        ctx.log(LogLevel::Info, format_args!("Populating {} remaining unreplaced base game sound effects", old_atlas.keys().len()));
+        ctx.log(LogLevel::Debug, format_args!("Populating remaining unreplaced base game sound effects: {:?}", old_atlas.keys().collect::<Vec<_>>()));
         
         let mut iter = old_atlas.into_iter().enumerate();
         while let Some((i, (sfx_name, (offset, duration)))) = iter.next() {

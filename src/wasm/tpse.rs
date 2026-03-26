@@ -9,8 +9,8 @@ use crate::accel::wasm_asset_provider::WasmAssetProvider;
 use crate::import::inter_stage_data::QueuedFile;
 use crate::import::{ImportContext, ImportContextEntry, ImportType, TPSEProviderError, import};
 use crate::log::{ImportLogger, LogLevel};
-use crate::tpse::{DynamicTPSE, TPSE, migrate};
-use crate::tpse::tpse_key::{TPSEProvider, RawTPSEKey, merge};
+use crate::tpse::{DynamicTPSE, MigrationOptions, TPSE, migrate};
+use crate::tpse::tpse_key::{TPSEProvider, RawTPSEKey};
 use crate::wasm::wasm_tpse_provider::WasmTPSEProvider;
 use crate::wasm::{ActiveTPSEStatus, BUFFER_STATE, StagedFile, TPSE_STATE, TPSEContext, TPSEStatus, WasmGlobalAccelerator, import_log, over_tpse_status, report_import_done, report_migration_done};
 
@@ -171,25 +171,9 @@ pub extern "C" fn queue_import(tpse_id: u32) -> usize {
     let logger = WasmImportLogger { tpse_id };
     let mut context = ImportContext::new(&source).with_logger(&logger);
   
-    let result = import::<WasmGlobalAccelerator>(&mut context, files).await;
-    let merge_result = match result {
-      Err(err) => {
-        logger.log(LogLevel::Error, &[], &format_args!("import failed: {err}"));
-        Some(1) // import failed
-      }
-      Ok(new_tpse) => {
-        logger.log(LogLevel::Info, &[], &"import finished");
-        over_tpse_status!(ActiveTPSEStatus, &mut tpse_data, tpse, {
-          match merge(tpse, &new_tpse).await {
-            Err(err) => {
-              logger.log(LogLevel::Error, &[], &format_args!("failed to merge final import result upon TPSE: {err}"));
-              Some(1) // import failed
-            }
-            Ok(_) => None
-          }
-        })
-      },
-    };
+    let import_result = over_tpse_status!(ActiveTPSEStatus, &mut tpse_data, tpse, {
+      import::<WasmGlobalAccelerator>(&mut context, files, tpse).await
+    });
     
     let code = match TPSE_STATE.lock().unwrap().tpses.get_mut(&tpse_id) {
       None => 2, // tpse disappeared
@@ -198,7 +182,7 @@ pub extern "C" fn queue_import(tpse_id: u32) -> usize {
           ActiveTPSEStatus::IdleInternal(tpse) => TPSEStatus::IdleInternal(tpse),
           ActiveTPSEStatus::IdleExternal(wasm) => TPSEStatus::IdleExternal(wasm)
         };
-        merge_result.unwrap_or(0 /* succcess! */)
+        if import_result.is_ok() { 0 /* success! */ } else { 1 /* failure */ }
       }
     };
     
