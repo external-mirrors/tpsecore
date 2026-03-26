@@ -54,7 +54,7 @@ pub enum FieldAccess { Read, Write }
 
 struct Migration<T: DynamicTPSE + Send + Sync> {
   version: Version,
-  migrate: for<'a> fn(&'a mut T) -> Pin<Box<dyn Future<Output = Result<(), MigrationErrorKind<T>>> + Send + Sync + 'a>>
+  migrate: for<'a> fn(&'a mut T, &'a MigrationOptions) -> Pin<Box<dyn Future<Output = Result<(), MigrationErrorKind<T>>> + Send + Sync + 'a>>
 }
 
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Copy, Clone)]
@@ -169,7 +169,7 @@ const fn migrations<T>() -> [Migration<T>; 18] where T: DynamicTPSE + Send + Syn
   */
   Migration {
     version: version!(0,10,0),
-    migrate: |_tpse| Box::pin(async {
+    migrate: |_tpse, _opts| Box::pin(async {
       Ok(())
     })
   },
@@ -180,7 +180,7 @@ const fn migrations<T>() -> [Migration<T>; 18] where T: DynamicTPSE + Send + Syn
   */
   Migration {
     version: version!(0,12,0),
-    migrate: |tpse| Box::pin(async {
+    migrate: |tpse, _opts| Box::pin(async {
       access!(tpse, get, "musicGraph", deserialize, as_array_mut, as graph);
       let Some(graph) = graph else { return Ok(()) };
       for (i, node) in graph.iter_mut().enumerate() {
@@ -218,7 +218,7 @@ const fn migrations<T>() -> [Migration<T>; 18] where T: DynamicTPSE + Send + Syn
   */
   Migration {
     version: version!(0,13,0),
-    migrate: |tpse| Box::pin(async {
+    migrate: |tpse, _opts| Box::pin(async {
       access!(tpse, get, "music", as_array_mut, as music);
       let Some(music) = music else { return Ok(()) };
       for song in music.iter_mut() {
@@ -235,13 +235,15 @@ const fn migrations<T>() -> [Migration<T>; 18] where T: DynamicTPSE + Send + Syn
   */
   Migration {
     version: version!(0,14,0),
-    migrate: |tpse| Box::pin(async {
-      access!(tpse, set, "whitelistedLoaderDomains", Some(json!([
-        "# One protocol and domain per",
-        "# line. https recommended.",
-        "https://tetrio.team2xh.net",
-        "https://you.have.fail"
-      ])));
+    migrate: |tpse, opts| Box::pin(async {
+      if opts.is_tetrioplus_storage {
+        access!(tpse, set, "whitelistedLoaderDomains", Some(json!([
+          "# One protocol and domain per",
+          "# line. https recommended.",
+          "https://tetrio.team2xh.net",
+          "https://you.have.fail"
+        ])));
+      }
       Ok(())
     })
   },
@@ -252,7 +254,7 @@ const fn migrations<T>() -> [Migration<T>; 18] where T: DynamicTPSE + Send + Syn
   */
   Migration {
     version: version!(0,15,0),
-    migrate: |tpse| Box::pin(async {
+    migrate: |tpse, _opts| Box::pin(async {
       access!(tpse, get, "skin", as skin);
       access!(tpse, set, "skin", None);
       access!(tpse, set, "skinSvg", skin);
@@ -269,8 +271,10 @@ const fn migrations<T>() -> [Migration<T>; 18] where T: DynamicTPSE + Send + Syn
   */
   Migration {
     version: version!(0,17,0),
-    migrate: |tpse| Box::pin(async {
-      access!(tpse, set, "tetrioPlusEnabled", Some(true.into()));
+    migrate: |tpse, opts| Box::pin(async {
+      if opts.is_tetrioplus_storage {
+        access!(tpse, set, "tetrioPlusEnabled", Some(true.into()));
+      }
       
       access!(tpse, get, "musicGraph", deserialize, as_array_mut, as graph);
       let Some(graph) = graph else { return Ok(()) };
@@ -295,7 +299,7 @@ const fn migrations<T>() -> [Migration<T>; 18] where T: DynamicTPSE + Send + Syn
   */
   Migration {
     version: version!(0,18,0),
-    migrate: |tpse| Box::pin(async {
+    migrate: |tpse, _opts| Box::pin(async {
       access!(tpse, get, "musicGraph", deserialize, as_array_mut, as graph);
       let Some(graph) = graph else { return Ok(()) };
       for node in graph.iter_mut() {
@@ -320,7 +324,7 @@ const fn migrations<T>() -> [Migration<T>; 18] where T: DynamicTPSE + Send + Syn
   */
   Migration {
     version: version!(0,18,2),
-    migrate: |tpse| Box::pin(async {
+    migrate: |tpse, _opts| Box::pin(async {
       // TODO: this other todo copied from the original migrate.js
       // // TODO: Implement a real migration for this data
       // // (importers are es6, migrate.js unfortunately isn't.)
@@ -340,7 +344,7 @@ const fn migrations<T>() -> [Migration<T>; 18] where T: DynamicTPSE + Send + Syn
   */
   Migration {
     version: version!(0,20,0),
-    migrate: |tpse| Box::pin(async {
+    migrate: |tpse, _opts| Box::pin(async {
       access!(tpse, get, "musicGraph", deserialize, as_array_mut, as graph);
       let Some(graph) = graph else { return Ok(()) };
       for node in graph.iter_mut() {
@@ -360,7 +364,7 @@ const fn migrations<T>() -> [Migration<T>; 18] where T: DynamicTPSE + Send + Syn
   */
   Migration {
     version: version!(0,21,0),
-    migrate: |tpse| Box::pin(async {
+    migrate: |tpse, _opts| Box::pin(async {
       access!(tpse, get, "musicGraph", deserialize, as_array_mut, as graph);
       let Some(graph) = graph else { return Ok(()) };
       
@@ -390,7 +394,7 @@ const fn migrations<T>() -> [Migration<T>; 18] where T: DynamicTPSE + Send + Syn
   */
   Migration {
     version: version!(0,21,1),
-    migrate: |tpse| Box::pin(async {
+    migrate: |tpse, _opts| Box::pin(async {
       
       access!(tpse, get, "musicGraph", deserialize, as_array_mut, as graph);
       let Some(graph) = graph else { return Ok(()) };
@@ -453,7 +457,7 @@ const fn migrations<T>() -> [Migration<T>; 18] where T: DynamicTPSE + Send + Syn
   */
   Migration {
     version: version!(0,21,3),
-    migrate: |tpse| Box::pin(async {
+    migrate: |tpse, _opts| Box::pin(async {
       access!(tpse, get, "backgrounds", as_array_mut, as backgrounds);
       let Some(backgrounds) = backgrounds else { return Ok(()) };
       
@@ -473,7 +477,7 @@ const fn migrations<T>() -> [Migration<T>; 18] where T: DynamicTPSE + Send + Syn
   */
   Migration {
     version: version!(0,23,4),
-    migrate: |tpse| Box::pin(async {
+    migrate: |tpse, _opts| Box::pin(async {
       access!(tpse, get, "musicGraph", deserialize, as_array_mut, as graph);
       let Some(graph) = graph else { return Ok(()) };
       
@@ -493,7 +497,7 @@ const fn migrations<T>() -> [Migration<T>; 18] where T: DynamicTPSE + Send + Syn
   */
   Migration {
     version: version!(0,23,8),
-    migrate: |_tpse| Box::pin(async {
+    migrate: |_tpse, _opts| Box::pin(async {
       // THIS MIGRATION RETROACTIVELY REMOVED
       // (during the rewrite of migrate.js)
       // (why did it even exist?)
@@ -507,7 +511,7 @@ const fn migrations<T>() -> [Migration<T>; 18] where T: DynamicTPSE + Send + Syn
   */
   Migration {
     version: version!(0,25,3),
-    migrate: |tpse| Box::pin(async {
+    migrate: |tpse, _opts| Box::pin(async {
       access!(tpse, get, "musicGraph", deserialize, as_array_mut, as graph);
       let Some(graph) = graph else { return Ok(()) };
       
@@ -527,7 +531,7 @@ const fn migrations<T>() -> [Migration<T>; 18] where T: DynamicTPSE + Send + Syn
   */
   Migration {
     version: version!(0,27,3),
-    migrate: |tpse| Box::pin(async {
+    migrate: |tpse, _opts| Box::pin(async {
       access!(tpse, get, "music", as_array_mut, as music);
       let Some(music) = music else { return Ok(()) };
       for song in music.iter_mut() {
@@ -546,7 +550,7 @@ const fn migrations<T>() -> [Migration<T>; 18] where T: DynamicTPSE + Send + Syn
   */
   Migration {
     version: version!(0,27,10),
-    migrate: |tpse| Box::pin(async {
+    migrate: |tpse, _opts| Box::pin(async {
       access!(tpse, get, "music", as_array_mut, as music);
       let Some(music) = music else { return Ok(()) };
       for song in music.iter_mut() {
@@ -567,7 +571,7 @@ const fn migrations<T>() -> [Migration<T>; 18] where T: DynamicTPSE + Send + Syn
   */
   Migration {
     version: version!(0,28,0),
-    migrate: |tpse| Box::pin(async {
+    migrate: |tpse, _opts| Box::pin(async {
       access!(tpse, get, "musicGraph", deserialize, as_array_mut, as graph);
       if let Some(graph) = graph {
         access!(tpse, set, "musicGraph", /* no `serialize,` ! */ Some(take(graph).into()));
@@ -591,7 +595,7 @@ async fn migration_test() {
     "musicGraph": serde_json::to_string(&json!([])).unwrap()
   });
   
-  migrate(&mut value).await.unwrap();
+  migrate(&mut value, MigrationOptions { is_tetrioplus_storage: true }).await.unwrap();
   
   let tpse: TPSE = serde_json::from_value(value).unwrap();
   assert_eq!(
@@ -632,13 +636,19 @@ async fn set_version<T>(tpse: &mut T, version: Version) -> Result<(), MigrationE
   Ok(())
 }
 
+#[derive(Default)]
+pub struct MigrationOptions {
+  /// Some migrations are only applicable to TETR.IO PLUS's internal data store and don't make sense for TPSEs -
+  /// notably those which introduce certain key defaults such as `tetrioPlusEnabled` and `whitelistedLoaderDomains`
+  pub is_tetrioplus_storage: bool
+}
 
-pub async fn migrate<T>(tpse: &mut T) -> Result<Vec<Version>, MigrationError<T>> where T: DynamicTPSE + Send + Sync {
+pub async fn migrate<T>(tpse: &mut T, opts: MigrationOptions) -> Result<Vec<Version>, MigrationError<T>> where T: DynamicTPSE + Send + Sync {
   let parsed_version = parse_version(tpse).await.map_err(|err| MigrationError::Setup(err))?;
   let mut applied = vec![];
   for migration in migrations() {
     if parsed_version < migration.version {
-      (migration.migrate)(tpse).await.map_err(|err| MigrationError::Run(migration.version, err))?;
+      (migration.migrate)(tpse, &opts).await.map_err(|err| MigrationError::Run(migration.version, err))?;
       set_version(tpse, migration.version).await.map_err(|err| MigrationError::Run(migration.version, err))?;
       applied.push(migration.version);
     }

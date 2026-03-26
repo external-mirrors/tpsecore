@@ -11,7 +11,7 @@ use crate::import::radiance::parse_radiance_sound_definition;
 use crate::import::skin_splicer::{SkinSplicer};
 use crate::log::LogLevel;
 use crate::tpse::tpse_key::merge;
-use crate::tpse::{AnimMeta, Background, File, MiscTPSEValue, Song, SongMetadata, TPSE, migrate};
+use crate::tpse::{AnimMeta, Background, File, MigrationOptions, MiscTPSEValue, Song, SongMetadata, TPSE, migrate};
 
 /// Executes an import task
 pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut ImportContext<'_, T>) -> Result<TPSE, ImportError<T>> {
@@ -211,7 +211,8 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut Import
         SpecificImportType::TPSE => {
           use TPSELoadError::*;
           let mut raw_tpse: Value = serde_json::from_slice(&file.binary).wrap(err!(ctx, (with |x| BadJson(x))))?;
-          let migrations = migrate(&mut raw_tpse).await.wrap(err!(ctx, (with |x| MigrationFailed(x))))?;
+          let opts = MigrationOptions { is_tetrioplus_storage: false }; 
+          let migrations = migrate(&mut raw_tpse, opts).await.wrap(err!(ctx, (with |x| MigrationFailed(x))))?;
           if !migrations.is_empty() {
             ctx.log(LogLevel::Info, format_args!("TPSE migrations applied: {}", migrations.iter().format(" > ")));
           }

@@ -209,7 +209,7 @@ pub extern "C" fn queue_import(tpse_id: u32) -> usize {
 
 /// Return codes: 0=migration queued, 1=no such tpse, 2=tpse not extern, 3=import or migration already running
 #[unsafe(no_mangle)]
-pub extern "C" fn migrate_extern_tpse(tpse_id: u32) -> usize {
+pub extern "C" fn migrate_extern_tpse(tpse_id: u32, is_tetrioplus_storage: bool) -> usize {
   let mut tpse_state = TPSE_STATE.lock().unwrap();
   let Some(tpse) = tpse_state.tpses.get_mut(&tpse_id) else { return 1 };
   let tpse_data = match replace(&mut tpse.status, TPSEStatus::Busy) {
@@ -231,8 +231,8 @@ pub extern "C" fn migrate_extern_tpse(tpse_id: u32) -> usize {
   }
   
   crate::wasm::asynch::spawn(async move {
-    let mut source = WasmTPSEProviderDynamicTPSEWrapper(tpse_data);
-    let result = migrate(&mut source).await;
+    let mut source = WasmTPSEProviderDynamicTPSEWrapper(tpse_data); 
+    let result = migrate(&mut source, MigrationOptions { is_tetrioplus_storage }).await;
     
     let code = match TPSE_STATE.lock().unwrap().tpses.get_mut(&tpse_id) {
       None => { 2 } // tpse disappeared
