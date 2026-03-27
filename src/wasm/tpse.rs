@@ -65,11 +65,7 @@ pub extern "C" fn wipe_tpse(tpse_id: u32) -> u32 {
 
 /// Return codes: 0=ok, 1=no such tpse
 #[unsafe(no_mangle)]
-pub extern "C" fn deallocate_tpse(tpse_id: u32, deallocate_attached_buffers: bool) -> u32 {
-  if deallocate_attached_buffers {
-    clear_staged_files(tpse_id, true);
-  }
-  
+pub extern "C" fn deallocate_tpse(tpse_id: u32) -> u32 {
   let mut state = TPSE_STATE.lock().unwrap();
   match state.tpses.remove(&tpse_id) {
     Some(_) => 0,
@@ -101,14 +97,18 @@ pub extern "C" fn deallocate_buffer(ptr: *mut u8) -> u32 {
   0
 }
 
-/// Stages a file for import into a given TPSE by handle  
+/// Stages a file for import into a given TPSE by handle.
+/// It is safe to deallocate buffers after staging - reference counted copies are made.
 /// Return codes: 0=ok, 1=no such tpse, 2=no such filename buffer, 3=no such content buffer
 #[unsafe(no_mangle)]
 pub extern "C" fn stage_file(tpse_id: u32, filename: *mut u8, content: *mut u8) -> u32 {
   let state = BUFFER_STATE.lock().unwrap();
   let Some(filename) = state.lookup_buffer(filename) else { return 2 };
+  let filename = state.buffers.get(&filename).expect("buffer id provided by lookup_buffer to exist").clone();
   let Some(content) = state.lookup_buffer(content) else { return 3 };
+  let content = state.buffers.get(&content).expect("buffer id provided by lookup_buffer to exist").clone();
   drop(state);
+  
   
   let mut state = TPSE_STATE.lock().unwrap();
   let Some(tpse) = state.tpses.get_mut(&tpse_id) else { return 1 };
@@ -122,16 +122,10 @@ pub extern "C" fn stage_file(tpse_id: u32, filename: *mut u8, content: *mut u8) 
 
 /// Return codes: 0=ok, 1=no such tpse
 #[unsafe(no_mangle)]
-pub extern "C" fn clear_staged_files(tpse_id: u32, deallocate_buffers: bool) -> u32 {
+pub extern "C" fn clear_staged_files(tpse_id: u32) -> u32 {
   let mut tpse_state = TPSE_STATE.lock().unwrap();
-  let mut buffer_state = BUFFER_STATE.lock().unwrap();
   let Some(tpse) = tpse_state.tpses.get_mut(&tpse_id) else { return 1 };
-  for entry in tpse.staged_files.drain(..) {
-    if deallocate_buffers {
-      buffer_state.buffers.remove(&entry.filename);
-      buffer_state.buffers.remove(&entry.content);
-    }
-  }
+  tpse.staged_files.clear();
   0
 }
 
@@ -139,11 +133,10 @@ pub extern "C" fn clear_staged_files(tpse_id: u32, deallocate_buffers: bool) -> 
 /// Files are _not_ unstaged after this process and [clear_staged_files] must be called manually.
 /// It is safe to call [clear_staged_files] before the import finishes; reference-counted copies are made.
 ///
-/// Return codes: 0=import queued, 1=no such tpse, 2=invalid file staged to tpse, 3=import already running
+/// Return codes: 0=import queued, 1=no such tpse, 3=import or migration already running
 #[unsafe(no_mangle)]
 pub extern "C" fn queue_import(tpse_id: u32) -> usize {
   let mut tpse_state = TPSE_STATE.lock().unwrap();
-  let buffer_state = BUFFER_STATE.lock().unwrap();
   let Some(tpse) = tpse_state.tpses.get_mut(&tpse_id) else { return 1 };
   
   let status = replace(&mut tpse.status, TPSEStatus::Busy);
@@ -152,21 +145,15 @@ pub extern "C" fn queue_import(tpse_id: u32) -> usize {
     TPSEStatus::IdleExternal(wasm) => ActiveTPSEStatus::IdleExternal(wasm),
     TPSEStatus::Busy => return 3 // tpse already running, can't get a handle to it
   };
-  let Ok(cloned) = tpse.staged_files.iter()
-    .map(|file| Ok((
-      buffer_state.buffers.get(&file.filename).ok_or(())?.clone(),
-      buffer_state.buffers.get(&file.content).ok_or(())?.clone(),
-    )))
-    .collect::<Result<Vec<_>, ()>>()
-    else { return 2 };
+  let files = tpse.staged_files.iter()
+    .map(|file| QueuedFile {
+      kind: ImportType::Automatic,
+      path: PathBuf::from(String::from_utf8_lossy(&file.filename).as_ref()),
+      binary: file.content.clone()
+    })
+    .collect::<Vec<_>>();
   
   crate::wasm::asynch::spawn(async move {
-    let files = cloned.iter().map(|(filename, content)| QueuedFile {
-      kind: ImportType::Automatic,
-      path: PathBuf::from(str::from_utf8(&filename).unwrap()),
-      binary: content.clone()
-    }).collect::<Vec<_>>();
-  
     let source = WasmAssetProvider;
     let logger = WasmImportLogger { tpse_id };
     let mut context = ImportContext::new(&source).with_logger(&logger);

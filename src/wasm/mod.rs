@@ -117,10 +117,10 @@ macro_rules! over_tpse_status {
 pub(in crate) use over_tpse_status;
 
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 struct StagedFile {
-  filename: u32,
-  content: u32
+  filename: Arc<[u8]>,
+  content: Arc<[u8]>
 }
 
 impl BufferState {
