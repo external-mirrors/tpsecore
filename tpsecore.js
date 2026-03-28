@@ -4,10 +4,11 @@ const tpse_import_handlers = new Map();
  * The handler lives for one import cycle and is automatically removed once finished.
  * @param {number} tpse_id the id of the tpse to register the handlers for
  * @param {function(number)} import_finished called with an exit code when a queued import finishes 
+ * @param {function(object)} decide called when the importer needs an external decision on how to proceed due to multiple import options
  * @param {function(object)} log_sink sink for recieving logs specific to this tpse
  */
-export function registerTPSEImportEventHandler(tpse_id, import_finished, log_sink) {
-  tpse_import_handlers.set(tpse_id, { import_finished, log_sink });
+export function registerTPSEImportEventHandler(tpse_id, import_finished, decide, log_sink) {
+  tpse_import_handlers.set(tpse_id, { import_finished, decide, log_sink });
 }
 
 let event_bus_listeners = [];
@@ -223,6 +224,28 @@ const wasm = await WebAssembly.instantiateStreaming(fetch(tpsecore_url), {
         let ptr = tpsecore.allocate_buffer(encoded.length);
         new Uint8Array(tpsecore.memory.buffer, ptr, encoded.length).set(encoded);
         tpsecore.provide_wakeable_one(wake_id, BigInt(ptr));
+      }
+    }
+  },
+  wasm_decision_maker: {
+    async decide(tpse_id, data, len, wake_id) {
+      let options = JSON.parse(new TextDecoder().decode(new Uint8Array(tpsecore.memory.buffer, data, len)));
+      
+      try {
+        let handler = tpse_import_handlers.get(tpse_id);
+        if (!handler) throw new Error("no decision handler registered for tpse");
+        let result = await handler.decide(options);
+        
+        let encoded = new TextEncoder().encode(JSON.stringify(result));
+        let ptr = tpsecore.allocate_buffer(encoded.length);
+        new Uint8Array(tpsecore.memory.buffer, ptr, encoded.length).set(encoded);
+        
+        tpsecore.provide_wakeable_two(wake_id, BigInt(0), BigInt(ptr));
+      } catch(ex) {
+        let encoded = new TextEncoder().encode(ex);
+        let ptr = tpsecore.allocate_buffer(encoded.length);
+        new Uint8Array(tpsecore.memory.buffer, ptr, encoded.length).set(encoded);
+        tpsecore.provide_wakeable_two(wake_id, BigInt(1), BigInt(ptr));
       }
     }
   },

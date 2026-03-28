@@ -31,7 +31,10 @@ async fn import_inner<T: TPSEAccelerator>
   
   let mut guard = context.enter_context(ImportContextEntry::PartitionGroups);
   let options = partition_import_groups(&results, &mut *guard)?;
+  
+  guard.log(LogLevel::Status, &"Decision needed");
   let decisions = guard.decider.decide(&options).await.wrap(err!(guard, decisionfail))?;
+  guard.log(LogLevel::Info, &format_args!("Decision made: {decisions:?}"));
   drop(guard);
   
   let mut decided_files = vec![];

@@ -157,7 +157,8 @@ pub extern "C" fn queue_import(tpse_id: u32) -> usize {
   crate::wasm::asynch::spawn(async move {
     let source = WasmAssetProvider;
     let logger = WasmImportLogger { tpse_id };
-    let mut context = ImportContext::new(&source, &WasmDecisionMaker).with_logger(&logger);
+    let decider = WasmDecisionMaker { tpse_id };
+    let mut context = ImportContext::new(&source, &decider).with_logger(&logger);
   
     let import_result = over_tpse_status!(ActiveTPSEStatus, &mut tpse_data, tpse, {
       import::<WasmGlobalAccelerator>(&mut context, files, tpse).await
