@@ -6,7 +6,7 @@ use itertools::Itertools;
 use crate::accel::traits::TPSEAccelerator;
 use crate::import::packjson::{ImportSet, ImportSetOption, PackJSON};
 use crate::import::{ImportContext, ImportContextEntry, ImportError, ImportErrorType};
-use crate::import::inter_stage_data::{DecisionTree, DecisionTreeEntry, ProcessedQueuedFile, SpecificImportTypeWithPackJsonAndUnknown};
+use crate::import::inter_stage_data::{DecisionTree, DecisionTreeOption, ProcessedQueuedFile, SpecificImportTypeWithPackJsonAndUnknown};
 use crate::log::LogLevel;
 
 pub fn partition_import_groups<'a, T: TPSEAccelerator>
@@ -82,7 +82,7 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
   if pack_json_roots.is_empty() {
     return Ok(vec![DecisionTree {
       description: "content pack".to_string(),
-      options: vec![DecisionTreeEntry {
+      options: vec![DecisionTreeOption {
         description: "all content pack data".to_string(),
         files: loose_files,
         subtrees: vec![]
@@ -99,36 +99,28 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
   
   struct FlatDecisionTree {
     description: String,
-    options: Vec<FlatDecisionTreeEntry>,
+    options: Vec<FlatDecisionTreeOption>,
   }
-  struct FlatDecisionTreeEntry {
+  struct FlatDecisionTreeOption {
     description: String,
+    /// the results index of the file
     files: Vec<usize>,
+    /// initially, the results index of the pack.json file that created the subtree.
+    /// later remapped to the pack_json_roots index.
     subtrees: Vec<usize>
   }
   
-  
-  let mut trees = vec![];
-  // a map of json.pack file index (in results) to index in tree list
-  let mut jsonpack_file_to_tree_mapping = HashMap::new();
-  for pack_json in pack_json_roots {
-    jsonpack_file_to_tree_mapping.insert(pack_json.pack_file_index, trees.len());
-    let tree = FlatDecisionTree {
-      description: pack_json.pack_file.description.clone(),
-      options: vec![]
-    };
-    trees.push((pack_json, tree));
-  }
-  // Tracks which trees are "rootlike", i.e. those which are not a subtree of another tree
-  let mut trees_rootlike = vec![true; trees.len()];
-  
   // Organize files into collections based on which groups they match and which import sets use those groups
-  for (pack_json, tree) in &mut trees {
+  let mut branches = vec![]; // a list of (pack_json_index, FlatDecisionTree)
+  for (pack_json_index, pack_json) in pack_json_roots.iter_mut().enumerate() {
     let ctx = ctx.enter_context(ImportContextEntry::PackJson {
       pack_json_file: results[pack_json.pack_file_index].path.clone()
     });
+    
+    // determine groups for files
     let mut groups = HashMap::with_capacity(pack_json.pack_file.import_groups.len());
     for (group_id, group_patterns) in &pack_json.pack_file.import_groups {
+      groups.insert(group_id, vec![]);
       for (pattern_index, pattern) in group_patterns.iter().enumerate() {
         for child in &mut pack_json.children {
           let relative_to_pack_json = results[child.file_index].path.strip_prefix(&pack_json.pack_file_dir)
@@ -142,9 +134,9 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
           }
         }
       }
-      groups.insert(group_id, vec![]);
     }
     
+    // once groups are determined, begin actually inserting files into each group
     for child in &pack_json.children {
       if child.matched_filters.is_empty() {
         ctx.log(LogLevel::Warn, &format_args!(
@@ -175,6 +167,7 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
         ));
       }
     }
+    
     let import_sets = match &pack_json.pack_file.import_sets {
       Some(sets) => &sets[..],
       None => &[ImportSet {
@@ -187,8 +180,12 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
       }]
     };
     for set in import_sets {
+      let mut tree = FlatDecisionTree {
+        description: set.title.clone(),
+        options: vec![]
+      };
       for option in &set.options {
-        let mut entry = FlatDecisionTreeEntry {
+        let mut entry = FlatDecisionTreeOption {
           description: option.description.clone(),
           files: vec![],
           subtrees: vec![]
@@ -196,9 +193,7 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
         for group in &option.enables_groups {
           for file in groups.get(&group).unwrap() {
             if results[*file].specific_kind == SpecificImportTypeWithPackJsonAndUnknown::PackJson {
-              let subtree = *jsonpack_file_to_tree_mapping.get(file).unwrap();
-              entry.subtrees.push(subtree);
-              trees_rootlike[subtree] = false;
+              entry.subtrees.push(*file); // remapped below
             } else {
               entry.files.push(*file);
             }
@@ -206,38 +201,64 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
         }
         tree.options.push(entry);
       }
+      branches.push((pack_json_index, tree));
     }
   }
   
-  // Erect those collections into one or more unified trees based on pack.json nesting
+  // Calculate which packs are "rootlike", i.e. those which don't fit into another tree at any point.
+  let mut rootlike_packs = vec![true; pack_json_roots.len()];
+  for (_pack_json_index, branch) in &mut branches {
+    for option in &mut branch.options {
+      for pack_json_file_index in &mut option.subtrees {
+        // remap file index to pack_json_roots index
+        *pack_json_file_index = pack_json_roots.iter().position(|x| x.pack_file_index == *pack_json_file_index).unwrap();
+        rootlike_packs[*pack_json_file_index] = false;
+      }
+    }
+  }
+  
+  // Erect the collections originating from rootlike packs into one or more unified trees based on pack.json nesting
   let mut rooted_trees = vec![];
-  let mut trees = trees.into_iter().map(|tree| Some(tree)).collect::<Vec<_>>();
-  for (i, is_rootlike) in trees_rootlike.into_iter().enumerate() {
+  let mut takeable_branches = branches.into_iter().map(|(i, tree)| (i, Some(tree))).collect::<Vec<_>>();
+  for (i, is_rootlike) in rootlike_packs.into_iter().enumerate() {
     if !is_rootlike { continue }
-    rooted_trees.push(grow_tree(results, &mut trees, i));
+    rooted_trees.extend(grow_tree(results, &mut takeable_branches, i));
   }
   fn grow_tree<'a>(
     results: &'a [ProcessedQueuedFile],
-    trees: &mut Vec<Option<(PackJsonRootEntry, FlatDecisionTree)>>,
-    index: usize
-  ) -> DecisionTree<'a> {
-    let Some((_json, tree)) = trees.get_mut(index).unwrap().take() else {
-      unreachable!("partition_import_groups: attempt to remove already processed tree from pending set");
-    };
-    let new_tree = DecisionTree {
-      description: tree.description,
-      options: tree.options.into_iter().map(|option| {
-        DecisionTreeEntry {
-          description: option.description,
-          files: option.files.into_iter().map(|i| &results[i]).collect(),
-          subtrees: option.subtrees.into_iter().map(|i| grow_tree(results, trees, i)).collect()
+    takeable_branches: &mut Vec<(usize, Option<FlatDecisionTree>)>,
+    json_pack_roots_index: usize
+  ) -> Vec<DecisionTree<'a>> {
+    let mut taken = vec![];
+    for (i, entry) in takeable_branches.iter_mut() {
+      if *i != json_pack_roots_index { continue };
+      let Some(tree) = entry.take() else {
+        unreachable!("partition_import_groups: attempt to remove already processed tree from pending set");
+      };
+      taken.push(tree);
+    }
+    
+    taken.into_iter()
+      .map(|tree| {
+        DecisionTree {
+          description: tree.description,
+          options: tree.options.into_iter()
+            .map(|option| {
+              DecisionTreeOption {
+                description: option.description,
+                files: option.files.into_iter().map(|i| &results[i]).collect(),
+                subtrees: option.subtrees.into_iter()
+                  .flat_map(|i| grow_tree(results, takeable_branches, i))
+                  .collect()
+              }
+            })
+            .collect()
         }
-      }).collect()
-    };
-    new_tree
+      })
+      .collect()
   }
   
-  let remaining = trees.iter().filter(|x| x.is_some()).count();
+  let remaining = takeable_branches.iter().filter(|(_, tree)| tree.is_some()).count();
   if remaining > 0 {
     unreachable!("partition_import_groups: found some unreachable tree segments")
   }
@@ -246,7 +267,7 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
   if loose_files.len() > 0 {
     rooted_trees.push(DecisionTree {
       description: "content pack".to_string(),
-      options: vec![DecisionTreeEntry {
+      options: vec![DecisionTreeOption {
         description: "loose files".to_string(),
         files: loose_files,
         subtrees: vec![]

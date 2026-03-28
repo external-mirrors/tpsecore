@@ -101,13 +101,17 @@ impl FileType {
 }
 
 // --- POST `partition_import_groups` STAGE ---
+
+/// A DecisionTree represents one _decision to be made_. Making that decision
+/// adds a number of files to the import process and may expose further decisions.
 #[derive(Debug)]
 pub struct DecisionTree<'a> {
   pub description: String,
-  pub options: Vec<DecisionTreeEntry<'a>>,
+  pub options: Vec<DecisionTreeOption<'a>>,
 }
+/// A DecisionTreeOption is one possible choice that can be made when deciding a DecisionTree's choice
 #[derive(Debug)]
-pub struct DecisionTreeEntry<'a> {
+pub struct DecisionTreeOption<'a> {
   pub description: String,
   pub files: Vec<&'a ProcessedQueuedFile>,
   pub subtrees: Vec<DecisionTree<'a>>

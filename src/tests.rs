@@ -160,11 +160,11 @@ async fn metadata_json_test() {
       path: PathBuf::from("skins/Concrete.png"),
       binary: state.get("yhf/Concrete.png").content.clone()
     },
-    // QueuedFile {
-    //   kind: ImportType::Automatic,
-    //   path: PathBuf::from("sfx/BejeweledSR.zip"),
-    //   binary: state.get("yhf/BejeweledSR.zip").content.clone()
-    // },
+    QueuedFile {
+      kind: ImportType::Automatic,
+      path: PathBuf::from("sfx/BejeweledSR.zip"),
+      binary: state.get("yhf/BejeweledSR.zip").content.clone()
+    },
     QueuedFile {
       kind: ImportType::Automatic,
       path: PathBuf::from("skins/pack.json"),
@@ -225,15 +225,23 @@ async fn metadata_json_test() {
   
   println!("{results:#?}");
   
-  let [main, loose] = &results[..] else { panic!("expected 2, got {} root decision trees", results.len()) };
+  let [skins, sfx, loose] = &results[..] else { panic!("expected 2, got {} root decision trees", results.len()) };
+  
+  let [skins_subtree_option] = &skins.options[..] else { panic!() };
+  let [skin_decision] = &skins_subtree_option.subtrees[..] else { panic!() };
+  let [a, b] = &skin_decision.options[..] else { panic!() };
+  let [a0] = &a.files[..] else { panic!() };
+  let [b0, b1] = &b.files[..] else { panic!() };
+  assert_eq!(a0.path, PathBuf::from("skins/Concrete.png"));
+  assert_eq!(b1.path, PathBuf::from("skins/SHIMMERING_CYCLONE.zip/shimmering_cyclone_connected_minos.png"));
+  assert_eq!(b0.path, PathBuf::from("skins/SHIMMERING_CYCLONE.zip/shimmering_cyclone_connected_ghost.png"));
+  
+  assert_eq!(sfx.options[0].files.len(), 178);
   
   let [loose] = &loose.options[..] else { panic!() };
   let [txt] = &loose.files[..] else { panic!() };
   assert!(txt.path.ends_with("1st_read_changelog.txt"));
   assert_eq!(txt.specific_kind, SpecificImportTypeWithPackJsonAndUnknown::Unknown);
-  
-  
-  panic!("done!");
 }
 
 #[tokio::test]
