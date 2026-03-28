@@ -14,7 +14,7 @@ use crate::accel::cached_asset_provider::CachedAssetProvider;
 use crate::accel::ffmpeg_audio_handle::FFmpegAudioHandle;
 use crate::accel::software_texture_handle::SoftwareTextureHandle;
 use crate::accel::traits::{TPSEAccelerator, TextureHandle};
-use crate::import::inter_stage_data::QueuedFile;
+use crate::import::inter_stage_data::{QueuedFile, SpecificImportTypeWithPackJsonAndUnknown};
 use crate::import::stages::{explore_files, partition_import_groups};
 use crate::import::{Asset, ImportContext, ImportContextEntry, ImportType, import};
 use crate::import::skin_splicer::Piece;
@@ -144,29 +144,36 @@ impl ImportLogger for LogLogger {
 #[tokio::test]
 async fn metadata_json_test() {
   let state = setup();
-  let provider = CachedAssetProvider::default();
+  let mut provider = CachedAssetProvider::default();
+  provider.cache.insert(Asset::TetrioJS, state.get("tetrio.js").content.clone());
+  provider.cache.insert(Asset::TetrioRSD, state.get("tetrio.opus.rsd").content.clone());
   let mut ctx = ImportContext::<TestAccelerator>::new(&provider).with_logger(&LogLogger);
   let mut tpse = TPSE::default();
   let files = vec![
     QueuedFile {
       kind: ImportType::Automatic,
-      path: PathBuf::from("SHIMMERING_CYCLONE.zip"),
+      path: PathBuf::from("skins/SHIMMERING_CYCLONE.zip"),
       binary: state.get("yhf/SHIMMERING_CYCLONE.zip").content.clone()
     },
     QueuedFile {
       kind: ImportType::Automatic,
-      path: PathBuf::from("Concrete.png"),
+      path: PathBuf::from("skins/Concrete.png"),
       binary: state.get("yhf/Concrete.png").content.clone()
     },
+    // QueuedFile {
+    //   kind: ImportType::Automatic,
+    //   path: PathBuf::from("sfx/BejeweledSR.zip"),
+    //   binary: state.get("yhf/BejeweledSR.zip").content.clone()
+    // },
     QueuedFile {
       kind: ImportType::Automatic,
-      path: PathBuf::from("pack.json"),
+      path: PathBuf::from("skins/pack.json"),
       binary: Arc::from(r#"
 {
-  "description": "a test pack offering two skin choices",
+  "description": "a nested subpack offering two skin choices",
   "import_groups": {
     "alpha": [{ "pattern": "Concrete.png" }],
-    "beta": [{ "pattern": "SHIMMERING_CYCLONE.zip" }]
+    "beta": [{ "pattern": "SHIMMERING_CYCLONE.zip/*" }]
   },
   "import_sets": [
     {
@@ -180,13 +187,53 @@ async fn metadata_json_test() {
   ]
 }
       "#.as_bytes())
+    },
+    QueuedFile {
+      kind: ImportType::Automatic,
+      path: PathBuf::from("pack.json"),
+      binary: Arc::from(r#"
+{
+  "description": "a content pack for testing",
+  "import_groups": {
+    "skins": [{ "pattern": "skins/pack.json" }],
+    "sfx": [{ "pattern": "sfx/BejeweledSR.zip/*.ogg" }]
+  },
+  "import_sets": [
+    {
+      "title": "skins",
+      "required": true,
+      "options": [
+        { "enables_groups": ["skins"], "description": "UI for required groups with one option will generally not be shown at all" }
+      ]
+    },
+    {
+      "title": "sound effects",
+      "required": false,
+      "options": [
+        { "enables_groups": ["sfx"], "description": "bejeweled sound effects pack" }
+      ]
+    }
+  ]
+}
+      "#.as_bytes())
     }
   ];
   // import(&mut ctx, files, &mut tpse).await.unwrap();
   
   let results = explore_files(files, &mut ctx).await.unwrap();
   let results = partition_import_groups(&results, &mut ctx).unwrap();
-  panic!("done! {results:#?}");
+  
+  println!("{results:#?}");
+  
+  let [main, loose] = &results[..] else { panic!("expected 2, got {} root decision trees", results.len()) };
+  
+  let [loose] = &loose.options[..] else { panic!() };
+  let [txt] = &loose.files[..] else { panic!() };
+  assert!(txt.path.ends_with("1st_read_changelog.txt"));
+  assert_eq!(txt.specific_kind, SpecificImportTypeWithPackJsonAndUnknown::Unknown);
+  
+  
+  panic!("done!");
 }
 
 #[tokio::test]

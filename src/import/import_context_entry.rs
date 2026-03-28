@@ -47,6 +47,10 @@ pub enum ImportContextEntry {
   ProvideAsset {
     asset: Asset
   },
+  #[error("from nearest pack.json file at {pack_json_file:?}")]
+  PackJson {
+    pack_json_file: PathBuf
+  },
   #[error("exploring files")]
   ExploreFiles,
   #[error("reducing types")]

@@ -5,8 +5,8 @@ use itertools::Itertools;
 
 use crate::accel::traits::TPSEAccelerator;
 use crate::import::packjson::{ImportSet, ImportSetOption, PackJSON};
-use crate::import::{ImportContext, ImportError, ImportErrorType};
-use crate::import::inter_stage_data::{DecisionTree, DecisionTreeEntry, ProcessedQueuedFile, SpecificImportType};
+use crate::import::{ImportContext, ImportContextEntry, ImportError, ImportErrorType};
+use crate::import::inter_stage_data::{DecisionTree, DecisionTreeEntry, ProcessedQueuedFile, SpecificImportTypeWithPackJsonAndUnknown};
 use crate::log::LogLevel;
 
 pub fn partition_import_groups<'a, T: TPSEAccelerator>
@@ -30,8 +30,9 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
     pattern_index: usize
   }
 
+  // identify and load pack.json files
   for (i, file) in results.iter().enumerate() {
-    if file.specific_kind == SpecificImportType::PackJson {
+    if file.specific_kind == SpecificImportTypeWithPackJsonAndUnknown::PackJson {
       let parent = file.path.parent().expect("pack.json files are always named pack.json and so must have a parent");
       let pack_json = serde_json::from_slice(&file.binary)
         .map_err(|err| ctx.wrap_error(ImportErrorType::InvalidPackJson(file.path.clone(), err)))?;
@@ -44,22 +45,12 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
     }
   }
   
-  if pack_json_roots.is_empty() {
-    return Ok(vec![DecisionTree {
-      description: "content pack".to_string(),
-      options: vec![DecisionTreeEntry {
-        description: "all content pack data".to_string(),
-        files: loose_files,
-        subtrees: vec![]
-      }]
-    }]);
-  }
-  
+  // assign each file to its nearest pack.json
   for (file_index, file) in results.iter().enumerate() {
     let effective_path = match file.specific_kind {
       // pack.json files make all files under their influence (i.e. in their directory) look like a single file
       // named as that directory from the perspective of pack.json files higher in the hierarchy.
-      SpecificImportType::PackJson => file.path.parent().expect("pack.json files are always named pack.json and so must have a parent"),
+      SpecificImportTypeWithPackJsonAndUnknown::PackJson => file.path.parent().expect("pack.json files are always named pack.json and so must have a parent"),
       _ => &file.path
     };
     
@@ -79,8 +70,24 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
         matched_filters: vec![]
       });
     } else {
-      loose_files.push(file);
+      // pack.json files are never considered 'loose' as they're transformed into the `DecisionTree`s
+      // that actually determine which files to load.
+      if file.specific_kind != SpecificImportTypeWithPackJsonAndUnknown::PackJson {
+        loose_files.push(file);
+      }
     }
+  }
+  
+  // if there's no pack.json files, return a default tree that imports all files
+  if pack_json_roots.is_empty() {
+    return Ok(vec![DecisionTree {
+      description: "content pack".to_string(),
+      options: vec![DecisionTreeEntry {
+        description: "all content pack data".to_string(),
+        files: loose_files,
+        subtrees: vec![]
+      }]
+    }]);
   }
   
   if !loose_files.is_empty() {
@@ -100,6 +107,7 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
     subtrees: Vec<usize>
   }
   
+  
   let mut trees = vec![];
   // a map of json.pack file index (in results) to index in tree list
   let mut jsonpack_file_to_tree_mapping = HashMap::new();
@@ -114,12 +122,19 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
   // Tracks which trees are "rootlike", i.e. those which are not a subtree of another tree
   let mut trees_rootlike = vec![true; trees.len()];
   
+  // Organize files into collections based on which groups they match and which import sets use those groups
   for (pack_json, tree) in &mut trees {
+    let ctx = ctx.enter_context(ImportContextEntry::PackJson {
+      pack_json_file: results[pack_json.pack_file_index].path.clone()
+    });
     let mut groups = HashMap::with_capacity(pack_json.pack_file.import_groups.len());
     for (group_id, group_patterns) in &pack_json.pack_file.import_groups {
       for (pattern_index, pattern) in group_patterns.iter().enumerate() {
         for child in &mut pack_json.children {
-          if results[child.file_index].path.starts_with(&pattern.pattern) {
+          let relative_to_pack_json = results[child.file_index].path.strip_prefix(&pack_json.pack_file_dir)
+            .expect("child path must be prefixed with pack_file_dir for it to be a child");
+            
+          if pattern.get_compiled_pattern().is_match(relative_to_pack_json) {
             child.matched_filters.push(MatchedFilter {
               group_name: group_id.clone(),
               pattern_index
@@ -132,10 +147,20 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
     
     for child in &pack_json.children {
       if child.matched_filters.is_empty() {
-        ctx.log(LogLevel::Warn, &format_args!("File matched no filters")); // todo: improve
+        ctx.log(LogLevel::Warn, &format_args!(
+          "File {:?} matched no filters in its nearest pack.json and will be considered loose",
+          results[child.file_index].path
+        ));
+        loose_files.push(&results[child.file_index]);
       }
       if child.matched_filters.len() > 1 {
-        ctx.log(LogLevel::Warn, &format_args!("File matched multiple filters")); // todo: improve
+        ctx.log(LogLevel::Warn, &format_args!(
+          "File {:?} matched multiple groups in its nearest pack.json. Consider adding a new group that uniquely matches this file and then add that group to each applicable import set. Matched groups: {}.",
+          results[child.file_index].path,
+          child.matched_filters.iter().format_with(", ", |filter, f| {
+            f(&format_args!("'{}' (pattern #{})", filter.group_name, filter.pattern_index))
+          })
+        ));
       }
       for filter in &child.matched_filters {
         groups.get_mut(&filter.group_name).unwrap().push(child.file_index);
@@ -170,7 +195,7 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
         };
         for group in &option.enables_groups {
           for file in groups.get(&group).unwrap() {
-            if results[*file].specific_kind == SpecificImportType::PackJson {
+            if results[*file].specific_kind == SpecificImportTypeWithPackJsonAndUnknown::PackJson {
               let subtree = *jsonpack_file_to_tree_mapping.get(file).unwrap();
               entry.subtrees.push(subtree);
               trees_rootlike[subtree] = false;
@@ -184,14 +209,20 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
     }
   }
   
+  // Erect those collections into one or more unified trees based on pack.json nesting
+  let mut rooted_trees = vec![];
   let mut trees = trees.into_iter().map(|tree| Some(tree)).collect::<Vec<_>>();
+  for (i, is_rootlike) in trees_rootlike.into_iter().enumerate() {
+    if !is_rootlike { continue }
+    rooted_trees.push(grow_tree(results, &mut trees, i));
+  }
   fn grow_tree<'a>(
     results: &'a [ProcessedQueuedFile],
     trees: &mut Vec<Option<(PackJsonRootEntry, FlatDecisionTree)>>,
     index: usize
   ) -> DecisionTree<'a> {
-    let Some((_json, tree)) = trees.remove(index) else {
-      unreachable!("partition_import_groups: attempt to remove rootlike tree from pending set");
+    let Some((_json, tree)) = trees.get_mut(index).unwrap().take() else {
+      unreachable!("partition_import_groups: attempt to remove already processed tree from pending set");
     };
     let new_tree = DecisionTree {
       description: tree.description,
@@ -206,17 +237,12 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
     new_tree
   }
   
-  let mut rooted_trees = vec![];
-  for (i, is_rootlike) in trees_rootlike.into_iter().enumerate() {
-    if !is_rootlike { continue }
-    rooted_trees.push(grow_tree(results, &mut trees, i));
-  }
-  
   let remaining = trees.iter().filter(|x| x.is_some()).count();
   if remaining > 0 {
     unreachable!("partition_import_groups: found some unreachable tree segments")
   }
   
+  // package any leftover loose files as its own tree
   if loose_files.len() > 0 {
     rooted_trees.push(DecisionTree {
       description: "content pack".to_string(),
@@ -230,3 +256,18 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
   
   Ok(rooted_trees)
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

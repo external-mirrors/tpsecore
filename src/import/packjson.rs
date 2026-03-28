@@ -1,4 +1,7 @@
 use std::collections::HashMap;
+use std::sync::OnceLock;
+
+use globset::{Glob, GlobMatcher};
 
 #[derive(Debug, serde::Deserialize)]
 pub struct PackJSON {
@@ -16,9 +19,19 @@ pub struct PackJSON {
 pub struct ImportGroupPattern {
   /// A pattern specifying files relative to the location of the pack.json file that this import group includes.
   /// Supports globbing. When this names a directory, all files in the directory are included.
-  pub pattern: String,
+  pub pattern: Glob,
+  #[serde(skip)]
+  cached_compilation: OnceLock<GlobMatcher>
   // future features: import option overrides
 }
+impl ImportGroupPattern {
+  pub fn get_compiled_pattern(&self) -> &GlobMatcher {
+    self.cached_compilation.get_or_init(|| {
+      self.pattern.compile_matcher()
+    })
+  }
+}
+
 
 /// An import set describes a list of import groups to pick between.
 /// They allow for precisely controlling which parts of a content pack can be imported together.

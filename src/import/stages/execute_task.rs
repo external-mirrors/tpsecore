@@ -208,7 +208,6 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut Import
       let mime = mime_guess::from_path(&path).first_or_octet_stream().essence_str().to_string();
       let file = File { binary: binary.into(), mime };
       match import_type {
-        SpecificImportType::PackJson => todo!(),
         SpecificImportType::TPSE => {
           use TPSELoadError::*;
           let mut raw_tpse: Value = serde_json::from_slice(&file.binary).wrap(err!(ctx, (with |x| BadJson(x))))?;

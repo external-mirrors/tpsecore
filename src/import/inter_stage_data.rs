@@ -25,7 +25,7 @@ pub struct QueuedFile {
 #[derive(Debug, Hash, Eq, PartialEq, Copy, Clone, serde_with::SerializeDisplay)]
 pub enum SpecificImportTypeWithZip {
   Zip,
-  Other(SpecificImportType)
+  Other(SpecificImportTypeWithPackJsonAndUnknown)
 }
 impl Display for SpecificImportTypeWithZip {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -35,13 +35,12 @@ impl Display for SpecificImportTypeWithZip {
     }
   }
 }
-
 // --- POST `explore_files` STAGE ---
 
 /// File representation after the `explore_files` stage
 #[derive(Clone)]
 pub struct ProcessedQueuedFile {
-  pub specific_kind: SpecificImportType,
+  pub specific_kind: SpecificImportTypeWithPackJsonAndUnknown,
   pub kind: ImportType,
   pub path: PathBuf,
   pub binary: Arc<[u8]>
@@ -56,27 +55,21 @@ impl std::fmt::Debug for ProcessedQueuedFile {
       .finish()
   }
 }
-/// A distilled copy of an import type that's been rendered to a more specific form than the public API.
+
+
+// SpecificImportType before PackJson and Unknown are handled by partition_import_groups
 #[derive(Debug, Hash, Eq, PartialEq, Copy, Clone, serde_with::SerializeDisplay)]
-pub enum SpecificImportType {
+pub enum SpecificImportTypeWithPackJsonAndUnknown {
   PackJson,
-  TPSE,
-  Skin(SkinType),
-  OtherSkin(OtherSkinType),
-  SoundEffects,
-  Background(BackgroundType),
-  Music
+  Unknown,
+  Other(SpecificImportType)
 }
-impl Display for SpecificImportType {
+impl Display for SpecificImportTypeWithPackJsonAndUnknown {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
     match self {
-      SpecificImportType::PackJson => write!(f, "pack.json"),
-      SpecificImportType::TPSE => write!(f, "tpse"),
-      SpecificImportType::Skin(subtype) => write!(f, "{} skin", subtype),
-      SpecificImportType::OtherSkin(subtype) => write!(f, "{} skin", subtype),
-      SpecificImportType::SoundEffects => write!(f, "sound effects"),
-      SpecificImportType::Background(subtype) => write!(f, "{} background", subtype),
-      SpecificImportType::Music => write!(f, "music")
+      Self::PackJson => write!(f, "pack.json"),
+      Self::Unknown => write!(f, "unknown"),
+      Self::Other(other) => write!(f, "{other}")
     }
   }
 }
@@ -118,6 +111,29 @@ pub struct DecisionTreeEntry<'a> {
   pub description: String,
   pub files: Vec<&'a ProcessedQueuedFile>,
   pub subtrees: Vec<DecisionTree<'a>>
+}
+
+/// A distilled copy of an import type that's been rendered to a more specific form than the public API.
+#[derive(Debug, Hash, Eq, PartialEq, Copy, Clone, serde_with::SerializeDisplay)]
+pub enum SpecificImportType {
+  TPSE,
+  Skin(SkinType),
+  OtherSkin(OtherSkinType),
+  SoundEffects,
+  Background(BackgroundType),
+  Music
+}
+impl Display for SpecificImportType {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    match self {
+      SpecificImportType::TPSE => write!(f, "tpse"),
+      SpecificImportType::Skin(subtype) => write!(f, "{} skin", subtype),
+      SpecificImportType::OtherSkin(subtype) => write!(f, "{} skin", subtype),
+      SpecificImportType::SoundEffects => write!(f, "sound effects"),
+      SpecificImportType::Background(subtype) => write!(f, "{} background", subtype),
+      SpecificImportType::Music => write!(f, "music")
+    }
+  }
 }
 
 // --- POST `reduce_types` STAGE ---

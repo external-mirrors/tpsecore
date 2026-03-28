@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use crate::accel::traits::TPSEAccelerator;
-use crate::import::inter_stage_data::{AnimatedSkinFrame, ImportTask, ProcessedQueuedFile, SoundEffect, SpecificImportType};
+use crate::import::inter_stage_data::{AnimatedSkinFrame, ImportTask, ProcessedQueuedFile, SoundEffect, SpecificImportType, SpecificImportTypeWithPackJsonAndUnknown};
 use crate::import::{ImportContext, ImportError, ImportErrorType, SkinType};
 
 /// Collates multiple import results into a list of import tasks
@@ -9,7 +9,7 @@ pub fn reduce_types<T: TPSEAccelerator>
   (results: &[ProcessedQueuedFile], ctx: &mut ImportContext<'_, T>)
    -> Result<Vec<ImportTask>, ImportError<T>>
 {
-  let mut map: HashMap<SpecificImportType, Vec<ProcessedQueuedFile>> = HashMap::new();
+  let mut map: HashMap<SpecificImportTypeWithPackJsonAndUnknown, Vec<ProcessedQueuedFile>> = HashMap::new();
   for res in results {
     map.entry(res.specific_kind).or_default().push(res.clone());
   }
@@ -28,12 +28,12 @@ pub fn reduce_types<T: TPSEAccelerator>
   let mut ambiguous_ghost_skin_errors: HashSet<SkinType> = HashSet::new();
 
   for (key, mut files) in map {
+    use SpecificImportTypeWithPackJsonAndUnknown as SITPU;
     use SpecificImportType as SIT;
     match key {
-      SpecificImportType::PackJson => {
-        
-      },
-      SpecificImportType::TPSE => {
+      SITPU::Unknown => todo!("remove"),
+      SITPU::PackJson => todo!("remove"),
+      SITPU::Other(SpecificImportType::TPSE) => {
         import_tasks.extend(files.into_iter().map(|import_result| {
           ImportTask::Basic {
             import_type: SIT::TPSE,
@@ -42,7 +42,7 @@ pub fn reduce_types<T: TPSEAccelerator>
           }
         }));
       },
-      SpecificImportType::Skin(skin_type) => {
+      SITPU::Other(SpecificImportType::Skin(skin_type)) => {
         let (opts, is_minos, is_ghost) = match &skin_type {
           SkinType::TetrioAnimated { opts } => (Some(opts), true, true),
           SkinType::Tetrio61ConnectedAnimated { opts } => (Some(opts), true, false),
@@ -83,7 +83,7 @@ pub fn reduce_types<T: TPSEAccelerator>
           }));
         }
       }
-      SpecificImportType::OtherSkin(skin_type) => {
+      SITPU::Other(SpecificImportType::OtherSkin(skin_type)) => {
         import_tasks.extend(files.into_iter().map(|import_result| {
           ImportTask::Basic {
             import_type: SIT::OtherSkin(skin_type),
@@ -92,7 +92,7 @@ pub fn reduce_types<T: TPSEAccelerator>
           }
         }));
       }
-      SpecificImportType::SoundEffects => {
+      SITPU::Other(SpecificImportType::SoundEffects) => {
         sound_effects.extend(files.into_iter().map(|import_result| {
           let name = import_result.path
             .file_stem()
@@ -106,7 +106,7 @@ pub fn reduce_types<T: TPSEAccelerator>
           }
         }));
       }
-      SpecificImportType::Background(bg_type) => {
+      SITPU::Other(SpecificImportType::Background(bg_type)) => {
         import_tasks.extend(files.into_iter().map(|import_result| {
           ImportTask::Basic {
             import_type: SIT::Background(bg_type),
@@ -115,7 +115,7 @@ pub fn reduce_types<T: TPSEAccelerator>
           }
         }));
       }
-      SpecificImportType::Music => {
+      SITPU::Other(SpecificImportType::Music) => {
         import_tasks.extend(files.into_iter().map(|import_result| {
           ImportTask::Basic {
             import_type: SIT::Music,
