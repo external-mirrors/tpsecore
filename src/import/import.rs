@@ -13,7 +13,7 @@ pub async fn import<T: TPSEAccelerator>
 {
   match import_inner(context, files, target).await {
     Err(err) => {
-      context.log(LogLevel::Error, &"Import failed: {err}");
+      context.log(LogLevel::Error, &format_args!("Import failed: {err}"));
       Err(err)
     }
     Ok(()) => {

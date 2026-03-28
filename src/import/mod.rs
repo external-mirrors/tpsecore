@@ -8,6 +8,7 @@ pub mod import_context_entry;
 mod asset;
 pub mod radiance;
 pub mod inter_stage_data;
+pub mod packjson;
 
 pub use import_types::*;
 pub use import_error::*;

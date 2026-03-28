@@ -46,9 +46,20 @@ pub struct ProcessedQueuedFile {
   pub path: PathBuf,
   pub binary: Arc<[u8]>
 }
+impl std::fmt::Debug for ProcessedQueuedFile {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("ProcessedQueuedFile")
+      .field("specific_kind", &self.specific_kind)
+      .field("kind", &self.kind)
+      .field("path", &self.path)
+      .field("binary", &format_args!("<{} bytes>", self.binary.len()))
+      .finish()
+  }
+}
 /// A distilled copy of an import type that's been rendered to a more specific form than the public API.
 #[derive(Debug, Hash, Eq, PartialEq, Copy, Clone, serde_with::SerializeDisplay)]
 pub enum SpecificImportType {
+  PackJson,
   TPSE,
   Skin(SkinType),
   OtherSkin(OtherSkinType),
@@ -59,6 +70,7 @@ pub enum SpecificImportType {
 impl Display for SpecificImportType {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
     match self {
+      SpecificImportType::PackJson => write!(f, "pack.json"),
       SpecificImportType::TPSE => write!(f, "tpse"),
       SpecificImportType::Skin(subtype) => write!(f, "{} skin", subtype),
       SpecificImportType::OtherSkin(subtype) => write!(f, "{} skin", subtype),
@@ -71,6 +83,7 @@ impl Display for SpecificImportType {
 
 /// A broad category of content based on a file extension
 pub enum FileType {
+  PackJson,
   Zip,
   TPSE,
   Image,
@@ -78,10 +91,10 @@ pub enum FileType {
   Audio
 }
 impl FileType {
-  pub fn from_mime(_string: &str) -> Option<FileType> {
-    todo!()
-  }
-  pub fn from_extension(filename: &Path) -> Option<FileType> {
+  pub fn from_path(filename: &Path) -> Option<FileType> {
+    if filename.file_name()?.to_str()? == "pack.json" {
+      return Some(Self::PackJson);
+    }
     let ext = Path::new(&filename).extension()?.to_str()?;
     match ext {
       "zip" => Some(FileType::Zip),
@@ -92,6 +105,19 @@ impl FileType {
       _ => return None
     }
   }
+}
+
+// --- POST `partition_import_groups` STAGE ---
+#[derive(Debug)]
+pub struct DecisionTree<'a> {
+  pub description: String,
+  pub options: Vec<DecisionTreeEntry<'a>>,
+}
+#[derive(Debug)]
+pub struct DecisionTreeEntry<'a> {
+  pub description: String,
+  pub files: Vec<&'a ProcessedQueuedFile>,
+  pub subtrees: Vec<DecisionTree<'a>>
 }
 
 // --- POST `reduce_types` STAGE ---

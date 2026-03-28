@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::collections::HashSet;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use std::path::PathBuf;
 use std::str::Utf8Error;
 use itertools::Itertools;
 use serde_json::Value;
@@ -36,6 +37,8 @@ pub enum ImportErrorType<T: TPSEAccelerator> {
   UnknownFileType,
   #[error("invalid TPSE: {0}")]
   InvalidTPSE(TPSELoadError),
+  #[error("invalid pack.json file at {0:?}: {1}")]
+  InvalidPackJson(PathBuf, serde_json::Error),
   #[error("files were nested too deeply")]
   TooMuchNesting,
   #[error("failed to load files: {0}")]

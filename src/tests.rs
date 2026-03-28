@@ -15,10 +15,12 @@ use crate::accel::ffmpeg_audio_handle::FFmpegAudioHandle;
 use crate::accel::software_texture_handle::SoftwareTextureHandle;
 use crate::accel::traits::{TPSEAccelerator, TextureHandle};
 use crate::import::inter_stage_data::QueuedFile;
+use crate::import::stages::{explore_files, partition_import_groups};
 use crate::import::{Asset, ImportContext, ImportContextEntry, ImportType, import};
 use crate::import::skin_splicer::Piece;
 use crate::log::{ImportLogger, LogLevel};
 use crate::render::{BoardElement, BoardMap, FrameInfo, RenderContext, RenderOptions, example_maps};
+use crate::tpse::TPSE;
 
 pub struct TestState {
   pub files: HashMap<String, TestAsset>
@@ -132,8 +134,63 @@ impl TPSEAccelerator for TestAccelerator {
   type Audio = FFmpegAudioHandle;
 }
 
+struct LogLogger;
+impl ImportLogger for LogLogger {
+  fn log(&self, level: LogLevel, _context: &[ImportContextEntry], msg: &dyn Display) {
+    log::info!("Import level={level:?} - {}", msg);
+  }
+}
+
 #[tokio::test]
-async fn import_tests() {
+async fn metadata_json_test() {
+  let state = setup();
+  let provider = CachedAssetProvider::default();
+  let mut ctx = ImportContext::<TestAccelerator>::new(&provider).with_logger(&LogLogger);
+  let mut tpse = TPSE::default();
+  let files = vec![
+    QueuedFile {
+      kind: ImportType::Automatic,
+      path: PathBuf::from("SHIMMERING_CYCLONE.zip"),
+      binary: state.get("yhf/SHIMMERING_CYCLONE.zip").content.clone()
+    },
+    QueuedFile {
+      kind: ImportType::Automatic,
+      path: PathBuf::from("Concrete.png"),
+      binary: state.get("yhf/Concrete.png").content.clone()
+    },
+    QueuedFile {
+      kind: ImportType::Automatic,
+      path: PathBuf::from("pack.json"),
+      binary: Arc::from(r#"
+{
+  "description": "a test pack offering two skin choices",
+  "import_groups": {
+    "alpha": [{ "pattern": "Concrete.png" }],
+    "beta": [{ "pattern": "SHIMMERING_CYCLONE.zip" }]
+  },
+  "import_sets": [
+    {
+      "title": "select skin",
+      "required": true,
+      "options": [
+        { "enables_groups": ["alpha"], "description": "a colorful composite worn with garbage blocks worn down to the rebar" },
+        { "enables_groups": ["beta"], "description": "a connected remake of 'In the blizzard'" }
+      ]
+    }
+  ]
+}
+      "#.as_bytes())
+    }
+  ];
+  // import(&mut ctx, files, &mut tpse).await.unwrap();
+  
+  let results = explore_files(files, &mut ctx).await.unwrap();
+  let results = partition_import_groups(&results, &mut ctx).unwrap();
+  panic!("done! {results:#?}");
+}
+
+#[tokio::test]
+async fn render_tests() {
   let state = setup();
 
   let start = Instant::now();
@@ -142,16 +199,10 @@ async fn import_tests() {
   provider.cache.insert(Asset::TetrioRSD, state.get("tetrio.opus.rsd").content.clone());
   log::info!("Preloaded assets ({:?})", start.elapsed());
 
-  struct LogLogger;
-  impl ImportLogger for LogLogger {
-    fn log(&self, level: LogLevel, context: &[ImportContextEntry], msg: &dyn Display) {
-      log::info!("Import level={level:?} - {}", msg);
-    }
-  }
   let mut ctx = ImportContext::<TestAccelerator>::new(&provider).with_logger(&LogLogger);
 
   log::info!("--- Test: render --- ({:?})", start.elapsed());
-  let tpse = import(&mut ctx, vec![
+  let files = vec![
     QueuedFile {
       kind: ImportType::Automatic,
       path: PathBuf::from("SHIMMERING_CYCLONE.zip"),
@@ -182,7 +233,9 @@ async fn import_tests() {
       path: PathBuf::from("this_will_be_ignored_but_will_trigger_default_values_to_populate.wav"),
       binary: include_bytes!("../assets/empty_2c.wav").to_vec().into()
     }
-  ]).await.unwrap();
+  ];
+  let mut tpse = TPSE::default();
+  import(&mut ctx, files, &mut tpse).await.unwrap();
   std::fs::write("./testdata/result/custom_sounds.wav", &tpse.custom_sounds.as_ref().unwrap().binary).unwrap();
   std::fs::write("./testdata/result/render_result.tpse", &serde_json::to_string(&tpse).unwrap()).unwrap();
 

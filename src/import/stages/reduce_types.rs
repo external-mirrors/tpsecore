@@ -30,6 +30,9 @@ pub fn reduce_types<T: TPSEAccelerator>
   for (key, mut files) in map {
     use SpecificImportType as SIT;
     match key {
+      SpecificImportType::PackJson => {
+        
+      },
       SpecificImportType::TPSE => {
         import_tasks.extend(files.into_iter().map(|import_result| {
           ImportTask::Basic {

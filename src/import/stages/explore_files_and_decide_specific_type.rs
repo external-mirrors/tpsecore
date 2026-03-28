@@ -49,6 +49,8 @@ pub async fn explore_files<T: TPSEAccelerator>
       }
     }
   }
+  // for later heuristic stability, sort files by path now
+  results.sort_by(|a, b| a.path.cmp(&b.path));
   Ok(results)
 }
 
@@ -67,11 +69,12 @@ pub async fn decide_specific_type<'c, T: TPSEAccelerator>
         let mut guard = ctx.enter_context(ImportContextEntry::WithFilekey { filekey });
         return Box::pin(decide_specific_type::<T>(filekey, path, bytes, &mut *guard)).await;
       }
-      let Some(guess) = FileType::from_extension(path) else {
+      let Some(guess) = FileType::from_path(path) else {
         return Err(ctx.wrap_error(ImportErrorType::UnknownFileType));
       };
       
       let guessed_type = match guess {
+        FileType::PackJson => SITZ::Other(SIT::PackJson),
         FileType::Zip => SITZ::Zip,
         FileType::TPSE => SITZ::Other(SIT::TPSE),
         FileType::Image => {
