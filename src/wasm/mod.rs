@@ -3,6 +3,7 @@ use std::sync::{Arc, LazyLock, Mutex};
 use crate::accel::traits::TPSEAccelerator;
 use crate::accel::wasm_asset_provider::WasmAssetProvider;
 use crate::accel::wasm_audio_handle::WasmAudioHandle;
+use crate::accel::wasm_decision_maker::WasmDecisionMaker;
 use crate::render::RenderContext;
 use crate::tpse::TPSE;
 use crate::wasm::wasm_tpse_provider::WasmTPSEProvider;
@@ -49,6 +50,8 @@ unsafe extern "C" {
 #[derive(Debug, Clone)]
 pub struct WasmGlobalAccelerator;
 impl TPSEAccelerator for WasmGlobalAccelerator {
+  type Decider = WasmDecisionMaker;
+  
   type Asset = WasmAssetProvider;
   
   #[cfg(all(not(feature = "software_texture"), not(feature = "wasm_rendering")))]

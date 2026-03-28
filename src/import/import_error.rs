@@ -7,7 +7,7 @@ use std::str::Utf8Error;
 use itertools::Itertools;
 use serde_json::Value;
 
-use crate::accel::traits::{AssetProvider, AudioHandle, TPSEAccelerator, TextureHandle};
+use crate::accel::traits::{AssetProvider, AudioHandle, ImportDecisionMaker, TPSEAccelerator, TextureHandle};
 use crate::import::{ImportContextEntry, SkinType};
 use crate::tpse::MigrationError;
 
@@ -39,6 +39,8 @@ pub enum ImportErrorType<T: TPSEAccelerator> {
   InvalidTPSE(TPSELoadError),
   #[error("invalid pack.json file at {0:?}: {1}")]
   InvalidPackJson(PathBuf, serde_json::Error),
+  #[error("import decision provider failed: {0}")]
+  DecisionFailure(<T::Decider as ImportDecisionMaker>::Error),
   #[error("files were nested too deeply")]
   TooMuchNesting,
   #[error("failed to load files: {0}")]
@@ -167,6 +169,9 @@ macro_rules! err {
   };
   (@transform (with $wrapper:expr) $expr:expr) => {
     ImportErrorType::InvalidTPSE($wrapper($expr.into()).into())
+  };
+  (@transform decisionfail $expr:expr) => {
+    ImportErrorType::DecisionFailure($expr.into())
   };
   (@transform assetfetchfail $expr:expr) => {
     ImportErrorType::AssetFetchFailed($expr.into())

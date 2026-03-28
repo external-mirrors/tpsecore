@@ -19,3 +19,7 @@ pub mod wasm_asset_provider;
 
 #[cfg(feature = "extra_software_decoders")]
 pub mod extra_software_decoders;
+
+pub mod default_decision_maker;
+#[cfg(target_arch = "wasm32")]
+pub mod wasm_decision_maker;

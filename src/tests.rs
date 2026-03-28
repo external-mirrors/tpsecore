@@ -11,12 +11,13 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 use simple_logger::SimpleLogger;
 use crate::accel::cached_asset_provider::CachedAssetProvider;
+use crate::accel::default_decision_maker::{DefaultDecisionMaker, DefaultDecisionMakerError};
 use crate::accel::ffmpeg_audio_handle::FFmpegAudioHandle;
 use crate::accel::software_texture_handle::SoftwareTextureHandle;
 use crate::accel::traits::{TPSEAccelerator, TextureHandle};
 use crate::import::inter_stage_data::{QueuedFile, SpecificImportTypeWithPackJsonAndUnknown};
 use crate::import::stages::{explore_files, partition_import_groups};
-use crate::import::{Asset, ImportContext, ImportContextEntry, ImportType, import};
+use crate::import::{Asset, ImportContext, ImportContextEntry, ImportErrorType, ImportType, import};
 use crate::import::skin_splicer::Piece;
 use crate::log::{ImportLogger, LogLevel};
 use crate::render::{BoardElement, BoardMap, FrameInfo, RenderContext, RenderOptions, example_maps};
@@ -129,6 +130,7 @@ fn ensure_test_assets_ok() {
 #[derive(Debug)]
 struct TestAccelerator;
 impl TPSEAccelerator for TestAccelerator {
+  type Decider = DefaultDecisionMaker;
   type Asset = CachedAssetProvider;
   type Texture = SoftwareTextureHandle;
   type Audio = FFmpegAudioHandle;
@@ -147,7 +149,7 @@ async fn metadata_json_test() {
   let mut provider = CachedAssetProvider::default();
   provider.cache.insert(Asset::TetrioJS, state.get("tetrio.js").content.clone());
   provider.cache.insert(Asset::TetrioRSD, state.get("tetrio.opus.rsd").content.clone());
-  let mut ctx = ImportContext::<TestAccelerator>::new(&provider).with_logger(&LogLogger);
+  let mut ctx = ImportContext::<TestAccelerator>::new(&provider, &DefaultDecisionMaker).with_logger(&LogLogger);
   let mut tpse = TPSE::default();
   let files = vec![
     QueuedFile {
@@ -218,9 +220,8 @@ async fn metadata_json_test() {
       "#.as_bytes())
     }
   ];
-  // import(&mut ctx, files, &mut tpse).await.unwrap();
   
-  let results = explore_files(files, &mut ctx).await.unwrap();
+  let results = explore_files(files.clone(), &mut ctx).await.unwrap();
   let results = partition_import_groups(&results, &mut ctx).unwrap();
   
   println!("{results:#?}");
@@ -242,6 +243,9 @@ async fn metadata_json_test() {
   let [txt] = &loose.files[..] else { panic!() };
   assert!(txt.path.ends_with("1st_read_changelog.txt"));
   assert_eq!(txt.specific_kind, SpecificImportTypeWithPackJsonAndUnknown::Unknown);
+  
+  let Err(res) = import(&mut ctx, files, &mut tpse).await else { panic!() };
+  assert!(matches!(res.error, ImportErrorType::DecisionFailure(DefaultDecisionMakerError)));
 }
 
 #[tokio::test]
@@ -254,7 +258,7 @@ async fn render_tests() {
   provider.cache.insert(Asset::TetrioRSD, state.get("tetrio.opus.rsd").content.clone());
   log::info!("Preloaded assets ({:?})", start.elapsed());
 
-  let mut ctx = ImportContext::<TestAccelerator>::new(&provider).with_logger(&LogLogger);
+  let mut ctx = ImportContext::<TestAccelerator>::new(&provider, &DefaultDecisionMaker).with_logger(&LogLogger);
 
   log::info!("--- Test: render --- ({:?})", start.elapsed());
   let files = vec![

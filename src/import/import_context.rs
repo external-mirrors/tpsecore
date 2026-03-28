@@ -11,6 +11,7 @@ use crate::log::{ImportLogger, LogLevel};
 /// Stores metadata and context associated with an import process, tracking the stack location
 /// (e.g. nested zip files) and base game asset provider.
 pub struct ImportContext<'ctx_deps, T: TPSEAccelerator> {
+  pub(in crate) decider: &'ctx_deps T::Decider,
   /// The asset provider providing `Asset`s for the importer
   asset_source: &'ctx_deps T::Asset,
   asset_cache: HashMap<Asset, Arc<[u8]>>,
@@ -30,11 +31,12 @@ pub struct ImportFlags {
 }
 
 impl<'ctx_deps, T: TPSEAccelerator> ImportContext<'ctx_deps, T> {
-  pub fn new(asset_source: &'ctx_deps T::Asset) -> ImportContext<'ctx_deps, T> {
+  pub fn new(asset_source: &'ctx_deps T::Asset, decider: &'ctx_deps T::Decider) -> ImportContext<'ctx_deps, T> {
     Self {
       depth_limit: 15,
       asset_cache: Default::default(),
       asset_source,
+      decider,
       context: Default::default(),
       flags: Default::default(),
       logger: None

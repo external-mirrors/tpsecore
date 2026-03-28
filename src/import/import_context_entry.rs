@@ -17,6 +17,10 @@ pub enum ImportContextEntry {
     #[serde_as(as = "DisplayFromStr")]
     as_type: ImportType
   },
+  #[error("with files `{files:?}`")]
+  WithFiles {
+    files: Vec<PathBuf>
+  },
   #[error("frame source {frame} from file `{file}`")]
   FrameSource {
     frame: usize,
@@ -53,6 +57,8 @@ pub enum ImportContextEntry {
   },
   #[error("exploring files")]
   ExploreFiles,
+  #[error("partitioning import groups")]
+  PartitionGroups,
   #[error("reducing types")]
   ReduceTypes
 }

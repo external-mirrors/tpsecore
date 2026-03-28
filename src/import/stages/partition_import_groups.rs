@@ -13,6 +13,13 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
   (results: &'a [ProcessedQueuedFile], ctx: &mut ImportContext<'_, T>)
    -> Result<Vec<DecisionTree<'a>>, ImportError<T>>
 {
+  let mut decision_tree_id_acc: u64 = 0;
+  let mut next_id = || {
+    let value = decision_tree_id_acc;
+    decision_tree_id_acc += 1;
+    value
+  };
+  
   let mut loose_files = vec![];
   let mut pack_json_roots = vec![];
   struct PackJsonRootEntry {
@@ -81,6 +88,7 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
   // if there's no pack.json files, return a default tree that imports all files
   if pack_json_roots.is_empty() {
     return Ok(vec![DecisionTree {
+      id: next_id(),
       description: "content pack".to_string(),
       options: vec![DecisionTreeOption {
         description: "all content pack data".to_string(),
@@ -222,9 +230,10 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
   let mut takeable_branches = branches.into_iter().map(|(i, tree)| (i, Some(tree))).collect::<Vec<_>>();
   for (i, is_rootlike) in rootlike_packs.into_iter().enumerate() {
     if !is_rootlike { continue }
-    rooted_trees.extend(grow_tree(results, &mut takeable_branches, i));
+    rooted_trees.extend(grow_tree(&mut next_id, results, &mut takeable_branches, i));
   }
   fn grow_tree<'a>(
+    next_id: &mut impl FnMut() -> u64,
     results: &'a [ProcessedQueuedFile],
     takeable_branches: &mut Vec<(usize, Option<FlatDecisionTree>)>,
     json_pack_roots_index: usize
@@ -241,6 +250,7 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
     taken.into_iter()
       .map(|tree| {
         DecisionTree {
+          id: next_id(),
           description: tree.description,
           options: tree.options.into_iter()
             .map(|option| {
@@ -248,7 +258,7 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
                 description: option.description,
                 files: option.files.into_iter().map(|i| &results[i]).collect(),
                 subtrees: option.subtrees.into_iter()
-                  .flat_map(|i| grow_tree(results, takeable_branches, i))
+                  .flat_map(|i| grow_tree(next_id, results, takeable_branches, i))
                   .collect()
               }
             })
@@ -266,6 +276,7 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
   // package any leftover loose files as its own tree
   if loose_files.len() > 0 {
     rooted_trees.push(DecisionTree {
+      id: next_id(),
       description: "content pack".to_string(),
       options: vec![DecisionTreeOption {
         description: "loose files".to_string(),

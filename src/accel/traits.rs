@@ -1,22 +1,29 @@
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::ops::Range;
 use std::sync::Arc;
 
 use crate::import::Asset;
+use crate::import::inter_stage_data::DecisionTree;
 
 /// A bundle of implementations of functionality used during the TPSE import and rendering process.
 /// These are constructed piecemeal out of things like software vs externally-accelerated-in-wasm
 /// image processing, for example.
 pub trait TPSEAccelerator: Debug {
+  type Decider: ImportDecisionMaker;
   type Asset: AssetProvider;
   type Texture: TextureHandle;
   type Audio: AudioHandle;
 }
 
-#[allow(async_fn_in_trait)] // maybe fix later
+pub trait ImportDecisionMaker: Debug {
+  type Error: std::error::Error + Send + Sync + 'static;
+  fn decide(&self, options: &[DecisionTree<'_>]) -> impl Future<Output = Result<HashMap<u64, usize>, Self::Error>>;
+}
+
 pub trait AssetProvider: Debug {
   type Error: std::error::Error + Send + Sync + 'static;
-  async fn provide(&self, asset: Asset) -> Result<Arc<[u8]>, Self::Error>;
+  fn provide(&self, asset: Asset) -> impl Future<Output = Result<Arc<[u8]>, Self::Error>>;
 }
 
 /// A handle to a texture.
@@ -30,9 +37,9 @@ pub trait TextureHandle: Clone + Debug {
   fn new_texture(width: u32, height: u32) -> Self;
   fn decode_texture(buffer: Arc<[u8]>) -> Result<Self, Self::Error>;
   
-  async fn width(&self) -> Result<u32, Self::Error>;
-  async fn height(&self) -> Result<u32, Self::Error>;
-  async fn encode_png(&self) -> Result<Arc<[u8]>, Self::Error>;
+  fn width(&self) -> impl Future<Output = Result<u32, Self::Error>>;
+  fn height(&self) -> impl Future<Output = Result<u32, Self::Error>>;
+  fn encode_png(&self) -> impl Future<Output = Result<Arc<[u8]>, Self::Error>>;
   /// Creates a standalone copy of the underlying texture
   fn create_copy(&self) -> Self;
   /// Creates a view of the texture. Modifying the view with in-place methods will modify the original texture.
@@ -54,14 +61,14 @@ pub trait AudioHandle: Clone + Debug {
   type Error: std::error::Error + Send + Sync + 'static;
   
   fn new_from_samples(samples: Arc<[f32]>) -> Self;
-  async fn decode_audio(buffer: Arc<[u8]>, mime_type: Option<&str>) -> Result<Self, Self::Error>;
+  fn decode_audio(buffer: Arc<[u8]>, mime_type: Option<&str>) -> impl Future<Output = Result<Self, Self::Error>>;
   
   fn slice(&self, slice: Range<usize>) -> Self;
   /// Returns the length of the buffer in samples.
   /// For multi-channel buffers, samples are interleaved and counted once per channel.
-  async fn length(&self) -> Result<usize, Self::Error>;
+  fn length(&self) -> impl Future<Output = Result<usize, Self::Error>>;
   /// Reads sample data from the audio's internal buffer into the provided buffer
-  async fn read(&self, accept: impl FnMut(f32)) -> Result<(), Self::Error>;
+  fn read(&self, accept: impl FnMut(f32)) -> impl Future<Output = Result<(), Self::Error>>;
   
-  async fn encode_ogg(chunks: &[Self]) -> Result<Arc<[u8]>, Self::Error>;
+  fn encode_ogg(chunks: &[Self]) -> impl Future<Output = Result<Arc<[u8]>, Self::Error>>;
 }

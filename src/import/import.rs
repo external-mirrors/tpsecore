@@ -1,8 +1,8 @@
-use crate::accel::traits::TPSEAccelerator;
+use crate::accel::traits::{ImportDecisionMaker, TPSEAccelerator};
 use crate::import::inter_stage_data::QueuedFile;
-use crate::import::{ImportContext, ImportContextEntry, ImportError, ImportErrorWrapHelper, ImportTaskContextEntry, err};
+use crate::import::{ImportContext, ImportContextEntry, ImportError, ImportErrorType, ImportErrorWrapHelper, ImportTaskContextEntry, err};
 
-use crate::import::stages::{execute_task, explore_files, reduce_types};
+use crate::import::stages::{execute_task, explore_files, partition_import_groups, reduce_types};
 use crate::log::LogLevel;
 use crate::tpse::tpse_key::{AllKnownKeys, merge};
 
@@ -28,7 +28,22 @@ async fn import_inner<T: TPSEAccelerator>
   -> Result<(), ImportError<T>>
 {
   let results = explore_files(files, &mut *context.enter_context(ImportContextEntry::ExploreFiles)).await?;
-  let tasks = reduce_types(&results, &mut *context.enter_context(ImportContextEntry::ReduceTypes))?;
+  
+  let mut guard = context.enter_context(ImportContextEntry::PartitionGroups);
+  let options = partition_import_groups(&results, &mut *guard)?;
+  let decisions = guard.decider.decide(&options).await.wrap(err!(guard, decisionfail))?;
+  drop(guard);
+  
+  let mut decided_files = vec![];
+  for tree in &options {
+    tree.visit(&mut |o| {
+      if let Some(decision) = decisions.get(&o.id) {
+        decided_files.extend(o.options[*decision].files.iter().map(|f| (*f).clone()));
+      }
+    });
+  };
+  
+  let tasks = reduce_types(&decided_files, &mut *context.enter_context(ImportContextEntry::ReduceTypes))?;
 
   for task in tasks {
     let mut guard = context.enter_context(ImportTaskContextEntry::from(&task).into());

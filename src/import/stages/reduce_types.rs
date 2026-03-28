@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use crate::accel::traits::TPSEAccelerator;
 use crate::import::inter_stage_data::{AnimatedSkinFrame, ImportTask, ProcessedQueuedFile, SoundEffect, SpecificImportType, SpecificImportTypeWithPackJsonAndUnknown};
-use crate::import::{ImportContext, ImportError, ImportErrorType, SkinType};
+use crate::import::{ImportContext, ImportContextEntry, ImportError, ImportErrorType, SkinType};
 
 /// Collates multiple import results into a list of import tasks
 pub fn reduce_types<T: TPSEAccelerator>
@@ -28,11 +28,16 @@ pub fn reduce_types<T: TPSEAccelerator>
   let mut ambiguous_ghost_skin_errors: HashSet<SkinType> = HashSet::new();
 
   for (key, mut files) in map {
+    let ctx = ctx.enter_context(ImportContextEntry::WithFiles {
+      files: files.iter().map(|f| f.path.clone()).collect()
+    });
     use SpecificImportTypeWithPackJsonAndUnknown as SITPU;
     use SpecificImportType as SIT;
     match key {
-      SITPU::Unknown => todo!("remove"),
-      SITPU::PackJson => todo!("remove"),
+      SITPU::Unknown => {
+        return Err(ctx.wrap_error(ImportErrorType::UnknownFileType));
+      },
+      SITPU::PackJson => unreachable!("PackJson values shouldn't propagate this far"),
       SITPU::Other(SpecificImportType::TPSE) => {
         import_tasks.extend(files.into_iter().map(|import_result| {
           ImportTask::Basic {

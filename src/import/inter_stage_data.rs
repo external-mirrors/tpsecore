@@ -14,6 +14,7 @@ use crate::import::{BackgroundType, ImportType, OtherSkinType, SkinType};
 // --- PRE-IMPORT STAGE ---
 
 /// The raw data fed into the import process
+#[derive(Clone)]
 pub struct QueuedFile {
   /// An externally defined import type. For most implementations, this is probably hardcoded as Automatic.
   pub kind: ImportType,
@@ -106,8 +107,19 @@ impl FileType {
 /// adds a number of files to the import process and may expose further decisions.
 #[derive(Debug)]
 pub struct DecisionTree<'a> {
+  pub id: u64,
   pub description: String,
   pub options: Vec<DecisionTreeOption<'a>>,
+}
+impl DecisionTree<'_> {
+  pub fn visit(&self, acceptor: &mut impl FnMut(&Self)) {
+    acceptor(&self);
+    for option in &self.options {
+      for subtree in &option.subtrees {
+        subtree.visit(acceptor);
+      }
+    }
+  }
 }
 /// A DecisionTreeOption is one possible choice that can be made when deciding a DecisionTree's choice
 #[derive(Debug)]
