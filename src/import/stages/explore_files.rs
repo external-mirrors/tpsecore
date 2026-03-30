@@ -1,11 +1,13 @@
+use std::array::from_fn;
 use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use itertools::Itertools;
 use zip::ZipArchive;
 
 use crate::accel::traits::{TPSEAccelerator, TextureHandle};
 use crate::import::inter_stage_data::ImportFile;
-use crate::import::{Asset, BackgroundType, ImportContext, ImportContextEntry, ImportError, ImportErrorType, ImportErrorWrapHelper, ImportType, SkinType, TypeStage1, TypeStage2, err};
+use crate::import::{Asset, BackgroundType, ImportContext, ImportContextEntry, ImportError, ImportErrorType, ImportErrorWrapHelper, ImportType, TextureGuess, TextureGuessKind, TypeStage1, TypeStage2, err, guess_texture_format};
 use crate::import::radiance::parse_radiance_sound_definition;
 use crate::log::LogLevel;
 
@@ -84,15 +86,32 @@ async fn decide_specific_type<'c, T: TPSEAccelerator>
           let width = image.width().await.wrap(err!(ctx, tex))?;
           let height: u32 = image.height().await.wrap(err!(ctx, tex))?;
           ctx.log(LogLevel::Info, format_args!("Image file is {width}x{height}"));
-          if let Some(format) = SkinType::guess_format(path, width, height, &ctx) {
-            ctx.log(LogLevel::Info, format_args!("Based on image dimensions and extension, inferred texture of type {format}"));
-            TypeStage1::Skin { subtype: format }
-          } else {
-            ctx.log(LogLevel::Info, "No known texture uniquely determineable from image dimensions and extension, assuming texture is a custom background");
-            match path.extension().and_then(|ext| ext.to_str()) {
-              Some(str) if str == "gif" => TypeStage1::Background { subtype: BackgroundType::Video },
-              _ => TypeStage1::Background { subtype: BackgroundType::Image }
+          match &guess_texture_format(path, width, height, &ctx)[..] {
+            [] => {
+              ctx.log(LogLevel::Info, "No known texture determineable from image dimensions and extension, assuming texture is a custom background");
+              match path.extension().and_then(|ext| ext.to_str()) {
+                Some(str) if str == "gif" => TypeStage1::Background { subtype: BackgroundType::Video },
+                _ => TypeStage1::Background { subtype: BackgroundType::Image }
+              }
             }
+            [TextureGuess { kind: TextureGuessKind::Skin(single_format), .. }] => {
+              ctx.log(LogLevel::Info, format_args!("Based on image dimensions and extension, uniquely inferred texture of type {single_format}"));
+              TypeStage1::Skin { subtype: *single_format }
+            },
+            [TextureGuess { kind: TextureGuessKind::Other(single_format), .. }] => {
+              ctx.log(LogLevel::Info, format_args!("Based on image dimensions and extension, uniquely inferred texture of type {single_format}"));
+              TypeStage1::OtherSkin { subtype: *single_format }
+            },
+            [first_guess, other_guesses@..] => {
+              ctx.log(LogLevel::Info, format_args!(
+                "Multiple possible formats based on image dimensions and extension; specific type will be inferred later during type reduction from possibilities: {}",
+                [*first_guess].iter().chain(other_guesses.iter()).map(|x| &x.kind).format(", ")
+              ));
+              TypeStage1::WeakTexture {
+                first_guess: *first_guess,
+                other_guesses: from_fn(|i| other_guesses.get(i).copied())
+              }
+            },
           }
         },
         FileType::Video => TypeStage1::Background { subtype: BackgroundType::Video },
@@ -107,8 +126,8 @@ async fn decide_specific_type<'c, T: TPSEAccelerator>
               TypeStage1::SoundEffects
             },
             None => {
-              ctx.log(LogLevel::Info, "Audio filename corresponds to no known TETR.IO sound effect. Assuming audio file is custom msuic.");
-              TypeStage1::Music
+              ctx.log(LogLevel::Info, "Audio filename corresponds to no known TETR.IO sound effect. Specific type will be inferred later during type reduction.");
+              TypeStage1::WeakAudio
             }
           }
         }

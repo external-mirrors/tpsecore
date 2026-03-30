@@ -16,6 +16,10 @@ impl TextureHandle for NullTextureHandle {
   fn decode_texture(_buffer: Arc<[u8]>) -> Result<Self, Self::Error> {
     Ok(NullTextureHandle)
   }
+  
+  async fn fraction_opaque(&self) -> Result<f32, Self::Error> {
+    Ok(1.0)
+  }
 
   async fn width(&self) -> Result<u32, Self::Error> {
     Ok(1)

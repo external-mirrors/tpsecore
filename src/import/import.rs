@@ -46,7 +46,7 @@ async fn import_inner<T: TPSEAccelerator>
     });
   };
   
-  let tasks = reduce_types(&decided_files, &mut *context.enter_context(ImportContextEntry::ReduceTypes))?;
+  let tasks = reduce_types(decided_files, &mut *context.enter_context(ImportContextEntry::ReduceTypes)).await?;
 
   for task in tasks {
     let mut guard = context.enter_context(ImportTaskContextEntry::from(&task).into());

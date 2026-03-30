@@ -1,9 +1,11 @@
 use std::fmt::Display;
 use std::path::Path;
 
+use crate::import::guess_texture_format::{MAX_POSSIBLE_TEXTURE_GUESSES, TextureGuess};
 use crate::import::{AnimatedOptions, BackgroundType, SkinType, OtherSkinType};
 use crate::import::SkinType::*;
 use crate::import::OtherSkinType::*;
+use itertools::Itertools;
 use subenum::subenum;
 
 /// An ImportType is metadata describing how a single file should be imported.
@@ -12,18 +14,32 @@ use subenum::subenum;
 /// - [TypeStage1]: returned from decide_specific_type (-Automatic). This is also where filekey parsing happens.
 /// - [TypeStage2]: returned from explore_files (-Zip)
 /// - [TypeStage3]: returned from partition_import_groups, wrapped in DecisionTree (-PackJson)
-/// - [TypeStage4]: returned from reduce_types, wrapped in ImportTask (-Unknown -SoundEffects)
+/// - [TypeStage4]: returned from reduce_types, wrapped in ImportTask (-Unknown -SoundEffects -WeakTexture)
 #[subenum(TypeStage1, TypeStage2, TypeStage3, TypeStage4)]
-#[derive(Debug, Hash, Eq, PartialEq, Copy, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Hash, Eq, PartialEq, Copy, Clone, Ord, PartialOrd, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "type", rename_all="snake_case")]
 pub enum ImportType {
   Automatic,
+  
   #[subenum(TypeStage1)]
   Zip,
+  
   #[subenum(TypeStage1, TypeStage2)]
   PackJson,
+  
+  #[subenum(TypeStage1, TypeStage2, TypeStage3)]
+  WeakTexture {
+    first_guess: TextureGuess,
+    // done this way to retain Copy
+    other_guesses: [Option<TextureGuess>; MAX_POSSIBLE_TEXTURE_GUESSES-1]
+  },
+  #[subenum(TypeStage1, TypeStage2, TypeStage3)]
+  WeakAudio,
   #[subenum(TypeStage1, TypeStage2, TypeStage3)]
   Unknown,
+  #[subenum(TypeStage1, TypeStage2, TypeStage3)]
+  Ignored,
+  
   #[subenum(TypeStage1, TypeStage2, TypeStage3, TypeStage4)]
   TPSE,
   #[subenum(TypeStage1, TypeStage2, TypeStage3, TypeStage4)]
@@ -53,6 +69,12 @@ impl Display for ImportType {
     match self {
       Self::Automatic => write!(f, "automatic"),
       Self::PackJson => write!(f, "pack.json"),
+      Self::WeakTexture { first_guess, other_guesses } => {
+        let fmt = [first_guess].into_iter().chain(other_guesses.iter().flatten()).map(|x| x.kind).format(", ");
+        write!(f, "weak texture guess (possibilities: {fmt})")
+      },
+      Self::WeakAudio => write!(f, "weak audio guess"),
+      Self::Ignored => write!(f, "ignored"),
       Self::Unknown => write!(f, "unknown"),
       Self::TPSE => write!(f, "tpse"),
       Self::Zip => write!(f, "zip"),
@@ -61,7 +83,7 @@ impl Display for ImportType {
       Self::SoundEffects => write!(f, "sound effect"),
       Self::Background { subtype: BackgroundType::Video } => write!(f, "video background"),
       Self::Background { subtype: BackgroundType::Image } => write!(f, "background"),
-      Self::Music => write!(f, "music")
+      Self::Music => write!(f, "music"),
     }
   }
 }
@@ -86,10 +108,12 @@ impl Display for TypeStage3 {
 const POSSIBILITIES: [fn(AnimatedOptions) -> TypeStage1; 54] = {
   use TypeStage1::*;
   [
-    |_opts| Unknown,
+    // |_opts| Unknown, // no parsing unknown keys, that would be weird
+    // also excluded: weak texture and audio
     |_opts| PackJson,
     |_opts| TPSE,
     |_opts| Zip,
+    |_opts| Ignored,
     |_opts| Skin { subtype: Tetrio61 },
     |_opts| Skin { subtype: Tetrio61Ghost },
     |_opts| Skin { subtype: Tetrio61Connected },
@@ -155,6 +179,11 @@ impl TypeStage1 {
       Self::TPSE => "__tpse",
       // zip files are primarily identified through their extension of `.zip`
       Self::Zip => "__zip",
+      // no reason to use this directly
+      Self::WeakTexture { .. } => "__weak_texture",
+      // no reason to use this directly
+      Self::WeakAudio => "__weak_audio",
+      Self::Ignored => "_import_ignored",
       Self::Skin { subtype: Tetrio61 } => "_unconnected_minos",
       Self::Skin { subtype: Tetrio61Ghost } => "_unconnected_ghost",
       Self::Skin { subtype: Tetrio61Connected } => "_connected_minos",
@@ -212,7 +241,7 @@ impl TypeStage1 {
     }
   }
 
-  /// Creates an `TypeStage1` by parsing filekeys from the given filename
+  /// Creates a `TypeStage1` by parsing filekeys from the given filename
   /// Note that longer filekeys win - e.g. `_old_tetrio_svg` beats `_old_tetrio`.
   pub fn parse_filekey(filename: &Path) -> Option<Self> {
     let filename = filename.to_string_lossy(); // get that filekey no matter how mangled the filename is

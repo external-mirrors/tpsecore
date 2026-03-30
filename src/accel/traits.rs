@@ -40,6 +40,8 @@ pub trait TextureHandle: Clone + Debug {
   fn width(&self) -> impl Future<Output = Result<u32, Self::Error>>;
   fn height(&self) -> impl Future<Output = Result<u32, Self::Error>>;
   fn encode_png(&self) -> impl Future<Output = Result<Arc<[u8]>, Self::Error>>;
+  fn fraction_opaque(&self) -> impl Future<Output = Result<f32, Self::Error>>;
+  
   /// Creates a standalone copy of the underlying texture
   fn create_copy(&self) -> Self;
   /// Creates a view of the texture. Modifying the view with in-place methods will modify the original texture.

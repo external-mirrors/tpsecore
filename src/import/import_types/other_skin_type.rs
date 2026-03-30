@@ -1,7 +1,7 @@
 use std::fmt::{Display, Formatter};
 use crate::tpse::{File, TPSE};
 
-#[derive(Debug, Hash, Eq, PartialEq, Copy, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Hash, Eq, PartialEq, Copy, Clone, Ord, PartialOrd, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "subtype", rename_all = "snake_case")]
 pub enum OtherSkinType {
   Board,
@@ -41,6 +41,15 @@ pub enum OtherSkinType {
 }
 
 impl OtherSkinType {
+  pub fn canonical_texture_size(&self) -> Option<[u32; 2]> {
+    match self {
+      Self::Board => Some([512, 512]),
+      Self::Queue => Some([512, 512]),
+      Self::Grid => Some([1024, 1024]),
+      _rest => None // todo: implement more
+    }
+  }
+  
   pub fn tpse_field<'a>(&'_ self, tpse: &'a mut TPSE) -> &'a mut Option<File> {
     match self {
       Self::Board => &mut tpse.board,

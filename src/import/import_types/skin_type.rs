@@ -1,94 +1,55 @@
-use std::ops::Sub;
-use std::path::Path;
-use crate::accel::traits::TPSEAccelerator;
-use crate::import::{AnimatedOptions, ImportContext};
-use crate::log::LogLevel;
+use crate::import::AnimatedOptions;
 
-#[derive(Debug, Hash, Eq, PartialEq, Copy, Clone, serde::Serialize, serde::Deserialize, thiserror::Error)]
+#[derive(Debug, Hash, Eq, PartialEq, Copy, Clone, Ord, PartialOrd, serde::Serialize, serde::Deserialize, strum::Display)]
 #[serde(tag = "subtype", rename_all = "snake_case")]
 pub enum SkinType {
   // The new tetrio formats used after TETR.IO v6.1.0
   // all of these also have double resolution formats available at `{tetrio,connected}.2x.png`
   /// https://tetr.io/res/skins/minos/tetrio.png
-  #[error("tetrio v6.1 unconnected minos")]
+  #[strum(to_string = "tetrio v6.1 unconnected minos")]
   Tetrio61,
   /// https://tetr.io/res/skins/ghost/tetrio.png
-  #[error("tetrio v6.1 unconnected ghost")]
+  #[strum(to_string = "tetrio v6.1 unconnected ghost")]
   Tetrio61Ghost,
   // https://tetr.io/res/skins/minos/connected.png
-  #[error("tetrio v6.1 connected minos")]
+  #[strum(to_string = "tetrio v6.1 connected minos")]
   Tetrio61Connected,
   /// https://tetr.io/res/skins/ghost/connected.png
-  #[error("tetrio v6.1 connected ghost")]
+  #[strum(to_string = "tetrio v6.1 connected ghost")]
   Tetrio61ConnectedGhost,
-  #[error("tetrio v6.1 connected animated {opts}")]
+  #[strum(to_string = "tetrio v6.1 connected animated {opts}")]
   Tetrio61ConnectedAnimated { #[serde(flatten)] opts: AnimatedOptions },
-  #[error("tetrio v6.1 connected ghost animated {opts}")]
+  #[strum(to_string = "tetrio v6.1 connected ghost animated {opts}")]
   Tetrio61ConnectedGhostAnimated { #[serde(flatten)] opts: AnimatedOptions },
 
   // The old tetrio format used before TETR.IO v6.1.0
-  #[error("old tetrio svg")]
+  #[strum(to_string = "old tetrio svg")]
   TetrioSVG,
-  #[error("old tetrio raster")]
+  #[strum(to_string = "old tetrio raster")]
   TetrioRaster,
-  #[error("old tetrio animated {opts}")]
+  #[strum(to_string = "old tetrio animated {opts}")]
   TetrioAnimated { #[serde(flatten)] opts: AnimatedOptions },
 
   // The format used by jstris
-  #[error("jstris")]
+  #[strum(to_string = "jstris")]
   JstrisRaster,
-  #[error("jstris animated")]
+  #[strum(to_string = "jstris animated")]
   JstrisAnimated { #[serde(flatten)] opts: AnimatedOptions },
 
   // The connected format used by the jstris connected textures userscript
   // e.g. https://docs.google.com/document/d/1JCXhdDI7E1yvVaedr6b1gudXty8G7uRLWuyuZPQIGcs
-  #[error("jstris connected")]
+  #[strum(to_string = "jstris connected")]
   JstrisConnected
 }
 
 impl SkinType {
-  pub fn guess_format<T: TPSEAccelerator>(filename: &Path, width: u32, height: u32, ctx: &ImportContext<T>) -> Option<SkinType> {
-    let ext = Path::new(&filename).extension().and_then(|x| x.to_str());
-    let opts = AnimatedOptions::from(filename);
-    use SkinType::*;
-    let likely_animated = ext == Some("gif") || opts.has_fields();
-    let ratio = |target: f64| (width as f64 / height as f64).sub(target).abs() < 0.1;
-    let result = match (ext, width, height, likely_animated) {
-      // format guessing intentionally doesn't account for 2x sized textures
-      // as they cause multiple ambiguities due to many textures being those exact ratios
-      (          _,1024,1024, true) => Some(Tetrio61ConnectedAnimated { opts }),
-      (          _,1024,1024,    _) => Some(Tetrio61Connected),
-      (          _, 512, 512, true) => Some(Tetrio61ConnectedGhostAnimated { opts }),
-      (          _, 512, 512,    _) => Some(Tetrio61ConnectedGhost),
-      (          _, 256, 256,    _) => Some(Tetrio61),
-      (          _, 128, 128,    _) => Some(Tetrio61Ghost),
-      (          _, 372,  30, true) => Some(TetrioAnimated { opts }),
-      (Some("svg"), 372,  30,    _) => Some(TetrioSVG),
-      (          _, 372,  30,    _) => Some(TetrioRaster),
-      (          _, 288, 640,    _) => Some(JstrisConnected), // 32px size
-      (          _, 216, 480,    _) => Some(JstrisConnected), // 24px size
-      (          _,   _,   _, true) if ratio(12.4) => Some(TetrioAnimated { opts }),
-      (Some("svg"),   _,   _,    _) if ratio(12.4) => Some(TetrioSVG),
-      (          _,   _,   _,    _) if ratio(12.4) => Some(TetrioRaster),
-      (          _,   _,   _, true) if ratio(9.0) => Some(JstrisAnimated { opts }),
-      (          _,   _,   _,    _) if ratio(9.0) => Some(JstrisConnected),
-      (          _,   _,   _,    _) if ratio(9.0/20.0) => Some(JstrisConnected),
-      _ => None
-    };
-    ctx.log(LogLevel::Debug, format_args!(
-      "Guessing format for ext={:?} w={} h={} anim={}: {:?}",
-      ext, width, height, likely_animated, result
-    ));
-    result
-  }
-
   /// Returns the native size of the texture as a combination of the default size of the individual
   /// blocks (u32) and the size ratio of the canvas relative to those blocks (f64, f64). To get the
   /// actual size, just multiply them.
   pub fn get_native_texture_size(&self) -> (f64, f64, u32) {
     match self {
       SkinType::Tetrio61                              => ( 256.0/48.0,  256.0/48.0, 48),
-      SkinType::Tetrio61Ghost                         => ( 128.0/48.0,  256.0/48.0, 48),
+      SkinType::Tetrio61Ghost                         => ( 128.0/48.0,  128.0/48.0, 48),
       SkinType::Tetrio61Connected                     => (1024.0/48.0, 1024.0/48.0, 48),
       SkinType::Tetrio61ConnectedGhost                => ( 512.0/48.0,  512.0/48.0, 48),
       SkinType::Tetrio61ConnectedAnimated { .. }      => (1024.0/48.0, 1024.0/48.0, 48),
@@ -99,6 +60,23 @@ impl SkinType {
       SkinType::JstrisRaster                          => ( 9.0, 1.0, 30),
       SkinType::JstrisAnimated { .. }                 => ( 9.0, 1.0, 30),
       SkinType::JstrisConnected                       => ( 9.0, 20.0, 32)
+    }
+  }
+  
+  pub fn canonical_tex_size(&self) -> Option<[u32; 2]> {
+    match self {
+      SkinType::Tetrio61                              => Some([ 256,  256]),
+      SkinType::Tetrio61Ghost                         => Some([ 128,  256]),
+      SkinType::Tetrio61Connected                     => Some([1024, 1024]),
+      SkinType::Tetrio61ConnectedGhost                => Some([ 512,  512]),
+      SkinType::Tetrio61ConnectedAnimated { .. }      => Some([1024, 1024]),
+      SkinType::Tetrio61ConnectedGhostAnimated { .. } => Some([ 512,  512]),
+      SkinType::TetrioSVG                             => Some([372, 30]),
+      SkinType::TetrioRaster                          => Some([372, 30]),
+      SkinType::TetrioAnimated { .. }                 => Some([372, 30]),
+      SkinType::JstrisRaster                          => None,
+      SkinType::JstrisAnimated { .. }                 => None,
+      SkinType::JstrisConnected                       => None
     }
   }
 
@@ -137,3 +115,5 @@ impl SkinType {
     }
   }
 }
+
+

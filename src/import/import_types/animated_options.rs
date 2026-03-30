@@ -3,7 +3,7 @@ use std::path::Path;
 use std::sync::LazyLock;
 use regex::Regex;
 
-#[derive(Default, Debug, Hash, Eq, PartialEq, Copy, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Debug, Hash, Eq, PartialEq, Copy, Clone, Ord, PartialOrd, serde::Serialize, serde::Deserialize)]
 pub struct AnimatedOptions {
   /// A frame rate to override with. See `AnimMeta#delay`
   pub delay: Option<u32>,

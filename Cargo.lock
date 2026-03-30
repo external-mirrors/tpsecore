@@ -1894,6 +1894,7 @@ name = "tpsecore"
 version = "0.1.1"
 dependencies = [
  "ab_glyph",
+ "arrayvec",
  "async-channel",
  "base64",
  "bytemuck",

@@ -454,6 +454,34 @@ const wasm = await WebAssembly.instantiateStreaming(fetch(tpsecore_url), {
         view.setBigUint64(code_ptr, BigInt(ptr), true);
       }
     },
+    async fraction_opaque(id, code_ptr) {
+      let view = new DataView(tpsecore.memory.buffer);
+      let value = null;
+      let result = getTexture(id, ({ texture, slice: [x, y, w, h] }) => {
+        console.log("wasm accelerator> fraction_opaque", { id });
+        
+        // todo: ensure texture is a canvas so we can extract data directly rather than
+        // always making an intermediate copy.
+        let canvas = new OffscreenCanvas(w, h);
+        let ctx = canvas.getContext('2d');
+        ctx.drawImage(texture, x, y, w, h, 0, 0, w, h);
+        let data = ctx.getImageData(0, 0, w, h).data;
+        let opaque = 0;
+        for (let i = 0; i < data.length; i += 4)
+          if (data[i + 3] > 0)
+            opaque += 1;
+        
+        view.setBigUint64(code_ptr, BigInt(0), true);
+        value = opaque / (w * h);
+      });
+      if (result?.error) {
+        let buffer = new TextEncoder().encode(result.error);
+        let ptr = tpsecore.allocate_buffer(buffer.length);
+        new Uint8Array(tpsecore.memory.buffer, ptr, buffer.length).set(buffer);
+        view.setBigUint64(code_ptr, BigInt(ptr), true);
+      }
+      return value;
+    },
     async encode_png(id, wake_id) {
       try {
         let source_texture = getTexture(id, tex => tex);

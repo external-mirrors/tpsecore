@@ -249,6 +249,30 @@ async fn metadata_json_test() {
 }
 
 #[tokio::test]
+async fn sfx_ignore_heuristic() {
+  let state = setup();
+  
+  let mut provider = CachedAssetProvider::default();
+  provider.cache.insert(Asset::TetrioJS, state.get("tetrio.js").content.clone());
+  provider.cache.insert(Asset::TetrioRSD, state.get("tetrio.opus.rsd").content.clone());
+  let mut ctx = ImportContext::<TestAccelerator>::new(&provider, &DefaultDecisionMaker).with_logger(&LogLogger);
+  let files = vec![ImportFile {
+    import_type: ImportType::Automatic,
+    path: PathBuf::from("sfx/BejeweledSR.zip"),
+    binary: state.get("yhf/BejeweledSR.zip").content.clone()
+  }];
+  
+  let mut tpse = TPSE::default();
+  import(&mut ctx, files, &mut tpse).await.unwrap();
+  
+  tpse.custom_sound_atlas.unwrap();
+  std::fs::write(
+    "./testdata/result/custom_sounds_bejeweled_sr.wav",
+    &tpse.custom_sounds.as_ref().unwrap().binary
+  ).unwrap();
+}
+
+#[tokio::test]
 async fn render_tests() {
   let state = setup();
 

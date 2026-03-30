@@ -7,7 +7,7 @@ use serde_json::json;
 
 use crate::accel::wasm_asset_provider::WasmAssetProvider;
 use crate::accel::wasm_decision_maker::WasmDecisionMaker;
-use crate::import::inter_stage_data::QueuedFile;
+use crate::import::inter_stage_data::ImportFile;
 use crate::import::{ImportContext, ImportContextEntry, ImportType, TPSEProviderError, import};
 use crate::log::{ImportLogger, LogLevel};
 use crate::tpse::{DynamicTPSE, MigrationOptions, TPSE, migrate};
@@ -147,8 +147,8 @@ pub extern "C" fn queue_import(tpse_id: u32) -> usize {
     TPSEStatus::Busy => return 3 // tpse already running, can't get a handle to it
   };
   let files = tpse.staged_files.iter()
-    .map(|file| QueuedFile {
-      kind: ImportType::Automatic,
+    .map(|file| ImportFile {
+      import_type: ImportType::Automatic,
       path: PathBuf::from(String::from_utf8_lossy(&file.filename).as_ref()),
       binary: file.content.clone()
     })

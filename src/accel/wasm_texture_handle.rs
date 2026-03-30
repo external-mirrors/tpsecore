@@ -88,6 +88,12 @@ unsafe extern "C" {
   /// infrastructure. The buffer will be deallocated internally, manual deallocation is not required.
   unsafe fn fetch_dimensions(id: u64, out_code: *mut u64, out_width: *mut u32, out_height: *mut u32);
   
+  /// Calculates what fraction of the image is made up of pixels with opacity > 0
+  ///
+  /// If out_code is nonzero, indicates a pointer containing an error that should be retrieved from the TPSE buffer 
+  /// infrastructure. The buffer will be deallocated internally, manual deallocation is not required.
+  unsafe fn fraction_opaque(id: u64, out_code: *mut u64) -> f32;
+  
   /// Encodes the given handle into a buffer managed by the TPSE buffer infastructure
   ///
   /// The waker takes two arguments: a status code (0=ok, 1=error) and a pointer to a buffer containing either the
@@ -214,6 +220,24 @@ impl TextureHandle for WasmTextureHandle {
         Err(WasmAcceleratorError(message))
       }
     }
+  }
+  
+  async fn fraction_opaque(&self) -> Result<f32, Self::Error> {
+    let flush_complete = STATE.lock().unwrap().flush_command_buffer();
+    if let Some(f) = flush_complete { f.await.expect("should never be dropped"); } // STATE lock dropped at this point
+    
+    let mut code: u64 = 0;
+    let fraction = unsafe { fraction_opaque(self.0.id, &mut code) };
+    
+    if code != 0 {
+      let mut state = BUFFER_STATE.lock().unwrap();
+      let buf_id = state.lookup_buffer(code as *mut u8).unwrap();
+      let data = state.buffers.remove(&buf_id).unwrap();
+      let message = String::from_utf8_lossy(&*data).into_owned();
+      return Err(WasmAcceleratorError(message));
+    }
+    
+    Ok(fraction)
   }
 
   fn create_copy(&self) -> Self {

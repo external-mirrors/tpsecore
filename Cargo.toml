@@ -41,6 +41,7 @@ zip = { version = "2.2.2", default-features = false, features = ["deflate"] } # 
 itertools = "0.14.0"
 slotmap = "1.1.1"
 subenum = "1.1.3"
+arrayvec = "0.7.6"
 
 # Other utilities
 thiserror = "2.0.11"

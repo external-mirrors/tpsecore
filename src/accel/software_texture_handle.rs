@@ -120,6 +120,19 @@ impl TextureHandle for SoftwareTextureHandle {
       }
     })
   }
+  async fn fraction_opaque(&self) -> Result<f32, Self::Error> {
+    Ok(self.get(|i| {
+      let mut opaque = 0;
+      for x in 0..i.width() {
+        for y in 0..i.height() {
+          if i.get_pixel(x, y).0[3] > 0 {
+            opaque += 1;
+          }
+        }
+      }
+      opaque as f32 / (i.width() * i.height()) as f32
+    }))
+  }
   async fn width(&self) -> Result<u32, Self::Error> {
     Ok(self.get(|x| x.width()))
   }
