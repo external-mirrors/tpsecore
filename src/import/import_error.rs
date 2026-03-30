@@ -33,12 +33,16 @@ impl<T: TPSEAccelerator> ImportError<T> {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ImportErrorType<T: TPSEAccelerator> {
-  #[error("unknown file type")]
+  #[error("unable to determine import type for file. No explicit type, filekey, or pack.json override present and no guess could be made.")]
   UnknownFileType,
   #[error("invalid TPSE: {0}")]
   InvalidTPSE(TPSELoadError),
   #[error("invalid pack.json file at {0:?}: {1}")]
   InvalidPackJson(PathBuf, serde_json::Error),
+  #[error("pack.json import set #{0} references unknown group '{1}'")]
+  InvalidPackJsonGroup(usize, String),
+  #[error("pack.json group '{0}' attempts to override type of another pack.json file. The pack.json file type cannot be overriden.")]
+  CannotOverridePackJson(String),
   #[error("import decision provider failed: {0}")]
   DecisionFailure(<T::Decider as ImportDecisionMaker>::Error),
   #[error("files were nested too deeply")]
@@ -168,31 +172,31 @@ macro_rules! err {
     })
   };
   (@transform (with $wrapper:expr) $expr:expr) => {
-    ImportErrorType::InvalidTPSE($wrapper($expr.into()).into())
+    crate::import::ImportErrorType::InvalidTPSE($wrapper($expr.into()).into())
   };
   (@transform decisionfail $expr:expr) => {
-    ImportErrorType::DecisionFailure($expr.into())
+    crate::import::ImportErrorType::DecisionFailure($expr.into())
   };
   (@transform assetfetchfail $expr:expr) => {
-    ImportErrorType::AssetFetchFailed($expr.into())
+    crate::import::ImportErrorType::AssetFetchFailed($expr.into())
   };
   (@transform rsd_decode $expr:expr) => {
-    ImportErrorType::AssetSoundEffectsDecode($expr.into())
+    crate::import::ImportErrorType::AssetSoundEffectsDecode($expr.into())
   };
   (@transform tex_encode $expr:expr) => {
-    ImportErrorType::TextureEncodeFailed($expr.into())
+    crate::import::ImportErrorType::TextureEncodeFailed($expr.into())
   };
   (@transform audio_encode $expr:expr) => {
-    ImportErrorType::AudioEncodeFailed($expr.into())
+    crate::import::ImportErrorType::AudioEncodeFailed($expr.into())
   };
   (@transform tex $expr:expr) => {
-    MediaLoadError::TextureError($expr.into())
+    crate::import::MediaLoadError::TextureError($expr.into())
   };
   (@transform audio $expr:expr) => {
-    MediaLoadError::AudioError($expr.into())
+    crate::import::MediaLoadError::AudioError($expr.into())
   };
   (@transform zip $expr:expr) => {
-    MediaLoadError::Zip($expr.into())
+    crate::import::MediaLoadError::Zip($expr.into())
   };
 }
 pub(crate) use err;

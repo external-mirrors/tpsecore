@@ -4,53 +4,28 @@
 //! or other types in [`super`] which are complicated algorithms or powerful 'overall
 //! process'-related constructs.
 
-use std::fmt::{Display, Formatter};
-use std::ops::Deref;
-use std::path::{Path, PathBuf};
+use std::fmt::{Debug, Formatter};
+use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::import::{BackgroundType, ImportType, OtherSkinType, SkinType};
+use crate::import::{SkinType, TypeStage3, TypeStage4};
+use crate::util::Buffer;
 
-// --- PRE-IMPORT STAGE ---
-
-/// The raw data fed into the import process
+/// A container of a file and its determined type at various stages of import.
+/// This type is commonly parameterized with [ImportType](crate::import::ImportType) when
+/// being created externally to pass to `import()`, and between various import stages gains
+/// types of [TypeStage1](crate::import::TypeStage1) through [TypeStage4].
+/// See [ImportType](crate::import::ImportType) for more detail on the stages.
 #[derive(Clone)]
-pub struct QueuedFile {
-  /// An externally defined import type. For most implementations, this is probably hardcoded as Automatic.
-  pub kind: ImportType,
+pub struct ImportFile<Stage> {
+  pub import_type: Stage,
   pub path: PathBuf,
   pub binary: Arc<[u8]>
 }
-
-// SpecificImportType before Zip is handled by `explore_files`
-#[derive(Debug, Hash, Eq, PartialEq, Copy, Clone, serde_with::SerializeDisplay)]
-pub enum SpecificImportTypeWithZip {
-  Zip,
-  Other(SpecificImportTypeWithPackJsonAndUnknown)
-}
-impl Display for SpecificImportTypeWithZip {
+impl<S> Debug for ImportFile<S> where S: Debug {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-    match self {
-      Self::Zip => write!(f, "zip"),
-      Self::Other(other) => write!(f, "{other}")
-    }
-  }
-}
-// --- POST `explore_files` STAGE ---
-
-/// File representation after the `explore_files` stage
-#[derive(Clone)]
-pub struct ProcessedQueuedFile {
-  pub specific_kind: SpecificImportTypeWithPackJsonAndUnknown,
-  pub kind: ImportType,
-  pub path: PathBuf,
-  pub binary: Arc<[u8]>
-}
-impl std::fmt::Debug for ProcessedQueuedFile {
-  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-    f.debug_struct("ProcessedQueuedFile")
-      .field("specific_kind", &self.specific_kind)
-      .field("kind", &self.kind)
+    f.debug_struct("ImportFile")
+      .field("import_type", &self.import_type)
       .field("path", &self.path)
       .field("binary", &format_args!("<{} bytes>", self.binary.len()))
       .finish()
@@ -58,60 +33,17 @@ impl std::fmt::Debug for ProcessedQueuedFile {
 }
 
 
-// SpecificImportType before PackJson and Unknown are handled by partition_import_groups
-#[derive(Debug, Hash, Eq, PartialEq, Copy, Clone, serde_with::SerializeDisplay)]
-pub enum SpecificImportTypeWithPackJsonAndUnknown {
-  PackJson,
-  Unknown,
-  Other(SpecificImportType)
-}
-impl Display for SpecificImportTypeWithPackJsonAndUnknown {
-  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-    match self {
-      Self::PackJson => write!(f, "pack.json"),
-      Self::Unknown => write!(f, "unknown"),
-      Self::Other(other) => write!(f, "{other}")
-    }
-  }
-}
-
-/// A broad category of content based on a file extension
-pub enum FileType {
-  PackJson,
-  Zip,
-  TPSE,
-  Image,
-  Video,
-  Audio
-}
-impl FileType {
-  pub fn from_path(filename: &Path) -> Option<FileType> {
-    if filename.file_name()?.to_str()? == "pack.json" {
-      return Some(Self::PackJson);
-    }
-    let ext = Path::new(&filename).extension()?.to_str()?;
-    match ext {
-      "zip" => Some(FileType::Zip),
-      "tpse" => Some(FileType::TPSE),
-      "svg" | "png" | "jpg" | "jpeg" | "gif" | "webp" => Some(FileType::Image),
-      "mp4" | "webm" => Some(FileType::Video),
-      "ogg" | "mp3" | "flac" => Some(FileType::Audio),
-      _ => return None
-    }
-  }
-}
-
 // --- POST `partition_import_groups` STAGE ---
 
 /// A DecisionTree represents one _decision to be made_. Making that decision
 /// adds a number of files to the import process and may expose further decisions.
 #[derive(Debug)]
-pub struct DecisionTree<'a> {
+pub struct DecisionTree {
   pub id: u64,
   pub description: String,
-  pub options: Vec<DecisionTreeOption<'a>>,
+  pub options: Vec<DecisionTreeOption>,
 }
-impl DecisionTree<'_> {
+impl DecisionTree {
   pub fn visit(&self, acceptor: &mut impl FnMut(&Self)) {
     acceptor(&self);
     for option in &self.options {
@@ -123,33 +55,10 @@ impl DecisionTree<'_> {
 }
 /// A DecisionTreeOption is one possible choice that can be made when deciding a DecisionTree's choice
 #[derive(Debug)]
-pub struct DecisionTreeOption<'a> {
+pub struct DecisionTreeOption {
   pub description: String,
-  pub files: Vec<&'a ProcessedQueuedFile>,
-  pub subtrees: Vec<DecisionTree<'a>>
-}
-
-/// A distilled copy of an import type that's been rendered to a more specific form than the public API.
-#[derive(Debug, Hash, Eq, PartialEq, Copy, Clone, serde_with::SerializeDisplay)]
-pub enum SpecificImportType {
-  TPSE,
-  Skin(SkinType),
-  OtherSkin(OtherSkinType),
-  SoundEffects,
-  Background(BackgroundType),
-  Music
-}
-impl Display for SpecificImportType {
-  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-    match self {
-      SpecificImportType::TPSE => write!(f, "tpse"),
-      SpecificImportType::Skin(subtype) => write!(f, "{} skin", subtype),
-      SpecificImportType::OtherSkin(subtype) => write!(f, "{} skin", subtype),
-      SpecificImportType::SoundEffects => write!(f, "sound effects"),
-      SpecificImportType::Background(subtype) => write!(f, "{} background", subtype),
-      SpecificImportType::Music => write!(f, "music")
-    }
-  }
+  pub files: Vec<ImportFile<TypeStage3>>,
+  pub subtrees: Vec<DecisionTree>
 }
 
 // --- POST `reduce_types` STAGE ---
@@ -161,7 +70,7 @@ pub enum ImportTask {
   AnimatedSkinFrames(SkinType, Vec<AnimatedSkinFrame>),
   SoundEffects(Vec<SoundEffect>),
   Basic {
-    import_type: SpecificImportType,
+    import_type: TypeStage4,
     path: PathBuf,
     binary: Buffer
   }
@@ -177,27 +86,4 @@ pub struct SoundEffect {
   pub name: String,
   pub path: PathBuf,
   pub binary: Buffer
-}
-
-pub struct Buffer(Arc<[u8]>);
-impl std::fmt::Debug for Buffer {
-  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-    write!(f, "<{} bytes>", self.0.len())
-  }
-}
-impl From<Arc<[u8]>> for Buffer {
-  fn from(value: Arc<[u8]>) -> Self {
-    Self(value)
-  }
-}
-impl Into<Arc<[u8]>> for Buffer {
-  fn into(self) -> Arc<[u8]> {
-    self.0
-  }
-}
-impl Deref for Buffer {
-  type Target = Arc<[u8]>;
-  fn deref(&self) -> &Self::Target {
-    &self.0
-  }
 }

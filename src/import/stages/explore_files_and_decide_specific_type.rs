@@ -4,15 +4,15 @@ use std::sync::Arc;
 use zip::ZipArchive;
 
 use crate::accel::traits::{TPSEAccelerator, TextureHandle};
-use crate::import::inter_stage_data::{FileType, ProcessedQueuedFile, QueuedFile, SpecificImportType, SpecificImportTypeWithPackJsonAndUnknown, SpecificImportTypeWithZip};
-use crate::import::{Asset, BackgroundType, ImportContext, ImportContextEntry, ImportError, ImportErrorType, ImportErrorWrapHelper, ImportType, SkinType, err, MediaLoadError};
+use crate::import::inter_stage_data::ImportFile;
+use crate::import::{Asset, BackgroundType, ImportContext, ImportContextEntry, ImportError, ImportErrorType, ImportErrorWrapHelper, ImportType, SkinType, TypeStage1, TypeStage2, err};
 use crate::import::radiance::parse_radiance_sound_definition;
 use crate::log::LogLevel;
 
 
 pub async fn explore_files<T: TPSEAccelerator>
-  (queue: Vec<QueuedFile>, ctx: &mut ImportContext<'_, T>)
-   -> Result<Vec<ProcessedQueuedFile>, ImportError<T>>
+  (queue: Vec<ImportFile<ImportType>>, ctx: &mut ImportContext<'_, T>)
+   -> Result<Vec<ImportFile<TypeStage2>>, ImportError<T>>
 {
   if ctx.is_too_deep() {
     return Err(ctx.wrap_error(ImportErrorType::TooMuchNesting))
@@ -20,10 +20,13 @@ pub async fn explore_files<T: TPSEAccelerator>
   
   let mut results = vec![];
   for file in queue {
-    let mut guard = ctx.enter_context(ImportContextEntry::ImportFile { file: file.path.clone(), as_type: file.kind });
-    let kind = decide_specific_type::<T>(file.kind, &file.path, &file.binary, &mut *guard).await?;
+    let mut guard = ctx.enter_context(ImportContextEntry::ImportFile {
+      file: file.path.clone(),
+      as_type: file.import_type
+    });
+    let kind = decide_specific_type::<T>(file.import_type, &file.path, &file.binary, &mut *guard).await?;
     match kind {
-      SpecificImportTypeWithZip::Zip => {
+      TypeStage1::Zip => {
         let mut zip = ZipArchive::new(Cursor::new(&file.binary)).wrap(err!(guard, zip))?;
         let mut subqueue = vec![];
         for i in 0..zip.len() {
@@ -31,18 +34,17 @@ pub async fn explore_files<T: TPSEAccelerator>
           if !entry.is_file() { continue }
           let mut bytes = Vec::with_capacity(entry.size() as usize);
           entry.read_to_end(&mut bytes).wrap(err!(guard, zip))?;
-          subqueue.push(QueuedFile {
-            kind: ImportType::Automatic,
+          subqueue.push(ImportFile {
+            import_type: ImportType::Automatic,
             path: file.path.join(entry.mangled_name()),
             binary: bytes.into()
           });
         }
         results.extend(Box::pin(explore_files(subqueue, &mut *guard)).await?);
       }
-      SpecificImportTypeWithZip::Other(other_kind) => {
-        results.push(ProcessedQueuedFile {
-          specific_kind: other_kind,
-          kind: file.kind,
+      other => {
+        results.push(ImportFile {
+          import_type: ImportType::from(other).try_into().expect("all stage 1 types should be handled"),
           path: file.path,
           binary: file.binary
         });
@@ -56,63 +58,98 @@ pub async fn explore_files<T: TPSEAccelerator>
 
 pub async fn decide_specific_type<'c, T: TPSEAccelerator>
   (import_type: ImportType, path: &Path, bytes: &Arc<[u8]>, ctx: &mut ImportContext<'c, T>)
-   -> Result<SpecificImportTypeWithZip, ImportError<T>>
+   -> Result<TypeStage1, ImportError<T>>
 {
-  use SpecificImportTypeWithZip as SITZ;
-  use SpecificImportTypeWithPackJsonAndUnknown as SITPU;
-  use SpecificImportType as SIT;
-  
   ctx.log(LogLevel::Debug, format_args!("Deciding import type for {:?} {:?}", import_type, path));
-
-  let specific_import_type = match import_type {
+  
+  match import_type {
     ImportType::Automatic => {
-      if let Some(filekey) = ImportType::parse_filekey(path) {
-        let mut guard = ctx.enter_context(ImportContextEntry::WithFilekey { filekey });
-        return Box::pin(decide_specific_type::<T>(filekey, path, bytes, &mut *guard)).await;
+      if let Some(filekey) = TypeStage1::parse_filekey(path) {
+        ctx.log(LogLevel::Debug, format_args!("Filename has filekey for {filekey}"));
+        return Ok(filekey);
       }
       
-      let guessed_type = match FileType::from_path(path) {
-        None => SITZ::Other(SITPU::Unknown),
-        Some(FileType::PackJson) => SITZ::Other(SITPU::PackJson),
-        Some(FileType::Zip) => SITZ::Zip,
-        Some(FileType::TPSE) => SITZ::Other(SITPU::Other(SIT::TPSE)),
-        Some(FileType::Image) => {
+      let Some(file_type) = FileType::from_path(path) else {
+        ctx.log(LogLevel::Info, "No known general media type indication from filename, import type unknown at this point.");
+        return Ok(TypeStage1::Unknown);
+      };
+      
+      ctx.log(LogLevel::Info, format_args!("Filename indicates general media type of {file_type}"));
+      let guessed_type = match file_type {
+        FileType::PackJson => TypeStage1::PackJson,
+        FileType::Zip => TypeStage1::Zip,
+        FileType::TPSE => TypeStage1::TPSE,
+        FileType::Image => {
           let image = T::Texture::decode_texture(bytes.clone()).wrap(err!(ctx, tex))?;
           let width = image.width().await.wrap(err!(ctx, tex))?;
           let height: u32 = image.height().await.wrap(err!(ctx, tex))?;
+          ctx.log(LogLevel::Info, format_args!("Image file is {width}x{height}"));
           if let Some(format) = SkinType::guess_format(path, width, height, &ctx) {
-            let format = ImportType::Skin { subtype: format };
-            let mut guard = ctx.enter_context(ImportContextEntry::WithGuessedType { as_type: format });
-            return Box::pin(decide_specific_type::<T>(format, path, bytes, &mut *guard)).await
+            ctx.log(LogLevel::Info, format_args!("Based on image dimensions and extension, inferred texture of type {format}"));
+            TypeStage1::Skin { subtype: format }
           } else {
+            ctx.log(LogLevel::Info, "No known texture uniquely determineable from image dimensions and extension, assuming texture is a custom background");
             match path.extension().and_then(|ext| ext.to_str()) {
-              Some(str) if str == "gif" => SITZ::Other(SITPU::Other(SIT::Background(BackgroundType::Video))),
-              _ => SITZ::Other(SITPU::Other(SIT::Background(BackgroundType::Image)))
+              Some(str) if str == "gif" => TypeStage1::Background { subtype: BackgroundType::Video },
+              _ => TypeStage1::Background { subtype: BackgroundType::Image }
             }
           }
         },
-        Some(FileType::Video) => SITZ::Other(SITPU::Other(SIT::Background(BackgroundType::Video))),
-        Some(FileType::Audio) => {
+        FileType::Video => TypeStage1::Background { subtype: BackgroundType::Video },
+        FileType::Audio => {
           let asset = ctx.provide_asset(Asset::TetrioRSD).await?;
           let rsd = parse_radiance_sound_definition(&asset).wrap(err!(ctx))?;
           let atlas = rsd.to_old_style_atlas();
           let sfx = PathBuf::from(path).file_stem().and_then(|ext| ext.to_str()).and_then(|ext| atlas.get(ext));
           match sfx {
-            Some(_) => SITZ::Other(SITPU::Other(SIT::SoundEffects)),
-            None => SITZ::Other(SITPU::Other(SIT::Music))
+            Some(_) => {
+              ctx.log(LogLevel::Info, "Audio filename corresponds to a known TETR.IO sound effect. Assuming audio file is a custom sound effect.");
+              TypeStage1::SoundEffects
+            },
+            None => {
+              ctx.log(LogLevel::Info, "Audio filename corresponds to no known TETR.IO sound effect. Assuming audio file is custom msuic.");
+              TypeStage1::Music
+            }
           }
         }
       };
       ctx.log(LogLevel::Info, format_args!("Guessed import type {guessed_type}"));
       ctx.flags.guessed_files.insert(path.to_path_buf(), guessed_type.clone());
-      guessed_type
+      Ok(guessed_type)
     },
-    ImportType::Skin { subtype } => SITZ::Other(SITPU::Other(SIT::Skin(subtype))),
-    ImportType::OtherSkin { subtype } => SITZ::Other(SITPU::Other(SIT::OtherSkin(subtype))),
-    ImportType::SoundEffects => SITZ::Other(SITPU::Other(SIT::SoundEffects)),
-    ImportType::Background { subtype } => SITZ::Other(SITPU::Other(SIT::Background(subtype))),
-    ImportType::Music => SITZ::Other(SITPU::Other(SIT::Music)),
-  };
+    rest => Ok(TypeStage1::try_from(rest).expect("all stage 0 types should be handled"))
+  }
+}
 
-  Ok(specific_import_type)
+/// A broad category of content based on a file extension
+#[derive(strum::Display)]
+enum FileType {
+  #[strum(to_string = "pack.json")]
+  PackJson,
+  #[strum(to_string = "zip")]
+  Zip,
+  #[strum(to_string = "tpse")]
+  TPSE,
+  #[strum(to_string = "image")]
+  Image,
+  #[strum(to_string = "video")]
+  Video,
+  #[strum(to_string = "audio")]
+  Audio
+}
+impl FileType {
+  pub fn from_path(filename: &Path) -> Option<FileType> {
+    if filename.file_name()?.to_str()? == "pack.json" {
+      return Some(Self::PackJson);
+    }
+    let ext = Path::new(&filename).extension()?.to_str()?;
+    match ext {
+      "zip" => Some(FileType::Zip),
+      "tpse" => Some(FileType::TPSE),
+      "svg" | "png" | "jpg" | "jpeg" | "gif" | "webp" => Some(FileType::Image),
+      "mp4" | "webm" => Some(FileType::Video),
+      "ogg" | "mp3" | "flac" => Some(FileType::Audio),
+      _ => return None
+    }
+  }
 }

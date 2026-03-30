@@ -13,7 +13,7 @@ pub struct DefaultDecisionMakerError;
 impl ImportDecisionMaker for DefaultDecisionMaker {
   type Error = DefaultDecisionMakerError;
 
-  async fn decide(&self, options: &[DecisionTree<'_>]) -> Result<HashMap<u64, usize>, Self::Error> {
+  async fn decide(&self, options: &[DecisionTree]) -> Result<HashMap<u64, usize>, Self::Error> {
     let mut decisions = HashMap::new();
     let mut queue = options.iter().collect::<Vec<_>>();
     while let Some(next) = queue.pop() {

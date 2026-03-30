@@ -5,9 +5,7 @@ pub mod log;
 #[cfg(target_arch = "wasm32")]
 mod wasm;
 pub mod accel;
-
-// library cleanup todos:
-// - Reintroduce lifetimes into the tpse management to reduce memory overhead
+pub mod util;
 
 #[cfg(test)]
 mod tests;

@@ -18,7 +18,7 @@ pub trait TPSEAccelerator: Debug {
 
 pub trait ImportDecisionMaker: Debug {
   type Error: std::error::Error + Send + Sync + 'static;
-  fn decide(&self, options: &[DecisionTree<'_>]) -> impl Future<Output = Result<HashMap<u64, usize>, Self::Error>>;
+  fn decide(&self, options: &[DecisionTree]) -> impl Future<Output = Result<HashMap<u64, usize>, Self::Error>>;
 }
 
 pub trait AssetProvider: Debug {

@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
 use serde_with::{serde_as, DisplayFromStr};
-use crate::import::inter_stage_data::{ImportTask, SpecificImportType};
-use crate::import::{Asset, ImportType, SkinType};
+use crate::import::inter_stage_data::{ImportTask};
+use crate::import::{Asset, ImportType, SkinType, TypeStage4};
 
 // ImportContextEntry serializes into a format meant mainly for interpolating into logs,
 // and thus has no deserialize impl
@@ -78,7 +78,7 @@ pub enum ImportTaskContextEntry {
   #[error("`{file}` (as {as_type:?})")]
   Basic {
     #[serde(rename="type")]
-    as_type: SpecificImportType,
+    as_type: TypeStage4,
     file: PathBuf
   }
 }

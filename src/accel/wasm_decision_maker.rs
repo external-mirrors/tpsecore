@@ -24,7 +24,7 @@ pub enum WasmDecisionMakerError {
 
 impl ImportDecisionMaker for WasmDecisionMaker {
   type Error = WasmDecisionMakerError;
-  async fn decide(&self, options: &[DecisionTree<'_>]) -> Result<HashMap<u64, usize>, Self::Error> {
+  async fn decide(&self, options: &[DecisionTree]) -> Result<HashMap<u64, usize>, Self::Error> {
     let boundary = options.iter().map(WasmDecisionTree::from_isd).collect::<Vec<_>>();
     let serialized = serde_json::to_string(&boundary)?;
     let (wake_id, future) = WasmWakeable::new();

@@ -4,7 +4,7 @@ mod other_skin_type;
 mod animated_options;
 mod background_type;
 
-pub use import_type::ImportType;
+pub use import_type::*;
 pub use skin_type::SkinType;
 pub use other_skin_type::OtherSkinType;
 pub use animated_options::AnimatedOptions;

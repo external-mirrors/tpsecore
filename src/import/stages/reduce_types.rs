@@ -1,17 +1,17 @@
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use crate::accel::traits::TPSEAccelerator;
-use crate::import::inter_stage_data::{AnimatedSkinFrame, ImportTask, ProcessedQueuedFile, SoundEffect, SpecificImportType, SpecificImportTypeWithPackJsonAndUnknown};
-use crate::import::{ImportContext, ImportContextEntry, ImportError, ImportErrorType, SkinType};
+use crate::import::inter_stage_data::{AnimatedSkinFrame, ImportFile, ImportTask, SoundEffect};
+use crate::import::{ImportContext, ImportContextEntry, ImportError, ImportErrorType, ImportType, SkinType, TypeStage3, TypeStage4};
 
 /// Collates multiple import results into a list of import tasks
 pub fn reduce_types<T: TPSEAccelerator>
-  (results: &[ProcessedQueuedFile], ctx: &mut ImportContext<'_, T>)
+  (results: &[ImportFile<TypeStage3>], ctx: &mut ImportContext<'_, T>)
    -> Result<Vec<ImportTask>, ImportError<T>>
 {
-  let mut map: HashMap<SpecificImportTypeWithPackJsonAndUnknown, Vec<ProcessedQueuedFile>> = HashMap::new();
+  let mut map: HashMap<TypeStage3, Vec<ImportFile<TypeStage3>>> = HashMap::new();
   for res in results {
-    map.entry(res.specific_kind).or_default().push(res.clone());
+    map.entry(res.import_type).or_default().push(res.clone());
   }
 
   // The import tasks to be performed
@@ -20,8 +20,8 @@ pub fn reduce_types<T: TPSEAccelerator>
   // Duplicate order is undefined
   let mut sound_effects: Vec<SoundEffect> = vec![];
   // Minos and ghosts are collated to allow for animated-from-frames style textures
-  let mut animated_minos: Option<(SkinType, Vec<ProcessedQueuedFile>)> = None;
-  let mut animated_ghost: Option<(SkinType, Vec<ProcessedQueuedFile>)> = None;
+  let mut animated_minos: Option<(SkinType, Vec<ImportFile<TypeStage3>>)> = None;
+  let mut animated_ghost: Option<(SkinType, Vec<ImportFile<TypeStage3>>)> = None;
   // If animated minos/ghosts encounter a _different_ type of skin that qualifies as animated,
   // an error is logged here. This is then shoved into one giant error message.
   let mut ambiguous_mino_skin_errors: HashSet<SkinType> = HashSet::new();
@@ -31,73 +31,37 @@ pub fn reduce_types<T: TPSEAccelerator>
     let ctx = ctx.enter_context(ImportContextEntry::WithFiles {
       files: files.iter().map(|f| f.path.clone()).collect()
     });
-    use SpecificImportTypeWithPackJsonAndUnknown as SITPU;
-    use SpecificImportType as SIT;
     match key {
-      SITPU::Unknown => {
+      // This is where we finally bail if we can't figure out what type something is.
+      // At this point, we've considered:
+      // - the explicit type passed to import()
+      // - the filekey
+      // - the guessed type
+      // - the pack.json override
+      // and if none of those produced a type, fail!
+      TypeStage3::Unknown => {
         return Err(ctx.wrap_error(ImportErrorType::UnknownFileType));
       },
-      SITPU::PackJson => unreachable!("PackJson values shouldn't propagate this far"),
-      SITPU::Other(SpecificImportType::TPSE) => {
-        import_tasks.extend(files.into_iter().map(|import_result| {
-          ImportTask::Basic {
-            import_type: SIT::TPSE,
-            path: import_result.path,
-            binary: import_result.binary.into()
-          }
-        }));
-      },
-      SITPU::Other(SpecificImportType::Skin(skin_type)) => {
-        let (opts, is_minos, is_ghost) = match &skin_type {
-          SkinType::TetrioAnimated { opts } => (Some(opts), true, true),
-          SkinType::Tetrio61ConnectedAnimated { opts } => (Some(opts), true, false),
-          SkinType::Tetrio61ConnectedGhostAnimated { opts } => (Some(opts), false, true),
-          SkinType::JstrisAnimated { opts } => (Some(opts), true, true),
-          SkinType::TetrioSVG => (None, true, true),
-          SkinType::TetrioRaster => (None, true, true),
-          SkinType::Tetrio61 => (None, true, false),
-          SkinType::Tetrio61Ghost => (None, false, true),
-          SkinType::Tetrio61Connected => (None, true, false),
-          SkinType::Tetrio61ConnectedGhost => (None, false, true),
-          SkinType::JstrisRaster => (None, true, true),
-          SkinType::JstrisConnected => (None, true, true)
-        };
-        let animated = opts.is_some() || files.len() >= 2;
-        if animated {
-          let anim_types = [
-            if is_minos { Some((&mut animated_minos, &mut ambiguous_mino_skin_errors)) } else { None },
-            if is_ghost { Some((&mut animated_ghost, &mut ambiguous_ghost_skin_errors)) } else { None }
-          ];
-          for (anim_type, errors) in anim_types.into_iter().filter_map(|el| el) {
-            match anim_type {
-              None => *anim_type = Some((skin_type, files.clone())),
-              Some((existing_skin_type, _)) if *existing_skin_type != skin_type => {
-                errors.insert(*existing_skin_type);
-                errors.insert(skin_type);
-              }
-              Some((_, results)) => results.append(&mut files)
+      // animated skins, determined by animation options or more than 2 files, are handled seperately.
+      // normal non-animated skins are wrapped up in the wildcard branch below.
+      TypeStage3::Skin { subtype } if subtype.get_anim_options().is_some() || files.len() >= 2 => {
+        let (has_minos, has_ghost) = subtype.has_minos_and_ghost();
+        let anim_types = [
+          if has_minos { Some((&mut animated_minos, &mut ambiguous_mino_skin_errors)) } else { None },
+          if has_ghost { Some((&mut animated_ghost, &mut ambiguous_ghost_skin_errors)) } else { None }
+        ];
+        for (anim_type, errors) in anim_types.into_iter().filter_map(|el| el) {
+          match anim_type {
+            None => *anim_type = Some((subtype, files.clone())),
+            Some((existing_skin_type, _)) if *existing_skin_type != subtype => {
+              errors.insert(*existing_skin_type);
+              errors.insert(subtype);
             }
+            Some((_, results)) => results.append(&mut files)
           }
-        } else {
-          import_tasks.extend(files.into_iter().map(|import_result| {
-            ImportTask::Basic {
-              import_type: SIT::Skin(skin_type),
-              path: import_result.path,
-              binary: import_result.binary.into()
-            }
-          }));
         }
       }
-      SITPU::Other(SpecificImportType::OtherSkin(skin_type)) => {
-        import_tasks.extend(files.into_iter().map(|import_result| {
-          ImportTask::Basic {
-            import_type: SIT::OtherSkin(skin_type),
-            path: import_result.path,
-            binary: import_result.binary.into()
-          }
-        }));
-      }
-      SITPU::Other(SpecificImportType::SoundEffects) => {
+      TypeStage3::SoundEffects => {
         sound_effects.extend(files.into_iter().map(|import_result| {
           let name = import_result.path
             .file_stem()
@@ -111,19 +75,11 @@ pub fn reduce_types<T: TPSEAccelerator>
           }
         }));
       }
-      SITPU::Other(SpecificImportType::Background(bg_type)) => {
+      stage4 => {
+        let stage4 = TypeStage4::try_from(ImportType::from(stage4)).expect("all stage 3 types should be handled");
         import_tasks.extend(files.into_iter().map(|import_result| {
           ImportTask::Basic {
-            import_type: SIT::Background(bg_type),
-            path: import_result.path,
-            binary: import_result.binary.into()
-          }
-        }));
-      }
-      SITPU::Other(SpecificImportType::Music) => {
-        import_tasks.extend(files.into_iter().map(|import_result| {
-          ImportTask::Basic {
-            import_type: SIT::Music,
+            import_type: stage4,
             path: import_result.path,
             binary: import_result.binary.into()
           }

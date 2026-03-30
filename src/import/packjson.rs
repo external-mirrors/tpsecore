@@ -3,6 +3,8 @@ use std::sync::OnceLock;
 
 use globset::{Glob, GlobMatcher};
 
+use crate::import::TypeStage3;
+
 #[derive(Debug, serde::Deserialize)]
 pub struct PackJSON {
   /// The overall pack description
@@ -20,9 +22,14 @@ pub struct ImportGroupPattern {
   /// A pattern specifying files relative to the location of the pack.json file that this import group includes.
   /// Supports globbing. When this names a directory, all files in the directory are included.
   pub pattern: Glob,
+  
+  /// Overrides the import type of all files in this group. This override is absolute and disables both
+  /// automatic import type detection and filekey parsing.
+  pub override_type: Option<TypeStage3>,
+  
+  // temporary storage for caching pattern compilations
   #[serde(skip)]
   cached_compilation: OnceLock<GlobMatcher>
-  // future features: import option overrides
 }
 impl ImportGroupPattern {
   pub fn get_compiled_pattern(&self) -> &GlobMatcher {

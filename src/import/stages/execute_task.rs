@@ -5,8 +5,8 @@ use itertools::Itertools;
 use serde_json::Value;
 
 use crate::accel::traits::{TPSEAccelerator, TextureHandle, AudioHandle};
-use crate::import::inter_stage_data::{ImportTask, SpecificImportType};
-use crate::import::{Asset, ImportContext, ImportContextEntry, ImportError, ImportErrorType, ImportErrorWrapHelper, ImportType, MediaLoadError, SkinType, err, TPSELoadError};
+use crate::import::inter_stage_data::ImportTask;
+use crate::import::{Asset, ImportContext, ImportContextEntry, ImportError, ImportErrorWrapHelper, MediaLoadError, SkinType, TPSELoadError, TypeStage1, TypeStage4, err};
 use crate::import::radiance::parse_radiance_sound_definition;
 use crate::import::skin_splicer::{SkinSplicer};
 use crate::log::LogLevel;
@@ -73,7 +73,7 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut Import
           }
         }
       }
-      let delay = skin_type.get_anim_options().delay.unwrap_or_else(|| {
+      let delay = skin_type.get_anim_options().and_then(|o| o.delay).unwrap_or_else(|| {
         frames.iter()
           .map(|(_, delay)| {
             let milliseconds_per_image_frame = delay.as_secs_f64() * 1000.0;
@@ -131,7 +131,7 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut Import
       
       for sfx in &sound_effects {
         // todo: ensure we've stripped file extension by this point
-        let with_filekey_removed = sfx.name.replace(ImportType::SoundEffects.filekey(), "");
+        let with_filekey_removed = sfx.name.replace(TypeStage1::SoundEffects.filekey(), "");
         let Some((_offset, _duration)) = old_atlas.remove(&with_filekey_removed) else {
           ctx.log(LogLevel::Warn, format_args!("Skipping unknown sound effect {}", sfx.name));
           continue;
@@ -208,7 +208,7 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut Import
       let mime = mime_guess::from_path(&path).first_or_octet_stream().essence_str().to_string();
       let file = File { binary: binary.into(), mime };
       match import_type {
-        SpecificImportType::TPSE => {
+        TypeStage4::TPSE => {
           use TPSELoadError::*;
           let mut raw_tpse: Value = serde_json::from_slice(&file.binary).wrap(err!(ctx, (with |x| BadJson(x))))?;
           let opts = MigrationOptions { is_tetrioplus_storage: false }; 
@@ -225,8 +225,8 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut Import
             ctx.log(LogLevel::Warn, format_args!("TPSE contains auto-deny key {key}, which was skipped. This key is security-sensitive and must be transferred manually."));
           }
         },
-        SpecificImportType::Skin(skin_type) => {
-          let (minos, ghost) = splice_to_t61::<T>(skin_type, file.binary.clone()).await.wrap(err!(ctx))?;
+        TypeStage4::Skin { subtype } => {
+          let (minos, ghost) = splice_to_t61::<T>(subtype, file.binary.clone()).await.wrap(err!(ctx))?;
           if let Some(minos) = minos {
             tpse.skin = Some(File {
               binary: minos.encode_png().await.unwrap(),
@@ -240,23 +240,20 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut Import
             });
           }
         },
-        SpecificImportType::OtherSkin(skin_type) => {
-          skin_type.tpse_field(&mut tpse).replace(file);
+        TypeStage4::OtherSkin { subtype } => {
+          subtype.tpse_field(&mut tpse).replace(file);
         },
-        SpecificImportType::SoundEffects => {
-          unreachable!()
-        },
-        SpecificImportType::Background(bg_type) => {
+        TypeStage4::Background { subtype } => {
           let id = format!("background-{}", file.sha256_hex());
           tpse.other.insert(id.clone(), MiscTPSEValue::File(file));
           let bg = Background {
             id,
             filename: path.file_name().unwrap_or(path.as_os_str()).to_string_lossy().into_owned(),
-            background_type: bg_type.into()
+            background_type: subtype.into()
           };
           tpse.backgrounds.get_or_insert(Default::default()).push(bg);
         },
-        SpecificImportType::Music => {
+        TypeStage4::Music => {
           let id = format!("song-{}", file.sha256_hex());
           tpse.other.insert(id.clone(), MiscTPSEValue::File(file));
           let song = Song {

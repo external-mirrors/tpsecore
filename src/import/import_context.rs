@@ -4,8 +4,7 @@ use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 use std::sync::Arc;
 use crate::accel::traits::{AssetProvider, TPSEAccelerator};
-use crate::import::inter_stage_data::SpecificImportTypeWithZip;
-use crate::import::{Asset, ImportContextEntry, ImportError, ImportErrorType, ImportErrorWrapHelper, err};
+use crate::import::{Asset, ImportContextEntry, ImportError, ImportErrorType, ImportErrorWrapHelper, TypeStage1, err};
 use crate::log::{ImportLogger, LogLevel};
 
 /// Stores metadata and context associated with an import process, tracking the stack location
@@ -27,7 +26,7 @@ pub struct ImportContext<'ctx_deps, T: TPSEAccelerator> {
 /// Stores 'flags' raised during import which are used to supplement logs
 #[derive(Default, serde::Serialize)]
 pub struct ImportFlags {
-  pub guessed_files: HashMap<PathBuf, SpecificImportTypeWithZip>
+  pub guessed_files: HashMap<PathBuf, TypeStage1>
 }
 
 impl<'ctx_deps, T: TPSEAccelerator> ImportContext<'ctx_deps, T> {

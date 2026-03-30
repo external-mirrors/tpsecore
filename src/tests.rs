@@ -15,9 +15,9 @@ use crate::accel::default_decision_maker::{DefaultDecisionMaker, DefaultDecision
 use crate::accel::ffmpeg_audio_handle::FFmpegAudioHandle;
 use crate::accel::software_texture_handle::SoftwareTextureHandle;
 use crate::accel::traits::{TPSEAccelerator, TextureHandle};
-use crate::import::inter_stage_data::{QueuedFile, SpecificImportTypeWithPackJsonAndUnknown};
+use crate::import::inter_stage_data::ImportFile;
 use crate::import::stages::{explore_files, partition_import_groups};
-use crate::import::{Asset, ImportContext, ImportContextEntry, ImportErrorType, ImportType, import};
+use crate::import::*;
 use crate::import::skin_splicer::Piece;
 use crate::log::{ImportLogger, LogLevel};
 use crate::render::{BoardElement, BoardMap, FrameInfo, RenderContext, RenderOptions, example_maps};
@@ -152,23 +152,23 @@ async fn metadata_json_test() {
   let mut ctx = ImportContext::<TestAccelerator>::new(&provider, &DefaultDecisionMaker).with_logger(&LogLogger);
   let mut tpse = TPSE::default();
   let files = vec![
-    QueuedFile {
-      kind: ImportType::Automatic,
+    ImportFile {
+      import_type: ImportType::Automatic,
       path: PathBuf::from("skins/SHIMMERING_CYCLONE.zip"),
       binary: state.get("yhf/SHIMMERING_CYCLONE.zip").content.clone()
     },
-    QueuedFile {
-      kind: ImportType::Automatic,
+    ImportFile {
+      import_type: ImportType::Automatic,
       path: PathBuf::from("skins/Concrete.png"),
       binary: state.get("yhf/Concrete.png").content.clone()
     },
-    QueuedFile {
-      kind: ImportType::Automatic,
+    ImportFile {
+      import_type: ImportType::Automatic,
       path: PathBuf::from("sfx/BejeweledSR.zip"),
       binary: state.get("yhf/BejeweledSR.zip").content.clone()
     },
-    QueuedFile {
-      kind: ImportType::Automatic,
+    ImportFile {
+      import_type: ImportType::Automatic,
       path: PathBuf::from("skins/pack.json"),
       binary: Arc::from(r#"
 {
@@ -190,8 +190,8 @@ async fn metadata_json_test() {
 }
       "#.as_bytes())
     },
-    QueuedFile {
-      kind: ImportType::Automatic,
+    ImportFile {
+      import_type: ImportType::Automatic,
       path: PathBuf::from("pack.json"),
       binary: Arc::from(r#"
 {
@@ -242,7 +242,7 @@ async fn metadata_json_test() {
   let [loose] = &loose.options[..] else { panic!() };
   let [txt] = &loose.files[..] else { panic!() };
   assert!(txt.path.ends_with("1st_read_changelog.txt"));
-  assert_eq!(txt.specific_kind, SpecificImportTypeWithPackJsonAndUnknown::Unknown);
+  assert_eq!(txt.import_type, TypeStage3::Unknown);
   
   let Err(res) = import(&mut ctx, files, &mut tpse).await else { panic!() };
   assert!(matches!(res.error, ImportErrorType::DecisionFailure(DefaultDecisionMakerError)));
@@ -262,33 +262,33 @@ async fn render_tests() {
 
   log::info!("--- Test: render --- ({:?})", start.elapsed());
   let files = vec![
-    QueuedFile {
-      kind: ImportType::Automatic,
+    ImportFile {
+      import_type: ImportType::Automatic,
       path: PathBuf::from("SHIMMERING_CYCLONE.zip"),
       binary: state.get("yhf/SHIMMERING_CYCLONE.zip").content.clone()
     },
-    QueuedFile {
-      kind: ImportType::Automatic,
+    ImportFile {
+      import_type: ImportType::Automatic,
       path: PathBuf::from("Concrete.png"),
       binary: state.get("yhf/Concrete.png").content.clone()
     },
-    QueuedFile {
-      kind: ImportType::Automatic,
+    ImportFile {
+      import_type: ImportType::Automatic,
       path: PathBuf::from("_board.png"),
       binary: state.get("vanilla/board.png").content.clone()
     },
-    QueuedFile {
-      kind: ImportType::Automatic,
+    ImportFile {
+      import_type: ImportType::Automatic,
       path: PathBuf::from("_grid.png"),
       binary: state.get("vanilla/grid.png").content.clone()
     },
-    QueuedFile {
-      kind: ImportType::Automatic,
+    ImportFile {
+      import_type: ImportType::Automatic,
       path: PathBuf::from("_queue.png"),
       binary: state.get("vanilla/queue.png").content.clone()
     },
-    QueuedFile {
-      kind: ImportType::SoundEffects,
+    ImportFile {
+      import_type: ImportType::SoundEffects,
       path: PathBuf::from("this_will_be_ignored_but_will_trigger_default_values_to_populate.wav"),
       binary: include_bytes!("../assets/empty_2c.wav").to_vec().into()
     }

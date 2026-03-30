@@ -1,6 +1,6 @@
 use crate::accel::traits::{ImportDecisionMaker, TPSEAccelerator};
-use crate::import::inter_stage_data::QueuedFile;
-use crate::import::{ImportContext, ImportContextEntry, ImportError, ImportErrorType, ImportErrorWrapHelper, ImportTaskContextEntry, err};
+use crate::import::inter_stage_data::ImportFile;
+use crate::import::{ImportContext, ImportContextEntry, ImportError, ImportErrorWrapHelper, ImportTaskContextEntry, ImportType, err};
 
 use crate::import::stages::{execute_task, explore_files, partition_import_groups, reduce_types};
 use crate::log::LogLevel;
@@ -8,7 +8,7 @@ use crate::tpse::tpse_key::{AllKnownKeys, merge};
 
 
 pub async fn import<T: TPSEAccelerator>
-  (context: &mut ImportContext<'_, T>, files: Vec<QueuedFile>, target: &mut impl AllKnownKeys)
+  (context: &mut ImportContext<'_, T>, files: Vec<ImportFile<ImportType>>, target: &mut impl AllKnownKeys)
   -> Result<(), ImportError<T>>
 {
   match import_inner(context, files, target).await {
@@ -24,7 +24,7 @@ pub async fn import<T: TPSEAccelerator>
 }
 
 async fn import_inner<T: TPSEAccelerator>
-  (context: &mut ImportContext<'_, T>, files: Vec<QueuedFile>, target: &mut impl AllKnownKeys)
+  (context: &mut ImportContext<'_, T>, files: Vec<ImportFile<ImportType>>, target: &mut impl AllKnownKeys)
   -> Result<(), ImportError<T>>
 {
   let results = explore_files(files, &mut *context.enter_context(ImportContextEntry::ExploreFiles)).await?;

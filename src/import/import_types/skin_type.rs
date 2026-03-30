@@ -102,10 +102,9 @@ impl SkinType {
     }
   }
 
-  /// Returns the animated options for this skin format, returning an object with all `None`s if
-  /// not an animated format.
-  pub fn get_anim_options(&self) -> AnimatedOptions {
-    let opts = match self {
+  /// Returns the animated options for this skin format
+  pub fn get_anim_options(&self) -> Option<AnimatedOptions> {
+    match self {
       SkinType::Tetrio61 => None,
       SkinType::Tetrio61Ghost => None,
       SkinType::Tetrio61Connected => None,
@@ -118,10 +117,23 @@ impl SkinType {
       SkinType::JstrisRaster => None,
       SkinType::JstrisAnimated { opts } => Some(*opts),
       SkinType::JstrisConnected => None,
-    };
-    AnimatedOptions {
-      delay: opts.and_then(|opt| opt.delay),
-      combine: opts.and_then(|opt| opt.combine)
+    }
+  }
+  
+  pub fn has_minos_and_ghost(&self) -> (bool, bool) {
+    match &self {
+      SkinType::TetrioAnimated { .. }                 => ( true,  true),
+      SkinType::Tetrio61ConnectedAnimated { .. }      => ( true, false),
+      SkinType::Tetrio61ConnectedGhostAnimated { .. } => (false,  true),
+      SkinType::JstrisAnimated { .. }                 => ( true,  true),
+      SkinType::TetrioSVG                             => ( true,  true),
+      SkinType::TetrioRaster                          => ( true,  true),
+      SkinType::Tetrio61                              => ( true, false),
+      SkinType::Tetrio61Ghost                         => (false,  true),
+      SkinType::Tetrio61Connected                     => ( true, false),
+      SkinType::Tetrio61ConnectedGhost                => (false,  true),
+      SkinType::JstrisRaster                          => ( true,  true),
+      SkinType::JstrisConnected                       => ( true,  true)
     }
   }
 }
