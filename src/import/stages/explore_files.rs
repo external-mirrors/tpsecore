@@ -56,7 +56,7 @@ pub async fn explore_files<T: TPSEAccelerator>
   Ok(results)
 }
 
-pub async fn decide_specific_type<'c, T: TPSEAccelerator>
+async fn decide_specific_type<'c, T: TPSEAccelerator>
   (import_type: ImportType, path: &Path, bytes: &Arc<[u8]>, ctx: &mut ImportContext<'c, T>)
    -> Result<TypeStage1, ImportError<T>>
 {
