@@ -3,7 +3,7 @@ const tpse_import_handlers = new Map();
  * Registers a handler for import-related events from a given tpse handle.
  * The handler lives for one import cycle and is automatically removed once finished.
  * @param {number} tpse_id the id of the tpse to register the handlers for
- * @param {function(number)} import_finished called with an exit code when a queued import finishes 
+ * @param {function(number, object)} import_finished called with an exit code and the additional import result information when a queued import finishes 
  * @param {function(object)} decide called when the importer needs an external decision on how to proceed due to multiple import options
  * @param {function(object)} log_sink sink for recieving logs specific to this tpse
  */
@@ -105,9 +105,10 @@ let tpsecore_url = import.meta.url.replace(/\/[^\/]+$/, '/tpsecore.wasm');
 console.log("loading tpsecore.wasm from", tpsecore_url);
 const wasm = await WebAssembly.instantiateStreaming(fetch(tpsecore_url), {
   tpsecore: {
-    report_import_done(tpse, status) {
+    report_import_done(tpse, status, flag_data_ptr, flag_data_len) {
+      let flags = JSON.parse(new TextDecoder().decode(new Uint8Array(tpsecore.memory.buffer, flag_data_ptr, flag_data_len)));
       console.log("import", tpse, "done with status", status);
-      tpse_import_handlers.get(tpse)?.import_finished(status);
+      tpse_import_handlers.get(tpse)?.import_finished(status, flags);
       tpse_import_handlers.delete(tpse);
     },
     report_migration_done(tpse, status) {

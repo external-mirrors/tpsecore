@@ -41,14 +41,58 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
   for (i, file) in results.iter().enumerate() {
     if file.import_type == TypeStage2::PackJson {
       let parent = file.path.parent().expect("pack.json files are always named pack.json and so must have a parent");
-      let pack_json = serde_json::from_slice(&file.binary)
-        .map_err(|err| ctx.wrap_error(ImportErrorType::InvalidPackJson(file.path.clone(), err)))?;
+      
+      let ctx = ctx.enter_context(ImportContextEntry::ImportFile {
+        file: file.path.clone(),
+        as_type: file.import_type.into()
+      });
+      
+      let pack_json: PackJSON = serde_json::from_slice(&file.binary)
+        .map_err(|err| ctx.wrap_error(ImportErrorType::InvalidPackJson(err)))?;
+      if pack_json.data_version != 0 {
+        return Err(ctx.wrap_error(ImportErrorType::UnknownPackJsonVersion(pack_json.data_version)));
+      }
+      
       pack_json_roots.push(PackJsonRootEntry {
         pack_file: pack_json,
         pack_file_index: i,
         pack_file_dir: parent.to_path_buf(),
         children: vec![]
       });
+    }
+  }
+  
+  
+  if let Some(shortest) = pack_json_roots.iter().min_by_key(|x| x.pack_file_dir.components().count()) {
+    let at_this_depth = pack_json_roots.iter().filter(|x| x.pack_file_index == shortest.pack_file_index).count();
+    let atd_with_meta = pack_json_roots.iter()
+      .filter(|x| x.pack_file_index == shortest.pack_file_index && x.pack_file.metadata.has_data())
+      .count();
+      
+    let mut ctx = ctx.enter_context(ImportContextEntry::WithFiles {
+      files: pack_json_roots.iter()
+        .filter(|x| x.pack_file_index == shortest.pack_file_index)
+        .map(|f| results[f.pack_file_index].path.clone())
+        .collect()
+    });
+    let mut shortest_canonical = false;
+      
+    if atd_with_meta > 0 {
+      if at_this_depth > 1 {
+        ctx.log(LogLevel::Warn, format_args!("Multiple pack.json files at the given minimum depth, unable to choose one for authoritative pack metadata"));
+      } else {
+        // only one at the shallowest depth, assume it's canonical.
+        // Because at_this_depth = 1 and atd_with_meta > 0 and this element is at this depth, we know it has metadata.
+        ctx.flags.metadata = Some(shortest.pack_file.metadata.clone());
+        ctx.log(LogLevel::Info, format_args!("Content pack metadata: {}", shortest.pack_file.metadata));
+        shortest_canonical = true;
+      }
+    }
+    
+    for file in &pack_json_roots {
+      if !file.pack_file.metadata.has_data() { continue }
+      if shortest_canonical && file.pack_file_index == shortest.pack_file_index { continue }
+      ctx.log(LogLevel::Info, format_args!("A nested pack.json contains additional metadata: {}", file.pack_file.metadata));
     }
   }
   

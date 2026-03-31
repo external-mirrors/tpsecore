@@ -4,6 +4,7 @@ use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 use std::sync::Arc;
 use crate::accel::traits::{AssetProvider, TPSEAccelerator};
+use crate::import::packjson::PackMetadata;
 use crate::import::{Asset, ImportContextEntry, ImportError, ImportErrorType, ImportErrorWrapHelper, TypeStage1, err};
 use crate::log::{ImportLogger, LogLevel};
 
@@ -26,6 +27,7 @@ pub struct ImportContext<'ctx_deps, T: TPSEAccelerator> {
 /// Stores 'flags' raised during import which are used to supplement logs
 #[derive(Default, serde::Serialize)]
 pub struct ImportFlags {
+  pub metadata: Option<PackMetadata>,
   pub guessed_files: HashMap<PathBuf, TypeStage1>
 }
 
@@ -49,6 +51,12 @@ impl<'ctx_deps, T: TPSEAccelerator> ImportContext<'ctx_deps, T> {
 
   pub fn with_logger(self, logger: &'ctx_deps (dyn ImportLogger + Send + Sync)) -> Self {
     Self { logger: Some(logger), ..self }
+  }
+  
+  pub fn log_in_context(&self, level: LogLevel, context: &[ImportContextEntry], message: impl Display) {
+    if let Some(logger) = self.logger {
+      logger.log(level, context, &message);
+    }
   }
 
   pub fn log(&self, level: LogLevel, message: impl Display) {

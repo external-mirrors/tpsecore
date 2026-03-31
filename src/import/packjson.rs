@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::Display;
 use std::sync::OnceLock;
 
 use globset::{Glob, GlobMatcher};
@@ -7,14 +8,51 @@ use crate::import::TypeStage3;
 
 #[derive(Debug, serde::Deserialize)]
 pub struct PackJSON {
-  /// The overall pack description
-  pub description: String,
+  /// The version of the pack.json standard this document is written in.
+  /// Currently, the only version is 0.
+  pub data_version: u32,
+  /// General metadata about the pack. This is generally only considered
+  /// for the absolute root `/pack.json` in a content pack.
+  #[serde(default)]
+  pub metadata: PackMetadata,
   /// A map of import group id to import group.
   /// Import groups are a description of a subset of the content in a pack.
   pub import_groups: HashMap<String, Vec<ImportGroupPattern>>,
   /// The import sets for the file. If not specified,
   /// every single import group is exposed as a distinct set
   pub import_sets: Option<Vec<ImportSet>>
+}
+
+#[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PackMetadata {
+  pub title: Option<String>,
+  pub author: Option<String>,
+  pub version: Option<String>,
+  pub description: Option<String>,
+}
+impl PackMetadata {
+  pub fn has_data(&self) -> bool {
+    self.title.is_some() || self.author.is_some() || self.version.is_some() || self.description.is_some()
+  }
+}
+impl Display for PackMetadata {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match &self.title {
+      Some(title) => write!(f, "'{title}'")?,
+      None => write!(f, "Untitled content pack")?
+    };
+    if let Some(version) = &self.version {
+      write!(f, " (version {version})")?;
+    }
+    if let Some(author) = &self.author {
+      write!(f, " by {}", author)?;
+    };
+    match &self.description {
+      Some(desc) => write!(f, ": {desc}")?,
+      None => write!(f, " (no description)")?
+    };
+    Ok(())
+  }
 }
 
 #[derive(Debug, serde::Deserialize)]

@@ -2,7 +2,6 @@ use std::borrow::Cow;
 use std::collections::HashSet;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use std::path::PathBuf;
 use std::str::Utf8Error;
 use itertools::Itertools;
 use serde_json::Value;
@@ -37,8 +36,10 @@ pub enum ImportErrorType<T: TPSEAccelerator> {
   UnknownFileType,
   #[error("invalid TPSE: {0}")]
   InvalidTPSE(TPSELoadError),
-  #[error("invalid pack.json file at {0:?}: {1}")]
-  InvalidPackJson(PathBuf, serde_json::Error),
+  #[error("invalid pack.json file: {0}")]
+  InvalidPackJson(serde_json::Error),
+  #[error("invalid pack.json file: unknown data version number {0}")]
+  UnknownPackJsonVersion(u32),
   #[error("pack.json import set #{0} references unknown group '{1}'")]
   InvalidPackJsonGroup(usize, String),
   #[error("pack.json group '{0}' attempts to override type of another pack.json file. The pack.json file type cannot be overriden.")]

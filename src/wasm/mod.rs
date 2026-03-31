@@ -16,9 +16,10 @@ pub(in crate) mod wasm_tpse_provider;
 
 #[link(wasm_import_module="tpsecore")]
 unsafe extern "C" {
-  /// Reports that an import has completed and that the results are now visible to `export_tpse`.  
+  /// Reports that an import has completed and that the results are now visible to `export_tpse`.
+  /// Additional import result information is passed as a pointer to a buffer of json data, which should be read out immediately.
   /// Code values: 0=success 1=failure 2=tpse disappeared before completion
-  unsafe fn report_import_done(tpse: u32, code: u32);
+  unsafe fn report_import_done(tpse: u32, code: u32, flag_data_buffer: *const u8, flag_data_len: usize);
   /// Reports that a migration has completed and that the results are now visible.
   /// Failures will be logged to the standard `log` function.
   /// Code values: 0=success 1=failure 2=tpse disappeared before completion (but operation completed)
