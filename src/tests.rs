@@ -363,7 +363,7 @@ async fn render_tests() {
           debug_grid: true,
           ..Default::default()
         }
-      }).await.unwrap();
+      }).await.unwrap().unwrap();
 
       log::info!("encoding board part {part:?}{board_name}");
       let buffer = frame.image.encode_png().await.unwrap();
@@ -379,7 +379,7 @@ async fn render_tests() {
       debug_grid: true,
       ..Default::default()
     }
-  }).await.unwrap();
+  }).await.unwrap().unwrap();
   let buffer = frame.image.encode_png().await.unwrap();
   std::fs::write("./testdata/result/all_board_elements.bmp", &buffer).unwrap();
 

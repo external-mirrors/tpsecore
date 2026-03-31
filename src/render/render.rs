@@ -195,8 +195,10 @@ impl<T: TPSEAccelerator> RenderContext<T> {
     [skin, ghost].iter().filter_map(|el| *el).min().unwrap_or(1)
   }
 
+  /// Renders a frame for the given parameters.
+  /// Returns Ok(None) if there was nothing to render (e.g. none of the requested content existed in the render context).
   pub async fn render_frame(&self, frame: &FrameInfo<'_>)
-    -> Result<RenderedFrame<T::Texture>, <T::Texture as TextureHandle>::Error>
+    -> Result<Option<RenderedFrame<T::Texture>>, <T::Texture as TextureHandle>::Error>
   {
     // A list of drawing tasks to perform. Units are in pixels.
     let mut tasks: Vec<(T::Texture, i64, i64, i64, i64)> = vec![];
@@ -262,13 +264,7 @@ impl<T: TPSEAccelerator> RenderContext<T> {
 
     if tasks.is_empty() {
       log::trace!("No render tasks!");
-      Ok(RenderedFrame {
-        image: T::Texture::new_texture(0, 0),
-        min_x: 0,
-        min_y: 0,
-        max_x: 0,
-        max_y: 0
-      })
+      Ok(None)
     } else {
       let min_x = tasks.iter().map(|(_, x, _, _, _)| *x).min().unwrap();
       let min_y = tasks.iter().map(|(_, _, y, _, _)| *y).min().unwrap();
@@ -321,7 +317,7 @@ impl<T: TPSEAccelerator> RenderContext<T> {
         }
       }
 
-      Ok(RenderedFrame { image: canvas, min_x, min_y, max_x, max_y })
+      Ok(Some(RenderedFrame { image: canvas, min_x, min_y, max_x, max_y }))
     }
   }
 }

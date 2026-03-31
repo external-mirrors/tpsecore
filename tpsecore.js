@@ -121,9 +121,11 @@ const wasm = await WebAssembly.instantiateStreaming(fetch(tpsecore_url), {
       setTimeout(() => {
         let buffer = new Uint8Array(tpsecore.memory.buffer, ptr, len);
         
-        // when status=0 it's the result buffer, otherwise it's an error string
+        // when status=0 it's the result buffer, when status=2 it's null, otherwise it's an error string
         if (status == 0) {
           sendEvent({ kind: 'frame_render_done', tpse, nonce, buffer: buffer.slice() });
+        } else if (status == 2) {
+          sendEvent({ kind: 'frame_render_done', tpse, nonce, no_content: true })
         } else {
           let error = new Error('render_frame failed: ' + new TextDecoder().decode(buffer));
           sendEvent({ kind: 'frame_render_done', tpse, nonce, error });

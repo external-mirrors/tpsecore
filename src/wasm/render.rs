@@ -135,22 +135,28 @@ pub extern "C" fn render_frame(tpse_id: u32, argument_buffer: *mut u8, nonce: u6
       }
     }).await;
     
-    let (success, buffer) = match frame {
-      Err(err) => (Err(()), err.to_string().into_bytes().into()),
-      Ok(frame) => {
+    let (status, buffer) = match frame {
+      Err(err) => (1, Some(err.to_string().into_bytes().into())),
+      Ok(None) => (2, None),
+      Ok(Some(frame)) => {
         match frame.image.encode_png().await {
-          Err(err) => (Err(()), err.to_string().into_bytes().into()),
-          Ok(buffer) => (Ok(()), buffer)
+          Err(err) => (1, Some(err.to_string().into_bytes().into())),
+          Ok(buffer) => (0, Some(buffer)),
         }
       }
     };
-    let len = buffer.len();
     
-    let mut state = BUFFER_STATE.lock().unwrap();
-    let id = state.next_id();
-    state.buffers.insert(id, buffer);
-    let ptr = state.buffers.get_mut(&id).unwrap().as_ptr();
-    let status = match success { Err(()) => 1, Ok(()) => 0 };
+    let (ptr, len) = buffer.map(|buffer| {
+      let len = buffer.len();
+      
+      let mut state = BUFFER_STATE.lock().unwrap();
+      let id = state.next_id();
+      state.buffers.insert(id, buffer);
+      let ptr = state.buffers.get_mut(&id).unwrap().as_ptr();
+      
+      (ptr, len)
+    }).unwrap_or((null(), 0));
+    
     unsafe { report_frame_render_done(tpse_id, nonce, status, ptr, len); }
   });
   0
