@@ -25,9 +25,12 @@ unsafe extern "C" {
   /// Code values: 0=success 1=failure 2=tpse disappeared before completion (but operation completed)
   unsafe fn report_migration_done(tpse: u32, code: u32);
   /// Reports that rendering of a frame has been finished.
-  /// Gives back the nonce used to identify the frame and the location of the buffer containing either
-  /// the rendered frame (when status=0), an error string (when status=1), or as a null pointer when
-  /// rendering resulted in no content (when status=2).
+  /// The contents of ptr and len vary depending on the status code:
+  /// - status=0 - render success: a buffer containing the rendered and encoded frame
+  /// - status=1 - render failure: a buffer containing an error string
+  /// - status=2 - no content: there was nothing to render. ptr is null and len is 0
+  /// - status=3 - render success with direct handle: len is 0 and ptr is the id of the wasm_texture_handle id.
+  ///              this texture needs to be copied immediately, as it'll be dropped internally after this call.
   unsafe fn report_frame_render_done(tpse: u32, nonce: u64, status: u8, ptr: *const u8, len: usize);
   /// Controls whether `tick_async` is called
   unsafe fn set_runtime_sleeping(sleep: bool);

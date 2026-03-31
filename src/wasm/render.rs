@@ -1,8 +1,10 @@
 // todo: finish rewrites of the below
 
 use std::ptr::null;
+use std::sync::Arc;
 
 use crate::accel::traits::TextureHandle;
+use crate::accel::wasm_texture_handle::WasmTextureHandle;
 use crate::import::radiance::parse_radiance_sound_definition;
 use crate::import::skin_splicer::Piece;
 use crate::render::{BoardElement, FrameInfo, RenderContext, RenderOptions};
@@ -135,29 +137,43 @@ pub extern "C" fn render_frame(tpse_id: u32, argument_buffer: *mut u8, nonce: u6
       }
     }).await;
     
-    let (status, buffer) = match frame {
-      Err(err) => (1, Some(err.to_string().into_bytes().into())),
-      Ok(None) => (2, None),
-      Ok(Some(frame)) => {
-        match frame.image.encode_png().await {
-          Err(err) => (1, Some(err.to_string().into_bytes().into())),
-          Ok(buffer) => (0, Some(buffer)),
-        }
-      }
-    };
-    
-    let (ptr, len) = buffer.map(|buffer| {
+    let alloc = |buffer: Arc<[u8]>| {
       let len = buffer.len();
-      
       let mut state = BUFFER_STATE.lock().unwrap();
       let id = state.next_id();
       state.buffers.insert(id, buffer);
       let ptr = state.buffers.get_mut(&id).unwrap().as_ptr();
-      
       (ptr, len)
-    }).unwrap_or((null(), 0));
+    };
     
-    unsafe { report_frame_render_done(tpse_id, nonce, status, ptr, len); }
+    match frame {
+      Err(err) => {
+        let (ptr, len) = alloc(err.to_string().into_bytes().into());
+        unsafe { report_frame_render_done(tpse_id, nonce, 1, ptr, len); }
+      },
+      Ok(None) => {
+        unsafe { report_frame_render_done(tpse_id, nonce, 2, null(), 0); }
+      },
+      #[cfg(feature = "wasm_rendering")]
+      Ok(Some(frame)) => {
+        WasmTextureHandle::force_flush().await;
+        let id: u32 = frame.image.id().try_into().unwrap(); // todo: handle >32bit values
+        unsafe { report_frame_render_done(tpse_id, nonce, 3, id as *const u8, 0); }
+      },
+      #[cfg(not(feature = "wasm_rendering"))]
+      Ok(Some(frame)) => {
+        match frame.image.encode_png().await {
+          Err(err) => {
+            let (ptr, len) = alloc(err.to_string().into_bytes().into());
+            unsafe { report_frame_render_done(tpse_id, nonce, 1, ptr, len); }
+          },
+          Ok(buffer) => {
+            let (ptr, len) = alloc(buffer);
+            unsafe { report_frame_render_done(tpse_id, nonce, 0, ptr, len); }
+          },
+        }
+      }
+    };
   });
   0
 }

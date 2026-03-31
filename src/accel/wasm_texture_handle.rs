@@ -138,6 +138,19 @@ impl Drop for WasmTextureHandleInner {
 }
 
 impl WasmTextureHandle {
+  pub fn id(&self) -> u64 {
+    self.0.id
+  }
+}
+
+impl WasmTextureHandle {
+  pub async fn force_flush() {
+    let flush_complete = STATE.lock().unwrap().flush_command_buffer();
+    if let Some(f) = flush_complete { // STATE lock dropped by this point
+      assert_eq!(f.await, Ok(WasmWakeableSize::Zero));
+    }
+  }
+  
   async fn dimensions(&self) -> Result<(u32, u32), WasmAcceleratorError> {
     if self.0.dimensions.get().is_none() {
       let flush_complete = STATE.lock().unwrap().flush_command_buffer();

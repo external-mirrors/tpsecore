@@ -116,19 +116,44 @@ const wasm = await WebAssembly.instantiateStreaming(fetch(tpsecore_url), {
       sendEvent({ kind: 'migration_done', tpse, status });
     },
     report_frame_render_done(tpse, nonce, status, ptr, len) {
-      console.log(`report_frame_render_done`, tpse, nonce, status, ptr, len);
+      console.log(`report_frame_render_done`, { tpse, nonce, status, ptr, len });
       // buffer deallocation needs to happen asynchronously, otherwise we'll trigger reentrant mutex panics
       setTimeout(() => {
-        let buffer = new Uint8Array(tpsecore.memory.buffer, ptr, len);
         
-        // when status=0 it's the result buffer, when status=2 it's null, otherwise it's an error string
-        if (status == 0) {
-          sendEvent({ kind: 'frame_render_done', tpse, nonce, buffer: buffer.slice() });
-        } else if (status == 2) {
-          sendEvent({ kind: 'frame_render_done', tpse, nonce, no_content: true })
-        } else {
-          let error = new Error('render_frame failed: ' + new TextDecoder().decode(buffer));
-          sendEvent({ kind: 'frame_render_done', tpse, nonce, error });
+        switch(status) {
+          case 0: { // normal success
+            let buffer = new Uint8Array(tpsecore.memory.buffer, ptr, len).slice();
+            sendEvent({ kind: 'frame_render_done', tpse, nonce, buffer });
+            break;
+          }
+          case 1: { // failure
+            let buffer = new Uint8Array(tpsecore.memory.buffer, ptr, len);
+            let error = new Error('render_frame failed: ' + new TextDecoder().decode(buffer));
+            sendEvent({ kind: 'frame_render_done', tpse, nonce, error });
+            break;
+          }
+          case 2: { // no-content success
+            sendEvent({ kind: 'frame_render_done', tpse, nonce, no_content: true });
+            break;
+          }
+          case 3: { // success by handle ID
+            let source_texture = getTexture(ptr, tex => tex);
+            if (source_texture.error) {
+              let error = new Error("failed to lookup success by handle ID: source texture in error state: " + source_texture.error);
+              sendEvent({ kind: 'frame_render_done', tpse, nonce, error });
+            }
+            let { texture, slice: [x, y, w, h] } = source_texture;
+            // todo: skip extra canvas construction if texture is already properly cropped
+            let canvas = new OffscreenCanvas(w, h);
+            canvas.getContext('2d').drawImage(texture, x, y, w, h, 0, 0, w, h);
+            sendEvent({ kind: 'frame_render_done', tpse, nonce, texture: canvas });
+            break;
+          }
+          default: {
+            let error = new Error("unknown report_frame_render_done status code " + status);
+            sendEvent({ kind: 'frame_render_done', tpse, nonce, error });
+            break;
+          }
         }
         
         // buffer is cloned (via slice) or decoded into a string at this point
@@ -342,7 +367,7 @@ const wasm = await WebAssembly.instantiateStreaming(fetch(tpsecore_url), {
             let nw = view.getUint32(read(4));
             let nh = view.getUint32(read(4));
             // console.log("wasm accelerator> - flush_command_buffer: resized", { new_id, nw, nh });
-            // todo: make resizing lazily pass through destination coordiantes
+            // todo: make resizing lazily pass through destination coordinates
             // so that we can avoid intermediate texture copies
             textures[new_id] = getTexture(handle_id, ({ texture, slice: [x, y, w, h] }) => {
               let canvas = new OffscreenCanvas(nw, nh);
