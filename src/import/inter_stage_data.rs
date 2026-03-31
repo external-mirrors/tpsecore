@@ -41,6 +41,7 @@ impl<S> Debug for ImportFile<S> where S: Debug {
 pub struct DecisionTree {
   pub id: u64,
   pub description: String,
+  pub required: bool,
   pub options: Vec<DecisionTreeOption>,
 }
 impl DecisionTree {

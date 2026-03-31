@@ -95,6 +95,7 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
     return Ok(vec![DecisionTree {
       id: next_id(),
       description: "content pack".to_string(),
+      required: true,
       options: vec![DecisionTreeOption {
         description: "all content pack data".to_string(),
         files: loose_files,
@@ -112,6 +113,7 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
   
   struct FlatDecisionTree {
     description: String,
+    required: bool,
     options: Vec<FlatDecisionTreeOption>,
   }
   struct FlatDecisionTreeOption {
@@ -201,7 +203,8 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
     for (import_set_index, set) in import_sets.iter().enumerate() {
       let mut tree = FlatDecisionTree {
         description: set.title.clone(),
-        options: vec![]
+        required: set.required,
+        options: vec![],
       };
       for option in &set.options {
         let mut entry = FlatDecisionTreeOption {
@@ -291,6 +294,7 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
       .map(|tree| {
         DecisionTree {
           id: next_id(),
+          required: tree.required,
           description: tree.description,
           options: tree.options.into_iter()
             .map(|option| {
@@ -318,6 +322,7 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
     rooted_trees.push(DecisionTree {
       id: next_id(),
       description: "content pack".to_string(),
+      required: true,
       options: vec![DecisionTreeOption {
         description: "loose files".to_string(),
         files: loose_files,

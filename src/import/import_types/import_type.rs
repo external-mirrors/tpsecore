@@ -102,6 +102,11 @@ impl Display for TypeStage3 {
     write!(f, "{}", ImportType::from(*self))
   }
 }
+impl Display for TypeStage4 {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", ImportType::from(*self))
+  }
+}
 
 
 // todo: maybe generate this with a macro from the below switch statement?

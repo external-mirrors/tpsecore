@@ -63,6 +63,7 @@ pub enum ImportContextEntry {
   ReduceTypes
 }
 
+#[serde_as]
 #[derive(Debug, Clone, thiserror::Error, serde::Serialize)]
 #[serde(tag = "task", rename_all="snake_case")]
 pub enum ImportTaskContextEntry {
@@ -78,6 +79,7 @@ pub enum ImportTaskContextEntry {
   #[error("`{file}` (as {as_type:?})")]
   Basic {
     #[serde(rename="type")]
+    #[serde_as(as = "DisplayFromStr")]
     as_type: TypeStage4,
     file: PathBuf
   }

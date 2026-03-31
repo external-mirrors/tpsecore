@@ -51,6 +51,7 @@ impl ImportDecisionMaker for WasmDecisionMaker {
 struct WasmDecisionTree {
   id: u64,
   description: String,
+  required: bool,
   options: Vec<WasmDecisionTreeOption>
 }
 impl WasmDecisionTree {
@@ -58,6 +59,7 @@ impl WasmDecisionTree {
     Self {
       id: tree.id,
       description: tree.description.clone(),
+      required: tree.required,
       options: tree.options.iter().map(WasmDecisionTreeOption::from_isd).collect()
     }
   }
