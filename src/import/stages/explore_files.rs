@@ -6,7 +6,7 @@ use itertools::Itertools;
 use zip::ZipArchive;
 
 use crate::accel::traits::{TPSEAccelerator, TextureHandle};
-use crate::import::inter_stage_data::ImportFile;
+use crate::import::inter_stage_data::{FileType, ImportFile};
 use crate::import::{Asset, BackgroundType, ImportContext, ImportContextEntry, ImportError, ImportErrorType, ImportErrorWrapHelper, ImportType, TextureGuess, TextureGuessKind, TypeStage1, TypeStage2, err, guess_texture_format};
 use crate::import::radiance::parse_radiance_sound_definition;
 use crate::log::LogLevel;
@@ -76,7 +76,7 @@ async fn decide_specific_type<'c, T: TPSEAccelerator>
         return Ok(TypeStage1::Unknown);
       };
       
-      ctx.log(LogLevel::Info, format_args!("Filename indicates general media type of {file_type}"));
+      let mut ctx = ctx.enter_context(ImportContextEntry::WithGeneralMediaType { file_type });
       let guessed_type = match file_type {
         FileType::PackJson => TypeStage1::PackJson,
         FileType::Zip => TypeStage1::Zip,
@@ -85,7 +85,7 @@ async fn decide_specific_type<'c, T: TPSEAccelerator>
           let image = T::Texture::decode_texture(bytes.clone()).wrap(err!(ctx, tex))?;
           let width = image.width().await.wrap(err!(ctx, tex))?;
           let height: u32 = image.height().await.wrap(err!(ctx, tex))?;
-          ctx.log(LogLevel::Info, format_args!("Image file is {width}x{height}"));
+          let ctx = ctx.enter_context(ImportContextEntry::WithImageDimensions { width, height });
           match &guess_texture_format(path, width, height, &ctx)[..] {
             [] => {
               ctx.log(LogLevel::Info, "No known texture determineable from image dimensions and extension, assuming texture is a custom background");
@@ -95,15 +95,17 @@ async fn decide_specific_type<'c, T: TPSEAccelerator>
               }
             }
             [TextureGuess { kind: TextureGuessKind::Skin(single_format), .. }] => {
-              ctx.log(LogLevel::Info, format_args!("Based on image dimensions and extension, uniquely inferred texture of type {single_format}"));
+              ctx.log(LogLevel::Info, format_args!("Guessed import type {single_format}"));
               TypeStage1::Skin { subtype: *single_format }
             },
             [TextureGuess { kind: TextureGuessKind::Other(single_format), .. }] => {
-              ctx.log(LogLevel::Info, format_args!("Based on image dimensions and extension, uniquely inferred texture of type {single_format}"));
+              ctx.log(LogLevel::Info, format_args!("Guessed import type {single_format}"));
               TypeStage1::OtherSkin { subtype: *single_format }
             },
             [first_guess, other_guesses@..] => {
-              ctx.log(LogLevel::Info, format_args!(
+              // Messages later in the pipeline will alert about the actual inferred type or a failure to infer
+              // No info level log needed here
+              ctx.log(LogLevel::Debug, format_args!(
                 "Multiple possible formats based on image dimensions and extension; specific type will be inferred later during type reduction from possibilities: {}",
                 [*first_guess].iter().chain(other_guesses.iter()).map(|x| &x.kind).format(", ")
               ));
@@ -114,7 +116,10 @@ async fn decide_specific_type<'c, T: TPSEAccelerator>
             },
           }
         },
-        FileType::Video => TypeStage1::Background { subtype: BackgroundType::Video },
+        FileType::Video => {
+          ctx.log(LogLevel::Info, "Guessed import type video background");
+          TypeStage1::Background { subtype: BackgroundType::Video }
+        },
         FileType::Audio => {
           let asset = ctx.provide_asset(Asset::TetrioRSD).await?;
           let rsd = parse_radiance_sound_definition(&asset).wrap(err!(ctx))?;
@@ -122,53 +127,21 @@ async fn decide_specific_type<'c, T: TPSEAccelerator>
           let sfx = PathBuf::from(path).file_stem().and_then(|ext| ext.to_str()).and_then(|ext| atlas.get(ext));
           match sfx {
             Some(_) => {
-              ctx.log(LogLevel::Info, "Audio filename corresponds to a known TETR.IO sound effect. Assuming audio file is a custom sound effect.");
+              // No info level log needed here, this is a strong indicator of type
+              ctx.log(LogLevel::Debug, "Audio filename corresponds to a known TETR.IO sound effect. Assuming audio file is a custom sound effect.");
               TypeStage1::SoundEffects
             },
             None => {
-              ctx.log(LogLevel::Info, "Audio filename corresponds to no known TETR.IO sound effect. Specific type will be inferred later during type reduction.");
+              // Same as above, messages later in the pipeline will notify specifics
+              ctx.log(LogLevel::Debug, "Audio filename corresponds to no known TETR.IO sound effect. Specific type will be inferred later during type reduction.");
               TypeStage1::WeakAudio
             }
           }
         }
       };
-      ctx.log(LogLevel::Info, format_args!("Guessed import type {guessed_type}"));
       ctx.flags.guessed_files.insert(path.to_path_buf(), guessed_type.clone());
       Ok(guessed_type)
     },
     rest => Ok(TypeStage1::try_from(rest).expect("all stage 0 types should be handled"))
-  }
-}
-
-/// A broad category of content based on a file extension
-#[derive(strum::Display)]
-enum FileType {
-  #[strum(to_string = "pack.json")]
-  PackJson,
-  #[strum(to_string = "zip")]
-  Zip,
-  #[strum(to_string = "tpse")]
-  TPSE,
-  #[strum(to_string = "image")]
-  Image,
-  #[strum(to_string = "video")]
-  Video,
-  #[strum(to_string = "audio")]
-  Audio
-}
-impl FileType {
-  pub fn from_path(filename: &Path) -> Option<FileType> {
-    if filename.file_name()?.to_str()? == "pack.json" {
-      return Some(Self::PackJson);
-    }
-    let ext = Path::new(&filename).extension()?.to_str()?;
-    match ext {
-      "zip" => Some(FileType::Zip),
-      "tpse" => Some(FileType::TPSE),
-      "svg" | "png" | "jpg" | "jpeg" | "gif" | "webp" => Some(FileType::Image),
-      "mp4" | "webm" => Some(FileType::Video),
-      "ogg" | "mp3" | "flac" => Some(FileType::Audio),
-      _ => return None
-    }
   }
 }

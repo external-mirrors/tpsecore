@@ -112,14 +112,13 @@ const wasm = await WebAssembly.instantiateStreaming(fetch(tpsecore_url), {
       tpse_import_handlers.delete(tpse);
     },
     report_migration_done(tpse, status) {
-      console.log("report_migration_done", tpse, status);
+      // console.log("report_migration_done", tpse, status);
       sendEvent({ kind: 'migration_done', tpse, status });
     },
     report_frame_render_done(tpse, nonce, status, ptr, len) {
-      console.log(`report_frame_render_done`, { tpse, nonce, status, ptr, len });
+      // console.log(`report_frame_render_done`, { tpse, nonce, status, ptr, len });
       // buffer deallocation needs to happen asynchronously, otherwise we'll trigger reentrant mutex panics
       setTimeout(() => {
-        
         switch(status) {
           case 0: { // normal success
             let buffer = new Uint8Array(tpsecore.memory.buffer, ptr, len).slice();
@@ -183,7 +182,6 @@ const wasm = await WebAssembly.instantiateStreaming(fetch(tpsecore_url), {
     },
     import_log(tpse, ptr, len) {
       let json = new TextDecoder('utf-8').decode(new Uint8Array(tpsecore.memory.buffer, ptr, len));
-      console.log("import log", json);
       let msg = JSON.parse(json);
       tpse_import_handlers.get(tpse)?.log_sink(msg);
       console.debug(new Date(), `wasm (tpse ${tpse})>`, msg);
@@ -195,7 +193,7 @@ const wasm = await WebAssembly.instantiateStreaming(fetch(tpsecore_url), {
       sendEvent({ kind: 'panic' });
     },
     async tpse_get(extern_tpse_id, key_ptr, key_len, wake_id) {
-      console.log(`tpse_get`, { extern_tpse_id, key_ptr, key_len });
+      // console.log(`tpse_get`, { extern_tpse_id, key_ptr, key_len });
       try {
         let key = new TextDecoder().decode(new Uint8Array(tpsecore.memory.buffer, key_ptr, key_len));
         if (!externTPSEHandler) {
@@ -222,7 +220,7 @@ const wasm = await WebAssembly.instantiateStreaming(fetch(tpsecore_url), {
       }
     },
     async tpse_set(extern_tpse_id, key_ptr, key_len, data_ptr, data_len, wake_id) {
-      console.log(`tpse_set`, { extern_tpse_id, key_ptr, key_len, data_ptr, data_len });
+      // console.log(`tpse_set`, { extern_tpse_id, key_ptr, key_len, data_ptr, data_len });
       try {
         let key = new TextDecoder().decode(new Uint8Array(tpsecore.memory.buffer, key_ptr, key_len));
         let data = new TextDecoder().decode(new Uint8Array(tpsecore.memory.buffer, data_ptr, data_len));
@@ -239,7 +237,7 @@ const wasm = await WebAssembly.instantiateStreaming(fetch(tpsecore_url), {
       }
     },
     async tpse_delete(extern_tpse_id, key_ptr, key_len, wake_id) {
-      console.log(`tpse_delete`, { extern_tpse_id, key_ptr, data_len });
+      // console.log(`tpse_delete`, { extern_tpse_id, key_ptr, data_len });
       try {
         let key = new TextDecoder().decode(new Uint8Array(tpsecore.memory.buffer, key_ptr, key_len));
         if (!externTPSEHandler) {
@@ -298,197 +296,248 @@ const wasm = await WebAssembly.instantiateStreaming(fetch(tpsecore_url), {
         canvas.getContext('2d').drawImage(drawable, x, y, w, h, 0, 0, w, h);
         return canvas;
       }
+      // globalThis.TPSECORE_GRAPHICS_FLUSH_DEBUG = true;
       
       while (offset < len) {
         flushedCount++;
         let command = view.getUint8(read(1));
         let handle_id = Number(view.getBigUint64(read(8)));
+        let alt_handle_id_for_debug = null;
         // console.log("wasm accelerator> - begin command processing with view", textures, command, handle_id);
         try {
-        switch (command) {
-          case 0: { // drop texture
-            // console.log("wasm accelerator> - flush_command_buffer: drop texture", handle_id);
-            delete textures[handle_id]
-            break;
-          }
-          case 1: { // new_texture
-            let width = view.getUint32(read(4));
-            let height = view.getUint32(read(4));
-            // console.log("wasm accelerator> - flush_command_buffer: new_texture", { width, height });
-            textures[handle_id] = { kind: 'canvas', canvas: new OffscreenCanvas(width, height) };
-            break;
-          }
-          case 2: { // decode_texture
-            let ptr = Number(view.getBigUint64(read(8)));
-            let len = Number(view.getBigUint64(read(8)));
-            // console.log("wasm accelerator> - flush_command_buffer: decode_texture", { ptr, len });
-            try {
-              // So we're a little stuck here. There's no `Image` in web workers and the alternatives
-              // are not ideal.
-              //
-              // The `ImageDecoder` API, despite looking very good otherwise, is inconvenient because it
-              // requires a fixed MIME type and doesn't support guessing based on file contents. I also
-              // don't particularly want to implement extension/magicbytes->mime mapping myself because
-              // really it should just work with _anything_ your browser supports.
-              //
-              // The `createImageBitmap` API looks better, but it comes with some ominous warnings about
-              // properly `close()`ing the returned `ImageBitmap` because it doesn't generate GC pressure
-              // properly and can take a long time to get cleaned up. However, lifetime tracking here
-              // is non-trivial because of how many indirect texture references we make.
-              //
-              // Realistically we could just reference count it, but that can be done later. For now just
-              // draw it to an OffscreenCanvas and close it immediately. Intuitively I'd expect the
-              // OffscreenCanvas to have the exact same issue of 'small js object, large gpu allocation',
-              // but there's no `close()` method on it and no dire warning, so it's... possibly fine!
-              //
-              // todo: the reference counting
-              let blob = new Blob([ new Uint8Array(tpsecore.memory.buffer, ptr, len) ]);
-              let bitmap = await createImageBitmap(blob);
-              let canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-              canvas.getContext('2d').drawImage(bitmap, 0, 0);
-              bitmap.close();
-              
-              console.log("wasm accelerator> got decoded", canvas, bitmap.width, bitmap.height);
-              textures[handle_id] = { kind: 'texture', texture: canvas };
-            } catch(ex) {
-              console.error("wasm accelerator> - image decoding failed:", ex);
-              textures[handle_id] = { kind: 'error', error: ex };
+          switch (command) {
+            case 0: { // drop texture
+              console.log("wasm accelerator> - flush_command_buffer: drop texture", handle_id);
+              delete textures[handle_id]
+              break;
             }
-            break;
-          }
-          case 3: { // create_copy
-            let new_id = Number(view.getBigUint64(read(8)));
-            // console.log("wasm accelerator> - flush_command_buffer: create_copy", { new_id });
-            if (textures[handle_id].kind == 'canvas') {
-              textures[new_id] = { kind: 'canvas', canvas: toCanvas(textures[handle_id].canvas) }
-            } else {
-              textures[new_id] = textures[handle_id]; // copy on write
+            case 1: { // new_texture
+              let width = view.getUint32(read(4));
+              let height = view.getUint32(read(4));
+              if (globalThis.TPSECORE_GRAPHICS_FLUSH_DEBUG)
+              console.log("wasm accelerator> - flush_command_buffer: new_texture", { handle_id, width, height });
+              textures[handle_id] = { kind: 'canvas', canvas: new OffscreenCanvas(width, height) };
+              break;
             }
-            break;
-          }
-          case 4: { // slice
-            let new_id = Number(view.getBigUint64(read(8)));
-            let x = view.getUint32(read(4));
-            let y = view.getUint32(read(4));
-            let w = view.getUint32(read(4));
-            let h = view.getUint32(read(4));
-            // console.log("wasm accelerator> - flush_command_buffer: slice", { new_id, x, y, w, h });
-            if (!textures[handle_id]) {
-              debugger;
-              throw new Error("wasm accelerator> slice source invalid: got " + handle_id);
+            case 2: { // decode_texture
+              let ptr = Number(view.getBigUint64(read(8)));
+              let len = Number(view.getBigUint64(read(8)));
+              if (globalThis.TPSECORE_GRAPHICS_FLUSH_DEBUG)
+              console.log("wasm accelerator> - flush_command_buffer: decode_texture", { handle_id, ptr, len });
+              try {
+                // So we're a little stuck here. There's no `Image` in web workers and the alternatives
+                // are not ideal.
+                //
+                // The `ImageDecoder` API, despite looking very good otherwise, is inconvenient because it
+                // requires a fixed MIME type and doesn't support guessing based on file contents. I also
+                // don't particularly want to implement extension/magicbytes->mime mapping myself because
+                // really it should just work with _anything_ your browser supports.
+                //
+                // The `createImageBitmap` API looks better, but it comes with some ominous warnings about
+                // properly `close()`ing the returned `ImageBitmap` because it doesn't generate GC pressure
+                // properly and can take a long time to get cleaned up. However, lifetime tracking here
+                // is non-trivial because of how many indirect texture references we make.
+                //
+                // Realistically we could just reference count it, but that can be done later. For now just
+                // draw it to an OffscreenCanvas and close it immediately. Intuitively I'd expect the
+                // OffscreenCanvas to have the exact same issue of 'small js object, large gpu allocation',
+                // but there's no `close()` method on it and no dire warning, so it's... possibly fine!
+                //
+                // todo: the reference counting
+                let blob = new Blob([ new Uint8Array(tpsecore.memory.buffer, ptr, len).slice() ]);
+                let bitmap = await createImageBitmap(blob);
+                let canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+                canvas.getContext('2d').drawImage(bitmap, 0, 0);
+                bitmap.close();
+                
+                textures[handle_id] = { kind: 'texture', texture: canvas };
+              } catch(ex) {
+                console.error("wasm accelerator> - image decoding failed:", ex);
+                textures[handle_id] = { kind: 'error', error: ex };
+              }
+              break;
             }
-            textures[new_id] = { kind: 'slice', source: textures[handle_id], x, y, w, h };
-            break;
-          }
-          case 5: { // resized
-            let new_id = Number(view.getBigUint64(read(8)));
-            let nw = view.getUint32(read(4));
-            let nh = view.getUint32(read(4));
-            // console.log("wasm accelerator> - flush_command_buffer: resized", { new_id, nw, nh });
-            // todo: make resizing lazily pass through destination coordinates
-            // so that we can avoid intermediate texture copies
-            textures[new_id] = getTexture(handle_id, ({ texture, slice: [x, y, w, h] }) => {
-              let canvas = new OffscreenCanvas(nw, nh);
-              canvas.getContext('2d').drawImage(texture, x, y, w, h, 0, 0, nw, nh);
-              return { kind: 'canvas', canvas };
-            });
-            break;
-          }
-          case 6: { // tinted
-            let new_id = Number(view.getBigUint64(read(8)));
-            let r = view.getUint8(read(1)) / 255;
-            let g = view.getUint8(read(1)) / 255;
-            let b = view.getUint8(read(1)) / 255;
-            let a = view.getUint8(read(1)) / 255;
-            // console.log("wasm accelerator> - flush_command_buffer: tinted", { new_id, r, g, b, a });
-            textures[new_id] = getTexture(handle_id, ({ texture, slice: [x, y, w, h] }) => {
-              let canvas = new OffscreenCanvas(w, h);
-              let ctx = canvas.getContext('2d');
-              ctx.drawImage(texture, x, y, w, h, 0, 0, w, h);
-              ctx.globalCompositeOperation = 'multiply';
-              ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${a})`;
-              ctx.fillRect(0, 0, w, h);
-              return { kind: 'canvas', canvas };
-            });
-            break;
-          }
-          case 7: { // overlay
-            let overlay_id = Number(view.getBigUint64(read(8)));
-            let draw_at_x = Number(view.getBigInt64(read(8)));
-            let draw_at_y = Number(view.getBigInt64(read(8)));
-            // console.log("wasm accelerator> - flush_command_buffer: overlay", { overlay_id, draw_at_x, draw_at_y });
-            let result = getTexture(handle_id, ({ texture, slice: [x, y, _w, _h] }) => {
-              return getTexture(overlay_id, ({ texture: overlay_texture, slice: [x2, y2, w2, h2] }) => {
-                texture.getContext('2d').drawImage(overlay_texture, x2, y2, w2, h2, draw_at_x+x, draw_at_y+y, w2, h2);
-                return null
+            case 3: { // create_copy
+              let new_id = Number(view.getBigUint64(read(8)));
+              alt_handle_id_for_debug = new_id;
+              if (globalThis.TPSECORE_GRAPHICS_FLUSH_DEBUG)
+              console.log("wasm accelerator> - flush_command_buffer: create_copy", { handle_id, new_id });
+              if (textures[handle_id].kind == 'canvas') {
+                textures[new_id] = { kind: 'canvas', canvas: toCanvas(textures[handle_id].canvas) }
+              } else {
+                textures[new_id] = textures[handle_id]; // copy on write
+              }
+              break;
+            }
+            case 4: { // slice
+              let new_id = Number(view.getBigUint64(read(8)));
+              alt_handle_id_for_debug = new_id;
+              let x = view.getUint32(read(4));
+              let y = view.getUint32(read(4));
+              let w = view.getUint32(read(4));
+              let h = view.getUint32(read(4));
+              if (globalThis.TPSECORE_GRAPHICS_FLUSH_DEBUG)
+              console.log("wasm accelerator> - flush_command_buffer: slice", { handle_id, new_id, x, y, w, h });
+              if (!textures[handle_id]) {
+                throw new Error("wasm accelerator> slice source invalid: got " + handle_id);
+              }
+              textures[new_id] = { kind: 'slice', source: textures[handle_id], x, y, w, h };
+              break;
+            }
+            case 5: { // resized
+              let new_id = Number(view.getBigUint64(read(8)));
+              alt_handle_id_for_debug = new_id;
+              let nw = view.getUint32(read(4));
+              let nh = view.getUint32(read(4));
+              if (globalThis.TPSECORE_GRAPHICS_FLUSH_DEBUG)
+              console.log("wasm accelerator> - flush_command_buffer: resized", { handle_id, new_id, nw, nh });
+              // todo: make resizing lazily pass through destination coordinates
+              // so that we can avoid intermediate texture copies
+              textures[new_id] = getTexture(handle_id, ({ texture, slice: [x, y, w, h] }) => {
+                let canvas = new OffscreenCanvas(nw, nh);
+                canvas.getContext('2d').drawImage(texture, x, y, w, h, 0, 0, nw, nh);
+                return { kind: 'canvas', canvas };
               });
-            }, true);
-            if (result?.error)
-              textures[handle_id] = result;
-            break;
+              break;
+            }
+            case 6: { // tinted
+              let new_id = Number(view.getBigUint64(read(8)));
+              alt_handle_id_for_debug = new_id;
+              let r = view.getUint8(read(1));
+              let g = view.getUint8(read(1));
+              let b = view.getUint8(read(1));
+              let a = view.getUint8(read(1)) / 255;
+              if (globalThis.TPSECORE_GRAPHICS_FLUSH_DEBUG)
+              console.log("wasm accelerator> - flush_command_buffer: tinted", { handle_id, new_id, r, g, b, a });
+              textures[new_id] = getTexture(handle_id, ({ texture, slice: [x, y, w, h] }) => {
+                let canvas = new OffscreenCanvas(w, h);
+                let ctx = canvas.getContext('2d');
+                ctx.drawImage(texture, x, y, w, h, 0, 0, w, h);
+                ctx.globalCompositeOperation = 'multiply';
+                ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${a})`;
+                ctx.fillRect(0, 0, w, h);
+                return { kind: 'canvas', canvas };
+              });
+              break;
+            }
+            case 7: { // overlay
+              let overlay_id = Number(view.getBigUint64(read(8)));
+              alt_handle_id_for_debug = overlay_id;
+              let draw_at_x = Number(view.getBigInt64(read(8)));
+              let draw_at_y = Number(view.getBigInt64(read(8)));
+              if (globalThis.TPSECORE_GRAPHICS_FLUSH_DEBUG)
+              console.log("wasm accelerator> - flush_command_buffer: overlay", { handle_id, overlay_id, draw_at_x, draw_at_y });
+              let result = getTexture(handle_id, ({ texture, slice: [x, y, _w, _h] }) => {
+                return getTexture(overlay_id, ({ texture: overlay_texture, slice: [x2, y2, w2, h2] }) => {
+                  texture.getContext('2d').drawImage(overlay_texture, x2, y2, w2, h2, draw_at_x+x, draw_at_y+y, w2, h2);
+                  return null
+                });
+              }, true);
+              if (result?.error)
+                textures[handle_id] = result;
+              break;
+            }
+            case 8: { // draw_line
+              let x1 = view.getFloat32(read(4));
+              let y1 = view.getFloat32(read(4));
+              let x2 = view.getFloat32(read(4));
+              let y2 = view.getFloat32(read(4));
+              let r = view.getUint8(read(1)) / 255;
+              let g = view.getUint8(read(1)) / 255;
+              let b = view.getUint8(read(1)) / 255;
+              let a = view.getUint8(read(1)) / 255;
+              if (globalThis.TPSECORE_GRAPHICS_FLUSH_DEBUG)
+              console.log("wasm accelerator> - flush_command_buffer: draw_line", { handle_id, x1, y1, x2, y2, r, g, b, a });
+              let result = getTexture(handle_id, ({ texture, slice: [x, y, _w, _h] }) => {
+                let ctx = texture.getContext('2d');
+                // todo: ensure line remains within slice boundaries
+                ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${a})`;
+                ctx.beginPath();
+                ctx.moveTo(x1+x, y1+y);
+                ctx.lineTo(x2+x, y2+y);
+                ctx.strokePath();
+                return null;
+              }, true);
+              if (result.error)
+                textures[handle_id] = result;
+              break;
+            }
+            case 9: { // draw_text
+              let r = view.getUint8(read(1)) / 255;
+              let g = view.getUint8(read(1)) / 255;
+              let b = view.getUint8(read(1)) / 255;
+              let a = view.getUint8(read(1)) / 255;
+              let ox = view.getInt32(read(4));
+              let oy = view.getInt32(read(4));
+              let fontsize = view.getFloat32(read(4));
+              let ptr = Number(view.getBigUint64(read(8)));
+              let len = Number(view.getBigUint64(read(8)));
+              if (globalThis.TPSECORE_GRAPHICS_FLUSH_DEBUG)
+              console.log("wasm accelerator> - flush_command_buffer: draw_text", { handle_id, r, g, b, a, ox, oy, fontsize, ptr, len });
+              let result = getTexture(handle_id, ({ texture, slice: [x, y, _w, _h] }) => {
+                // todo: ensure text remains within slice boundaries
+                let string = new TextDecoder().decode(new Uint8Array(tpsecore.memory.buffer, ptr, len));
+                ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${a})`;
+                ctx.font = `${fontsize}px sans-serif`;
+                texture.getContext('2d').fillText(string, x+ox, y+oy);
+                return null;
+              }, true);
+              if (result.error)
+                textures[handle_id] = result;
+              break;
+            }
           }
-          case 8: { // draw_line
-            let x1 = view.getFloat32(read(4));
-            let y1 = view.getFloat32(read(4));
-            let x2 = view.getFloat32(read(4));
-            let y2 = view.getFloat32(read(4));
-            let r = view.getUint8(read(1)) / 255;
-            let g = view.getUint8(read(1)) / 255;
-            let b = view.getUint8(read(1)) / 255;
-            let a = view.getUint8(read(1)) / 255;
-            // console.log("wasm accelerator> - flush_command_buffer: draw_line", { x1, y1, x2, y2, r, g, b, a });
-            let result = getTexture(handle_id, ({ texture, slice: [x, y, _w, _h] }) => {
-              let ctx = texture.getContext('2d');
-              // todo: ensure line remains within slice boundaries
-              ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${a})`;
-              ctx.beginPath();
-              ctx.moveTo(x1+x, y1+y);
-              ctx.lineTo(x2+x, y2+y);
-              ctx.strokePath();
-              return null;
-            }, true);
-            if (result.error)
-              textures[handle_id] = result;
-            break;
+          if (globalThis.TPSECORE_GRAPHICS_FLUSH_DEBUG) {
+            for (let [prefix, hid] of [['primary texture', handle_id], ['secondary texture', alt_handle_id_for_debug]]) {
+              if (!textures[hid]) continue;
+              let { texture, error, slice } = getTexture(hid, a => a);
+              if (error) {
+                console.warn(`${prefix} in error state:`, error);
+              } else {
+                try {
+                  let blob = await texture.convertToBlob();
+                  let reader = new FileReader();
+                  let dataurl = await new Promise((res, rej) => {
+                    reader.onload = () => res(reader.result);
+                    reader.onerror = () => rej(reader.error);
+                    reader.readAsDataURL(blob);
+                  });
+                  let ar = texture.width / texture.height;
+                  let w = 100 / ar;
+                  let h = 100;
+                  // mfw console.log(image)
+                  // (only works properly in chrome, firefox ignores the padding)
+                  console.log(
+                    `%c ${prefix}: ${texture.width}x${texture.height} (slice: ${JSON.stringify(slice)})`,
+                    `
+                      padding-right: ${w}px;
+                      padding-bottom: ${h}px;
+                      background-size: ${w}px ${h}px;
+                      background-image: url(${dataurl});
+                      background-size: contain;
+                      background-repeat: no-repeat;
+                    `
+                  );
+                } catch(ex) {
+                  console.warn(`${prefix} failed to render:`, ex);
+                }
+              }
+            }
           }
-          case 9: { // draw_text
-            let r = view.getUint8(read(1)) / 255;
-            let g = view.getUint8(read(1)) / 255;
-            let b = view.getUint8(read(1)) / 255;
-            let a = view.getUint8(read(1)) / 255;
-            let ox = view.getInt32(read(4));
-            let oy = view.getInt32(read(4));
-            let fontsize = view.getFloat32(read(4));
-            let ptr = Number(view.getBigUint64(read(8)));
-            let len = Number(view.getBigUint64(read(8)));
-            // console.log("wasm accelerator> - flush_command_buffer: draw_text", { r, g, b, a, ox, oy, fontsize, ptr, len });
-            let result = getTexture(handle_id, ({ texture, slice: [x, y, _w, _h] }) => {
-              // todo: ensure text remains within slice boundaries
-              let string = new TextDecoder().decode(new Uint8Array(tpsecore.memory.buffer, ptr, len));
-              ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${a})`;
-              ctx.font = `${fontsize}px sans-serif`;
-              texture.getContext('2d').fillText(string, x+ox, y+oy);
-              return null;
-            }, true);
-            if (result.error)
-              textures[handle_id] = result;
-            break;
-          }
-        }
         } catch(ex) {
           console.error("wasm accelerator> error processing command buffer", ex);
           return;
         }
       }
       
-      console.log(`wasm accelerator> - command buffer flush (${flushedCount} items, ${offset} bytes flushed in ${Date.now() - start}ms) completed, waking task ${wake_id}`);
+      // console.log(`wasm accelerator> - command buffer flush (${flushedCount} items, ${offset} bytes flushed in ${Date.now() - start}ms) completed, waking task ${wake_id}`);
       let result = tpsecore.provide_wakeable_zero(wake_id);
       if (result != 0) console.error("wasm accelerator> - flush_command_buffer failed to provide asynchronous return value: " + result);
     },
     fetch_dimensions(id, code_ptr, width_ptr, height_ptr) {
       let view = new DataView(tpsecore.memory.buffer)
       let result = getTexture(id, ({ slice: [_x, _y, w, h] }) => {
-        console.log("wasm accelerator> fetch_dimensions", { id, w, h, code_ptr, width_ptr, height_ptr });
+        // console.log("wasm accelerator> fetch_dimensions", { id, w, h, code_ptr, width_ptr, height_ptr });
         view.setBigUint64(code_ptr, BigInt(0), true);
         view.setUint32(width_ptr, w, true);
         view.setUint32(height_ptr, h, true);
@@ -500,11 +549,11 @@ const wasm = await WebAssembly.instantiateStreaming(fetch(tpsecore_url), {
         view.setBigUint64(code_ptr, BigInt(ptr), true);
       }
     },
-    async fraction_opaque(id, code_ptr) {
+    fraction_opaque(id, code_ptr) {
       let view = new DataView(tpsecore.memory.buffer);
       let value = null;
       let result = getTexture(id, ({ texture, slice: [x, y, w, h] }) => {
-        console.log("wasm accelerator> fraction_opaque", { id });
+        // console.log("wasm accelerator> fraction_opaque", { id });
         
         // todo: ensure texture is a canvas so we can extract data directly rather than
         // always making an intermediate copy.
@@ -843,7 +892,7 @@ const wasm = await WebAssembly.instantiateStreaming(fetch(tpsecore_url), {
   wasm_accelerator_asset: {
     async fetch_asset(asset_id) {
       if (cached_assets[asset_id]) {
-        console.log("fetch_asset", asset_id, "already cached, providing.");
+        // console.log("fetch_asset", asset_id, "already cached, providing.");
         tpsecore.provide_asset(asset_id, cached_assets[asset_id]);
         return;
       }
@@ -872,7 +921,7 @@ const wasm = await WebAssembly.instantiateStreaming(fetch(tpsecore_url), {
         new Uint8Array(tpsecore.memory.buffer, ptr, body.length).set(body);
         tpsecore.provide_asset(asset_id, ptr);
         cached_assets[asset_id] = ptr;
-        console.log("asset marked provided");
+        // console.log("asset marked provided");
       } catch(ex) {
         console.error("fetch_asset", asset_id, "failed:", ex);
         tpsecore.provide_asset(asset_id, 0);

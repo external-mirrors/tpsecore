@@ -5,7 +5,6 @@ use crate::import::guess_texture_format::{MAX_POSSIBLE_TEXTURE_GUESSES, TextureG
 use crate::import::{AnimatedOptions, BackgroundType, SkinType, OtherSkinType};
 use crate::import::SkinType::*;
 use crate::import::OtherSkinType::*;
-use itertools::Itertools;
 use subenum::subenum;
 
 /// An ImportType is metadata describing how a single file should be imported.
@@ -69,9 +68,9 @@ impl Display for ImportType {
     match self {
       Self::Automatic => write!(f, "automatic"),
       Self::PackJson => write!(f, "pack.json"),
-      Self::WeakTexture { first_guess, other_guesses } => {
-        let fmt = [first_guess].into_iter().chain(other_guesses.iter().flatten()).map(|x| x.kind).format(", ");
-        write!(f, "weak texture guess (possibilities: {fmt})")
+      Self::WeakTexture { first_guess: _, other_guesses } => {
+        // let fmt = [first_guess].into_iter().chain(other_guesses.iter().flatten()).map(|x| x.kind).format(", ");
+        write!(f, "weak texture guess ({} possibilities)", other_guesses.len()+1)
       },
       Self::WeakAudio => write!(f, "weak audio guess"),
       Self::Ignored => write!(f, "ignored"),

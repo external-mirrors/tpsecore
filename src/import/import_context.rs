@@ -31,6 +31,7 @@ pub struct ImportFlags {
   pub metadata: Option<PackMetadata>,
   #[serde(flatten)]
   pub modified_sound_effects: ModifiedSoundEffects,
+  /// The initial filetype guesses made during stage 1 of the import process
   pub guessed_files: HashMap<PathBuf, TypeStage1>
 }
 
@@ -127,7 +128,7 @@ impl<'ctx_deps, T: TPSEAccelerator> ImportContext<'ctx_deps, T> {
   /// Enters a new context, keeping it on the context stack until the returned guard is dropped.
   /// The context can be accessed mutably again through the guard.
   pub fn enter_context<'ctx>(&'ctx mut self, context: ImportContextEntry) -> ContextGuard<'ctx, 'ctx_deps, T> {
-    self.log(LogLevel::Debug, format_args!("Entering context {:?}", context));
+    // self.log(LogLevel::Debug, format_args!("Entering context {:?}", context));
     self.context.push(context);
     ContextGuard { context: self }
   }
@@ -138,8 +139,8 @@ pub struct ContextGuard<'ctx, 'ctx_deps, T: TPSEAccelerator> {
 }
 impl<T: TPSEAccelerator> Drop for ContextGuard<'_, '_, T> {
   fn drop(&mut self) {
-    let entry = self.context.context.pop().expect("context guard lifecycle should be tied to context stack lifecycle");
-    self.context.log(LogLevel::Debug, format_args!("Leaving context {:?}", entry));
+    let _entry = self.context.context.pop().expect("context guard lifecycle should be tied to context stack lifecycle");
+    // self.context.log(LogLevel::Debug, format_args!("Leaving context {:?}", entry));
   }
 }
 impl<'ctx_deps, T: TPSEAccelerator> Deref for ContextGuard<'_, 'ctx_deps, T> {

@@ -36,7 +36,7 @@ pub async fn reduce_types<T: TPSEAccelerator>
         }
       }
     }
-    if count_sfx > 0 && count_unknown < 3 && count_other == 0 {
+    if count_sfx > 0 && count_unknown > 0 && count_unknown < 3 && count_other == 0 {
       let affected = entries.iter_mut().filter(|e| matches!(e.import_type, TypeStage3::Unknown)).collect::<Vec<_>>();
       let guard = ctx.enter_context(ImportContextEntry::WithFiles {
         files: affected.iter().map(|e| e.path.clone()).collect()
@@ -81,7 +81,7 @@ pub async fn reduce_types<T: TPSEAccelerator>
           files: vec![board.path.clone(), queue.path.clone(), grid.path.clone()]
         });
         
-        if board_weak && queue_weak {
+        if board_weak || queue_weak {
           // the board and queue are identical in size, so we need an advanced heuristic to tell them apart.
           // In base TETR.IO, the board is 16% opaque and the queue is 61% opaque (bonus fact: the grid is 7%).
           // We're making the assumption here that custom content will follow the same pattern
@@ -100,11 +100,10 @@ pub async fn reduce_types<T: TPSEAccelerator>
           }
           
           guard.log(LogLevel::Info, format_args!(
-            "Found a directory containing three textures (with at least one weak guess) which look like:\n\
+            "Found a directory containing three textures with at least one weak guess, assuming import type based on heuristics:\n\
             - board ({}% opaque, was {})\n\
             - queue ({}% opaque, was {})\n\
-            - grid (was {})\n\
-            assuming import types.",
+            - grid (was {})",
             (board_opaque*1000.0).round()/10.0, board.import_type,
             (queue_opaque*1000.0).round()/10.0, queue.import_type,
             grid.import_type

@@ -139,17 +139,19 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut Import
         ctx.flags.modified_sound_effects = ModifiedSoundEffects::Some { modified_sound_effects: Default::default() };
       }
       
+      ctx.log(LogLevel::Status, "Decoding custom sound effects");
       for sfx in &sound_effects {
         // todo: ensure we've stripped file extension by this point
         let with_filekey_removed = sfx.name.replace(TypeStage1::SoundEffects.filekey(), "");
-        let Some((_offset, _duration)) = old_atlas.remove(&with_filekey_removed) else {
-          ctx.log(LogLevel::Warn, format_args!("Skipping unknown sound effect {}", sfx.name));
-          continue;
+        if let None = old_atlas.remove(&with_filekey_removed) {
+          ctx.log(LogLevel::Warn, format_args!("Unknown sound effect {}", sfx.name));
         };
         
         ctx.flags.modified_sound_effects.add(&sfx.name);
 
-        ctx.log(LogLevel::Trace, format_args!("Decoding {:?}: {} bytes", sfx.path, sfx.binary.len()));
+        // with hundreds of sound effects, logging with context (which also includes those sound effects, so it's O(n^2))
+        // can get laggy, so drop the context for this specific log
+        ctx.log_in_context(LogLevel::Trace, &[], format_args!("Decoding {:?}: {} bytes", sfx.path, sfx.binary.len()));
 
         let mime = mime_guess::from_path(&sfx.path).first();
         let mime = mime.as_ref().map(|s| s.essence_str());
@@ -165,6 +167,7 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut Import
         new_atlas.insert(with_filekey_removed, (new_offset, new_duration));
       }
       
+      ctx.log(LogLevel::Status, "Decoding base game sound effects");
       if !old_atlas.is_empty() {
         let rsd_asset = ctx.provide_asset(Asset::TetrioRSD).await?;
           

@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use serde_with::{serde_as, DisplayFromStr};
-use crate::import::inter_stage_data::{ImportTask};
+use crate::import::inter_stage_data::{FileType, ImportTask};
 use crate::import::{Asset, ImportType, SkinType, TypeStage4};
 
 // ImportContextEntry serializes into a format meant mainly for interpolating into logs,
@@ -40,6 +40,15 @@ pub enum ImportContextEntry {
     #[serde(rename="type")]
     #[serde_as(as = "DisplayFromStr")]
     as_type: ImportType
+  },
+  #[error("with general media type {file_type:?}")]
+  WithGeneralMediaType {
+    file_type: FileType
+  },
+  #[error("with image of {width}x{height}")]
+  WithImageDimensions {
+    width: u32,
+    height: u32,
   },
   #[error("task {task}")]
   Task {

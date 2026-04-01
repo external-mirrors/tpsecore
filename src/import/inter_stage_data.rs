@@ -5,7 +5,7 @@
 //! process'-related constructs.
 
 use std::fmt::{Debug, Formatter};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::import::{SkinType, TypeStage3, TypeStage4};
@@ -32,6 +32,38 @@ impl<S> Debug for ImportFile<S> where S: Debug {
   }
 }
 
+/// A broad category of content based on a file extension
+#[derive(Debug, Copy, Clone, thiserror::Error, serde::Serialize, strum::Display)]
+pub enum FileType {
+  #[strum(to_string = "pack.json")]
+  PackJson,
+  #[strum(to_string = "zip")]
+  Zip,
+  #[strum(to_string = "tpse")]
+  TPSE,
+  #[strum(to_string = "image")]
+  Image,
+  #[strum(to_string = "video")]
+  Video,
+  #[strum(to_string = "audio")]
+  Audio
+}
+impl FileType {
+  pub fn from_path(filename: &Path) -> Option<FileType> {
+    if filename.file_name()?.to_str()? == "pack.json" {
+      return Some(Self::PackJson);
+    }
+    let ext = Path::new(&filename).extension()?.to_str()?;
+    match ext {
+      "zip" => Some(FileType::Zip),
+      "tpse" => Some(FileType::TPSE),
+      "svg" | "png" | "jpg" | "jpeg" | "gif" | "webp" => Some(FileType::Image),
+      "mp4" | "webm" => Some(FileType::Video),
+      "ogg" | "mp3" | "flac" => Some(FileType::Audio),
+      _ => return None
+    }
+  }
+}
 
 // --- POST `partition_import_groups` STAGE ---
 
