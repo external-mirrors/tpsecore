@@ -7,6 +7,7 @@ use crate::accel::traits::{AssetProvider, TPSEAccelerator};
 use crate::import::packjson::PackMetadata;
 use crate::import::{Asset, ImportContextEntry, ImportError, ImportErrorType, ImportErrorWrapHelper, TypeStage1, err};
 use crate::log::{ImportLogger, LogLevel};
+use crate::util::sound_effects_sort_key;
 
 /// Stores metadata and context associated with an import process, tracking the stack location
 /// (e.g. nested zip files) and base game asset provider.
@@ -28,7 +29,41 @@ pub struct ImportContext<'ctx_deps, T: TPSEAccelerator> {
 #[derive(Default, serde::Serialize)]
 pub struct ImportFlags {
   pub metadata: Option<PackMetadata>,
+  #[serde(flatten)]
+  pub modified_sound_effects: ModifiedSoundEffects,
   pub guessed_files: HashMap<PathBuf, TypeStage1>
+}
+
+#[derive(Default, serde::Serialize)]
+#[serde(tag = "modified_sound_effect_class", rename_all = "lowercase")]
+pub enum ModifiedSoundEffects {
+  #[default]
+  None,
+  Some { modified_sound_effects: Vec<String> },
+  All,
+}
+impl ModifiedSoundEffects {
+  pub fn add(&mut self, sound: impl Into<String>) {
+    match self {
+      Self::None => {
+        *self = Self::Some {
+          modified_sound_effects: vec![sound.into()]
+        };
+      },
+      Self::Some { modified_sound_effects } => {
+        modified_sound_effects.push(sound.into());
+      },
+      Self::All => {}
+    }
+  }
+  pub fn sort_and_dedup(&mut self) {
+    if let Self::Some { modified_sound_effects } = self {
+      modified_sound_effects.sort_by(|a, b| {
+        sound_effects_sort_key(a).cmp(&sound_effects_sort_key(b))
+      });
+      modified_sound_effects.dedup();
+    }
+  }
 }
 
 impl<'ctx_deps, T: TPSEAccelerator> ImportContext<'ctx_deps, T> {

@@ -175,6 +175,7 @@ pub extern "C" fn queue_import(tpse_id: u32) -> usize {
       }
     };
     
+    context.flags.modified_sound_effects.sort_and_dedup();
     let flags = serde_json::to_vec(&context.flags).unwrap();
     
     unsafe { report_import_done(tpse_id, code, flags.as_ptr(), flags.len()); }

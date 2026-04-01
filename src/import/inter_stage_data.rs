@@ -83,7 +83,7 @@ pub struct AnimatedSkinFrame {
 }
 #[derive(Debug)]
 pub struct SoundEffect {
-  /// The name of the sound effect, usually the file name sans extension
+  /// The name of the sound effect, usually the file name after removing extension and filekey
   pub name: String,
   pub path: PathBuf,
   pub binary: Buffer

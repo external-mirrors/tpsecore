@@ -6,12 +6,13 @@ use serde_json::Value;
 
 use crate::accel::traits::{TPSEAccelerator, TextureHandle, AudioHandle};
 use crate::import::inter_stage_data::ImportTask;
-use crate::import::{Asset, ImportContext, ImportContextEntry, ImportError, ImportErrorWrapHelper, MediaLoadError, SkinType, TPSELoadError, TypeStage1, TypeStage4, err};
+use crate::import::{Asset, ImportContext, ImportContextEntry, ImportError, ImportErrorWrapHelper, MediaLoadError, ModifiedSoundEffects, SkinType, TPSELoadError, TypeStage1, TypeStage4, err};
 use crate::import::radiance::parse_radiance_sound_definition;
 use crate::import::skin_splicer::{SkinSplicer};
 use crate::log::LogLevel;
 use crate::tpse::tpse_key::merge;
 use crate::tpse::{AnimMeta, Background, File, MigrationOptions, MiscTPSEValue, Song, SongMetadata, TPSE, migrate};
+use crate::util::sound_effects_sort_key;
 
 /// Executes an import task
 pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut ImportContext<'_, T>) -> Result<TPSE, ImportError<T>> {
@@ -114,7 +115,11 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut Import
         }
       }
     },
-    ImportTask::SoundEffects(sound_effects) => {
+    ImportTask::SoundEffects(mut sound_effects) => {
+      sound_effects.sort_by(|a, b| {
+        sound_effects_sort_key(&a.name).cmp(&sound_effects_sort_key(&b.name))
+      });
+      
       let channels: usize = 2;
       let sample_rate: usize = 48000;
       // Atlas entries are in floating point milliseconds, but we primarily work in samples here.
@@ -129,6 +134,11 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut Import
       let mut encoding_queue = Vec::with_capacity(sound_effects.len());
       let mut encoder_position = 0;
       
+      if tpse.custom_sounds.is_some() {
+        ctx.log(LogLevel::Warn, "Multiple sources of sound effects found; sound effects are not mergeable and all but one source will be dropped");
+        ctx.flags.modified_sound_effects = ModifiedSoundEffects::Some { modified_sound_effects: Default::default() };
+      }
+      
       for sfx in &sound_effects {
         // todo: ensure we've stripped file extension by this point
         let with_filekey_removed = sfx.name.replace(TypeStage1::SoundEffects.filekey(), "");
@@ -136,6 +146,8 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut Import
           ctx.log(LogLevel::Warn, format_args!("Skipping unknown sound effect {}", sfx.name));
           continue;
         };
+        
+        ctx.flags.modified_sound_effects.add(&sfx.name);
 
         ctx.log(LogLevel::Trace, format_args!("Decoding {:?}: {} bytes", sfx.path, sfx.binary.len()));
 
@@ -217,6 +229,12 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut Import
             ctx.log(LogLevel::Info, format_args!("TPSE migrations applied: {}", migrations.iter().format(" > ")));
           }
           let new_tpse: TPSE = serde_json::from_value(raw_tpse).wrap(err!(ctx, (with |x| ParseFailed(x))))?;
+          if new_tpse.custom_sounds.is_some() {
+            if tpse.custom_sounds.is_some() {
+              ctx.log(LogLevel::Warn, "Multiple sources of sound effects found; sound effects are not mergeable and all but one source will be dropped");
+            }
+            ctx.flags.modified_sound_effects = ModifiedSoundEffects::All;
+          }
           let result = merge(&mut tpse, &new_tpse).await.wrap(err!(ctx))?;
           for key in result.keys_with_warnings {
             ctx.log(LogLevel::Warn, format_args!("TPSE contains key {key}, which may cause setting changes that are not what you expect when using it as a content pack. For TPSEs used to transfer settings between TETR.IO PLUS installs or which would otherwise require this setting, you can ignore this warning."));
