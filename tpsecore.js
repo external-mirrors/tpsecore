@@ -323,15 +323,33 @@ const wasm = await WebAssembly.instantiateStreaming(fetch(tpsecore_url), {
             let len = Number(view.getBigUint64(read(8)));
             // console.log("wasm accelerator> - flush_command_buffer: decode_texture", { ptr, len });
             try {
-              let decoder = new ImageDecoder({
-                data: new Uint8Array(tpsecore.memory.buffer, ptr, len),
-                type: "image/png" // todo: actually detect image type
-              });
-              let { image } = await decoder.decode();
-              // console.log("wasm accelerator> got decoded", image, image.width, image.codedWidth);
-              image.width = image.codedWidth;
-              image.height = image.codedHeight;
-              textures[handle_id] = { kind: 'texture', texture: image };
+              // So we're a little stuck here. There's no `Image` in web workers and the alternatives
+              // are not ideal.
+              //
+              // The `ImageDecoder` API, despite looking very good otherwise, is inconvenient because it
+              // requires a fixed MIME type and doesn't support guessing based on file contents. I also
+              // don't particularly want to implement extension/magicbytes->mime mapping myself because
+              // really it should just work with _anything_ your browser supports.
+              //
+              // The `createImageBitmap` API looks better, but it comes with some ominous warnings about
+              // properly `close()`ing the returned `ImageBitmap` because it doesn't generate GC pressure
+              // properly and can take a long time to get cleaned up. However, lifetime tracking here
+              // is non-trivial because of how many indirect texture references we make.
+              //
+              // Realistically we could just reference count it, but that can be done later. For now just
+              // draw it to an OffscreenCanvas and close it immediately. Intuitively I'd expect the
+              // OffscreenCanvas to have the exact same issue of 'small js object, large gpu allocation',
+              // but there's no `close()` method on it and no dire warning, so it's... possibly fine!
+              //
+              // todo: the reference counting
+              let blob = new Blob([ new Uint8Array(tpsecore.memory.buffer, ptr, len) ]);
+              let bitmap = await createImageBitmap(blob);
+              let canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+              canvas.getContext('2d').drawImage(bitmap, 0, 0);
+              bitmap.close();
+              
+              console.log("wasm accelerator> got decoded", canvas, bitmap.width, bitmap.height);
+              textures[handle_id] = { kind: 'texture', texture: canvas };
             } catch(ex) {
               console.error("wasm accelerator> - image decoding failed:", ex);
               textures[handle_id] = { kind: 'error', error: ex };
