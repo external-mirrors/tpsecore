@@ -5,7 +5,7 @@ use crate::accel::wasm_asset_provider::WasmAssetProvider;
 use crate::accel::wasm_audio_handle::WasmAudioHandle;
 use crate::accel::wasm_decision_maker::WasmDecisionMaker;
 use crate::render::RenderContext;
-use crate::tpse::TPSE;
+use crate::tpse::{TPSE, latest_migration_version};
 use crate::wasm::wasm_tpse_provider::WasmTPSEProvider;
 
 mod tpse;
@@ -90,11 +90,21 @@ pub(in crate) struct TPSEState {
   tpses: HashMap<u32, TPSEContext>,
 }
 
-#[derive(Default)]
 struct TPSEContext {
   status: TPSEStatus,
   render_data: Option<RenderContext<WasmGlobalAccelerator>>,
   staged_files: Vec<StagedFile>
+}
+impl Default for TPSEContext {
+  fn default() -> Self {
+    let mut tpse = TPSE::default();
+    tpse.version = Some(latest_migration_version().to_string());
+    Self {
+      status: TPSEStatus::IdleInternal(tpse),
+      render_data: Default::default(),
+      staged_files: Default::default()
+    }
+  }
 }
 #[derive(Debug)]
 enum TPSEStatus {

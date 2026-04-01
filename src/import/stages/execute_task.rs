@@ -265,20 +265,22 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut Import
           subtype.tpse_field(&mut tpse).replace(file);
         },
         TypeStage4::Background { subtype } => {
-          let id = format!("background-{}", file.sha256_hex());
-          tpse.other.insert(id.clone(), MiscTPSEValue::File(file));
+          let mut hash = file.sha256_hex();
+          hash.make_ascii_lowercase();
+          tpse.other.insert(format!("background-{hash}"), MiscTPSEValue::File(file));
           let bg = Background {
-            id,
+            id: hash,
             filename: path.file_name().unwrap_or(path.as_os_str()).to_string_lossy().into_owned(),
             background_type: subtype.into()
           };
-          tpse.backgrounds.get_or_insert(Default::default()).push(bg);
+          tpse.backgrounds.get_or_insert_default().push(bg);
         },
         TypeStage4::Music => {
-          let id = format!("song-{}", file.sha256_hex());
-          tpse.other.insert(id.clone(), MiscTPSEValue::File(file));
+          let mut hash = file.sha256_hex();
+          hash.make_ascii_lowercase();
+          tpse.other.insert(format!("song-{hash}"), MiscTPSEValue::File(file));
           let song = Song {
-            id,
+            id: hash,
             filename: path.file_name().unwrap_or(path.as_os_str()).to_string_lossy().into_owned(),
             song_override: None,
             metadata: SongMetadata {
@@ -286,7 +288,7 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut Import
               ..Default::default()
             }
           };
-          tpse.music.get_or_insert(Default::default()).push(song);
+          tpse.music.get_or_insert_default().push(song);
         },
       }
     }

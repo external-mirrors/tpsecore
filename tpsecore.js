@@ -307,6 +307,7 @@ const wasm = await WebAssembly.instantiateStreaming(fetch(tpsecore_url), {
         try {
           switch (command) {
             case 0: { // drop texture
+              if (globalThis.TPSECORE_GRAPHICS_FLUSH_DEBUG)
               console.log("wasm accelerator> - flush_command_buffer: drop texture", handle_id);
               delete textures[handle_id]
               break;
@@ -412,10 +413,18 @@ const wasm = await WebAssembly.instantiateStreaming(fetch(tpsecore_url), {
               textures[new_id] = getTexture(handle_id, ({ texture, slice: [x, y, w, h] }) => {
                 let canvas = new OffscreenCanvas(w, h);
                 let ctx = canvas.getContext('2d');
-                ctx.drawImage(texture, x, y, w, h, 0, 0, w, h);
-                ctx.globalCompositeOperation = 'multiply';
+                
+                ctx.drawImage(texture, x, y, w, h, 0, 0, w, h); // draw base image
+                
+                ctx.globalCompositeOperation = 'multiply'; // tint
                 ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${a})`;
                 ctx.fillRect(0, 0, w, h);
+                
+                ctx.globalCompositeOperation = 'destination-in'; // fix alpha
+                ctx.drawImage(texture, x, y, w, h, 0, 0, w, h);
+                
+                ctx.globalCompositeOperation = 'source-over'; // reset composite operation
+                
                 return { kind: 'canvas', canvas };
               });
               break;

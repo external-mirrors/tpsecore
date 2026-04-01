@@ -643,6 +643,10 @@ pub struct MigrationOptions {
   pub is_tetrioplus_storage: bool
 }
 
+pub fn latest_migration_version() -> Version {
+  migrations::<Value>().last().unwrap().version
+}
+
 pub async fn migrate<T>(tpse: &mut T, opts: MigrationOptions) -> Result<Vec<Version>, MigrationError<T>> where T: DynamicTPSE + Send + Sync {
   let parsed_version = parse_version(tpse).await.map_err(|err| MigrationError::Setup(err))?;
   let mut applied = vec![];
