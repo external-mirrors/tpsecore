@@ -13,11 +13,11 @@ pub async fn import<T: TPSEAccelerator>
 {
   match import_inner(context, files, target).await {
     Err(err) => {
-      context.log_in_context(LogLevel::Error, &err.context, format_args!("Import failed: {}", err.error));
+      {context.log_in_context(LogLevel::Error, &err.context, format_args!("Import failed: {}", err.error))}.await;
       Err(err)
     }
     Ok(()) => {
-      context.log(LogLevel::Status, &"Import finished");
+      context.log(LogLevel::Status,  "Import finished").await;
       Ok(())
     }
   }
@@ -30,11 +30,11 @@ async fn import_inner<T: TPSEAccelerator>
   let results = explore_files(files, &mut *context.enter_context(ImportContextEntry::ExploreFiles)).await?;
   
   let mut guard = context.enter_context(ImportContextEntry::PartitionGroups);
-  let options = partition_import_groups(&results, &mut *guard)?;
+  let options = partition_import_groups(&results, &mut *guard).await?;
   
-  guard.log(LogLevel::Status, &"Decision needed");
+  guard.log(LogLevel::Status, "Decision needed").await;
   let decisions = guard.decider.decide(&options).await.wrap(err!(guard, decisionfail))?;
-  guard.log(LogLevel::Info, &format_args!("Decision made: {decisions:?}"));
+  {guard.log(LogLevel::Info, format_args!("Decision made: {decisions:?}"))}.await;
   drop(guard);
   
   let mut decided_files = vec![];

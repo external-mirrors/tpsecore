@@ -16,7 +16,7 @@ use crate::util::sound_effects_sort_key;
 
 /// Executes an import task
 pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut ImportContext<'_, T>) -> Result<TPSE, ImportError<T>> {
-  ctx.log(LogLevel::Status, format_args!("Executing import task"));
+  ctx.log(LogLevel::Status, "Executing import task").await;
   let mut tpse = TPSE::default();
   match task {
     ImportTask::AnimatedSkinFrames(skin_type, frames) => {
@@ -135,23 +135,23 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut Import
       let mut encoder_position = 0;
       
       if tpse.custom_sounds.is_some() {
-        ctx.log(LogLevel::Warn, "Multiple sources of sound effects found; sound effects are not mergeable and all but one source will be dropped");
+        ctx.log(LogLevel::Warn, "Multiple sources of sound effects found; sound effects are not mergeable and all but one source will be dropped").await;
         ctx.flags.modified_sound_effects = ModifiedSoundEffects::Some { modified_sound_effects: Default::default() };
       }
       
-      ctx.log(LogLevel::Status, "Decoding custom sound effects");
+      ctx.log(LogLevel::Status, "Decoding custom sound effects").await;
       for sfx in &sound_effects {
         // todo: ensure we've stripped file extension by this point
         let with_filekey_removed = sfx.name.replace(TypeStage1::SoundEffects.filekey(), "");
         if let None = old_atlas.remove(&with_filekey_removed) {
-          ctx.log(LogLevel::Warn, format_args!("Unknown sound effect {}", sfx.name));
+          {ctx.log(LogLevel::Warn, format_args!("Unknown sound effect {}", sfx.name))}.await;
         };
         
         ctx.flags.modified_sound_effects.add(&sfx.name);
 
         // with hundreds of sound effects, logging with context (which also includes those sound effects, so it's O(n^2))
         // can get laggy, so drop the context for this specific log
-        ctx.log_in_context(LogLevel::Trace, &[], format_args!("Decoding {:?}: {} bytes", sfx.path, sfx.binary.len()));
+        {ctx.log_in_context(LogLevel::Trace, &[], format_args!("Decoding {:?}: {} bytes", sfx.path, sfx.binary.len()))}.await;
 
         let mime = mime_guess::from_path(&sfx.path).first();
         let mime = mime.as_ref().map(|s| s.essence_str());
@@ -167,18 +167,18 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut Import
         new_atlas.insert(with_filekey_removed, (new_offset, new_duration));
       }
       
-      ctx.log(LogLevel::Status, "Decoding base game sound effects");
+      ctx.log(LogLevel::Status, "Decoding base game sound effects").await;
       if !old_atlas.is_empty() {
         let rsd_asset = ctx.provide_asset(Asset::TetrioRSD).await?;
           
         let rsd = parse_radiance_sound_definition(&rsd_asset).wrap(err!(ctx))?;
 
-        ctx.log(LogLevel::Status, format_args!("Decoding {}: {} bytes", Asset::TetrioRSD, rsd_asset.len()));
+        {ctx.log(LogLevel::Status, format_args!("Decoding {}: {} bytes", Asset::TetrioRSD, rsd_asset.len()))}.await;
 
         let handle = T::Audio::decode_audio(rsd.audio_buffer.into(), Some("audio/ogg")).await.wrap(err!(ctx, rsd_decode))?;
           
-        ctx.log(LogLevel::Info, format_args!("Populating {} remaining unreplaced base game sound effects", old_atlas.keys().len()));
-        ctx.log(LogLevel::Debug, format_args!("Populating remaining unreplaced base game sound effects: {:?}", old_atlas.keys().collect::<Vec<_>>()));
+        {ctx.log(LogLevel::Info, format_args!("Populating {} remaining unreplaced base game sound effects", old_atlas.keys().len()))}.await;
+        {ctx.log(LogLevel::Debug, format_args!("Populating remaining unreplaced base game sound effects: {:?}", old_atlas.keys().collect::<Vec<_>>()))}.await;
         
         let mut iter = old_atlas.into_iter().enumerate();
         while let Some((i, (sfx_name, (offset, duration)))) = iter.next() {
@@ -186,12 +186,10 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut Import
           let mut duration_samples = (duration * atlas_entry_to_sample_ratio) as usize;
           log::trace!("calculated base offset: {sfx_name} {offset} {duration} -> {offset_samples} + {duration_samples} (position: {i}, remain: {})", iter.len());
           
-          // You would think the amount of math we're doing is absolutely trivial, but it seems to be enough
-          // to force the final sample to round incorrectly. Seems to be pretty reliable (at least with the
-          // rsd file at the time of writing) and there's not really anything else to fix, so... do it the
-          // dumb way.
-          // I originally thought it was just the final sample, but as it turns out a bunch of other sprites
-          // end up on odd numbers. Fix them via brute force.
+          // Radiance file timestamps are rounded to the nearest millisecond.
+          // (see https://discord.com/channels/673303546107658242/947681397227802624/1485985819989639249)
+          // This is bad for sample accuracy, and often results in odd number samples (which are unaligned
+          // with respect to channels). Fix manually.
           if offset_samples % 2 != 0 {
             log::debug!("sprite {sfx_name} offset samples not multiple of 2, fixing: {offset_samples}");
             offset_samples -= 1;
@@ -199,6 +197,15 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut Import
           if duration_samples % 2 != 0 {
             log::debug!("sprite {sfx_name} duration samples not multiple of 2, fixing: {duration_samples}");
             duration_samples -= 1;
+          }
+          // Because of the rounding, the calculations can even overflow the buffer!
+          // Constrain them so that doesn't happen.
+          let length = handle.length().await.wrap(err!(ctx, audio))?;
+          if offset_samples > length {
+            offset_samples = length;
+          }
+          if offset_samples + duration_samples > length {
+            duration_samples = length - offset_samples;
           }
           
           let subhandle = handle.slice(offset_samples..offset_samples + duration_samples);
@@ -210,7 +217,7 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut Import
         }
       }
       
-      ctx.log(LogLevel::Status, format_args!("Encoding audio"));
+      ctx.log(LogLevel::Status, "Encoding audio").await;
       let encoded = T::Audio::encode_ogg(&encoding_queue).await.wrap(err!(ctx, audio_encode))?;
 
       tpse.custom_sounds = Some(File {
@@ -229,21 +236,21 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut Import
           let opts = MigrationOptions { is_tetrioplus_storage: false }; 
           let migrations = migrate(&mut raw_tpse, opts).await.wrap(err!(ctx, (with |x| MigrationFailed(x))))?;
           if !migrations.is_empty() {
-            ctx.log(LogLevel::Info, format_args!("TPSE migrations applied: {}", migrations.iter().format(" > ")));
+            {ctx.log(LogLevel::Info, format_args!("TPSE migrations applied: {}", migrations.iter().format(" > ")))}.await;
           }
           let new_tpse: TPSE = serde_json::from_value(raw_tpse).wrap(err!(ctx, (with |x| ParseFailed(x))))?;
           if new_tpse.custom_sounds.is_some() {
             if tpse.custom_sounds.is_some() {
-              ctx.log(LogLevel::Warn, "Multiple sources of sound effects found; sound effects are not mergeable and all but one source will be dropped");
+              ctx.log(LogLevel::Warn, "Multiple sources of sound effects found; sound effects are not mergeable and all but one source will be dropped").await;
             }
             ctx.flags.modified_sound_effects = ModifiedSoundEffects::All;
           }
           let result = merge(&mut tpse, &new_tpse).await.wrap(err!(ctx))?;
           for key in result.keys_with_warnings {
-            ctx.log(LogLevel::Warn, format_args!("TPSE contains key {key}, which may cause setting changes that are not what you expect when using it as a content pack. For TPSEs used to transfer settings between TETR.IO PLUS installs or which would otherwise require this setting, you can ignore this warning."));
+            {ctx.log(LogLevel::Warn, format_args!("TPSE contains key {key}, which may cause setting changes that are not what you expect when using it as a content pack. For TPSEs used to transfer settings between TETR.IO PLUS installs or which would otherwise require this setting, you can ignore this warning."))}.await;
           }
           for key in result.denied_keys_skipped {
-            ctx.log(LogLevel::Warn, format_args!("TPSE contains auto-deny key {key}, which was skipped. This key is security-sensitive and must be transferred manually."));
+            {ctx.log(LogLevel::Warn, format_args!("TPSE contains auto-deny key {key}, which was skipped. This key is security-sensitive and must be transferred manually."))}.await;
           }
         },
         TypeStage4::Skin { subtype } => {

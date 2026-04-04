@@ -23,13 +23,13 @@ pub async fn reduce_types<T: TPSEAccelerator>
     let count_weak = entries.iter().filter(|x| matches!(x.import_type, TypeStage3::WeakAudio)).count();
     let count_unknown = entries.iter().filter(|x| matches!(x.import_type, TypeStage3::Unknown)).count();
     let count_other = entries.len() - (count_sfx + count_weak + count_unknown);
-    ctx.log(LogLevel::Trace, format_args!("checking directory {dir:?} ({} entries) -- sfx {count_sfx} {count_weak} {count_unknown} {count_other}", entries.len()));
+    {ctx.log(LogLevel::Trace, format_args!("checking directory {dir:?} ({} entries) -- sfx {count_sfx} {count_weak} {count_unknown} {count_other}", entries.len()))}.await;
     // allow some unknown files for several known pre-tpsecore sound packs which have e.g. changelog.txt files in them
     if count_sfx > 0 && count_weak > 0 && count_unknown < 3 && count_other == 0 {
       let guard = ctx.enter_context(ImportContextEntry::WithFiles {
         files: entries.iter().map(|e| e.path.clone()).collect()
       });
-      guard.log(LogLevel::Info, format_args!("Found directory with {count_sfx} sound effects, {count_weak} unknown audio files, {count_unknown} unknown files, and zero other files. Assuming all unknown audio files are sound effects."));
+      {guard.log(LogLevel::Info, format_args!("Found directory with {count_sfx} sound effects, {count_weak} unknown audio files, {count_unknown} unknown files, and zero other files. Assuming all unknown audio files are sound effects."))}.await;
       for entry in entries.iter_mut() {
         if let TypeStage3::WeakAudio = entry.import_type {
           entry.import_type = TypeStage3::SoundEffects
@@ -41,7 +41,7 @@ pub async fn reduce_types<T: TPSEAccelerator>
       let guard = ctx.enter_context(ImportContextEntry::WithFiles {
         files: affected.iter().map(|e| e.path.clone()).collect()
       });
-      guard.log(LogLevel::Info, format_args!("Ignoring {count_unknown} unknown type files in directory that otherwise consists entirely of sound effects."));
+      {guard.log(LogLevel::Info, format_args!("Ignoring {count_unknown} unknown type files in directory that otherwise consists entirely of sound effects."))}.await;
       for entry in affected {
         entry.import_type = TypeStage3::Ignored;
       }
@@ -71,7 +71,7 @@ pub async fn reduce_types<T: TPSEAccelerator>
           TypeStage3::OtherSkin { subtype: OtherSkinType::Grid } => false,
           _ => continue
         };
-        ctx.log(LogLevel::Trace, format_args!("permutation {indices:?} found valid board/queue/grid combo with weak={board_weak},{queue_weak},{grid_weak}"));
+        {ctx.log(LogLevel::Trace, format_args!("permutation {indices:?} found valid board/queue/grid combo with weak={board_weak},{queue_weak},{grid_weak}"))}.await;
         
         if !board_weak && !queue_weak && !grid_weak {
           break // we already know what they are for sure, no heuristic needed
@@ -99,7 +99,7 @@ pub async fn reduce_types<T: TPSEAccelerator>
             std::mem::swap(&mut board_opaque, &mut queue_opaque);
           }
           
-          guard.log(LogLevel::Info, format_args!(
+          {guard.log(LogLevel::Info, format_args!(
             "Found a directory containing three textures with at least one weak guess, assuming import type based on heuristics:\n\
             - board ({}% opaque, was {})\n\
             - queue ({}% opaque, was {})\n\
@@ -107,12 +107,12 @@ pub async fn reduce_types<T: TPSEAccelerator>
             (board_opaque*1000.0).round()/10.0, board.import_type,
             (queue_opaque*1000.0).round()/10.0, queue.import_type,
             grid.import_type
-          ));
+          ))}.await;
           board.import_type = TypeStage3::OtherSkin { subtype: OtherSkinType::Board };
           queue.import_type = TypeStage3::OtherSkin { subtype: OtherSkinType::Queue };
           grid.import_type = TypeStage3::OtherSkin { subtype: OtherSkinType::Grid };
         } else {
-          guard.log(LogLevel::Info, "Found a directory containing a board texture and a queue texture and one third texture with a weak guess in the same directory, assuming the third texture is a grid");
+          guard.log(LogLevel::Info, "Found a directory containing a board texture and a queue texture and one third texture with a weak guess in the same directory, assuming the third texture is a grid").await;
           grid.import_type = TypeStage3::OtherSkin { subtype: OtherSkinType::Grid };
         }
         break;
@@ -170,19 +170,19 @@ pub async fn reduce_types<T: TPSEAccelerator>
               1024.. => (SkinType::Tetrio61Connected, SkinType::Tetrio61ConnectedGhost)
             };
             
-            guard!().log(LogLevel::Info, format_args!("Found a directory containing two textures with weak guesses and one twice the size of the other, assuming they're block skins. Given the resolution of {}, assuming import type {mino_type} and {ghost_type}", minos_res[0]));
+            {guard!().log(LogLevel::Info, format_args!("Found a directory containing two textures with weak guesses and one twice the size of the other, assuming they're block skins. Given the resolution of {}, assuming import type {mino_type} and {ghost_type}", minos_res[0]))}.await;
             
             minos.import_type = TypeStage3::Skin { subtype: mino_type };
             minos.import_type = TypeStage3::Skin { subtype: ghost_type };
           }
           (true, false) => {
             let subtype = if ghost_is_connected.unwrap() { SkinType::Tetrio61Connected } else { SkinType::Tetrio61 };
-            guard!().log(LogLevel::Info, format_args!("Found a directory containing a ghost skin and a weakly guessed texture at twice the size, assuming the texture is a {subtype} skin."));
+            {guard!().log(LogLevel::Info, format_args!("Found a directory containing a ghost skin and a weakly guessed texture at twice the size, assuming the texture is a {subtype} skin."))}.await;
             minos.import_type = TypeStage3::Skin { subtype };
           }
           (false, true) => {
             let subtype = if minos_is_connected.unwrap() { SkinType::Tetrio61ConnectedGhost } else { SkinType::Tetrio61Ghost };
-            guard!().log(LogLevel::Info, format_args!("Found a directory containing a minos skin and a weakly guessed texture at half the size, assuming the texture is a matching ghost skin."));
+            {guard!().log(LogLevel::Info, format_args!("Found a directory containing a minos skin and a weakly guessed texture at half the size, assuming the texture is a matching ghost skin."))}.await;
             ghost.import_type = TypeStage3::Skin { subtype };
           }
         }
@@ -216,7 +216,7 @@ pub async fn reduce_types<T: TPSEAccelerator>
     let ctx = ctx.enter_context(ImportContextEntry::WithFiles {
       files: files.iter().map(|f| f.path.clone()).collect()
     });
-    ctx.log(LogLevel::Info, format_args!("No other heuristic applies to files, assuming first guess of {}.", first_guess.kind));
+    {ctx.log(LogLevel::Info, format_args!("No other heuristic applies to files, assuming first guess of {}.", first_guess.kind))}.await;
     match first_guess.kind {
       TextureGuessKind::Skin(subtype) => {
         for file in &mut *files {
@@ -256,13 +256,13 @@ pub async fn reduce_types<T: TPSEAccelerator>
         return Err(ctx.wrap_error(ImportErrorType::UnknownFileType));
       }
       TypeStage3::Ignored => {
-        ctx.log(LogLevel::Info, format_args!("Content pack contains {} ignored files", files.len()));
+        {ctx.log(LogLevel::Info, format_args!("Content pack contains {} ignored files", files.len()))}.await;
       }
       TypeStage3::WeakTexture { .. } => {
         unreachable!(); // handled above
       }
       TypeStage3::WeakAudio => {
-        ctx.log(LogLevel::Info, format_args!("{} remaining audio files of indeterminate type, assuming custom music.", files.len()));
+        {ctx.log(LogLevel::Info, format_args!("{} remaining audio files of indeterminate type, assuming custom music.", files.len()))}.await;
         import_tasks.extend(files.into_iter().map(|import_result| {
           ImportTask::Basic {
             import_type: TypeStage4::Music,

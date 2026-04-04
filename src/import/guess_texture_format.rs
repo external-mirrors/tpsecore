@@ -30,8 +30,8 @@ pub enum TextureGuessKind {
 
 pub const MAX_POSSIBLE_TEXTURE_GUESSES: usize = 3;
 
-pub fn guess_texture_format<T: TPSEAccelerator>
-  (filename: &Path, width: u32, height: u32, ctx: &ImportContext<T>)
+pub async fn guess_texture_format<T: TPSEAccelerator>
+  (filename: &Path, width: u32, height: u32, ctx: &ImportContext<'_, T>)
   -> ArrayVec<TextureGuess, MAX_POSSIBLE_TEXTURE_GUESSES>
 {
   let ext = Path::new(&filename).extension().and_then(|x| x.to_str());
@@ -43,10 +43,10 @@ pub fn guess_texture_format<T: TPSEAccelerator>
   guesses.extend(guess_skin(ext, width*2, height*2, likely_animated, true, opts).map(|x| TextureGuessKind::Skin(x)));
   guesses.extend(guess_other(width, height).map(|x| TextureGuessKind::Other(x)));
   
-  ctx.log(LogLevel::Debug, format_args!(
+  {ctx.log(LogLevel::Debug, format_args!(
     "Guessing format for ext={:?} w={} h={} anim={}: {:?}",
     ext, width, height, likely_animated, guesses
-  ));
+  ))}.await;
   ArrayVec::from_iter(guesses.into_iter().map(|kind| TextureGuess { width, height, kind }))
 }
 

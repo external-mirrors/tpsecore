@@ -2,7 +2,9 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 use crate::accel::traits::{AssetProvider, TPSEAccelerator};
 use crate::import::packjson::PackMetadata;
 use crate::import::{Asset, ImportContextEntry, ImportError, ImportErrorType, ImportErrorWrapHelper, TypeStage1, err};
@@ -89,22 +91,27 @@ impl<'ctx_deps, T: TPSEAccelerator> ImportContext<'ctx_deps, T> {
     Self { logger: Some(logger), ..self }
   }
   
-  pub fn log_in_context(&self, level: LogLevel, context: &[ImportContextEntry], message: impl Display) {
+  pub fn log_in_context
+    (&self, level: LogLevel, context: &[ImportContextEntry], message: impl Display)
+    -> impl Future<Output = ()> + Send + Sync + 'static
+  {
     if let Some(logger) = self.logger {
       logger.log(level, context, &message);
     }
+    LogFuture::default()
   }
 
-  pub fn log(&self, level: LogLevel, message: impl Display) {
+  pub fn log(&self, level: LogLevel, message: impl Display) -> impl Future<Output = ()> + Send + Sync + 'static {
     if let Some(logger) = self.logger {
       logger.log(level, &self.context, &message);
     }
+    LogFuture::default()
   }
   
   pub async fn provide_asset(&mut self, asset: Asset) -> Result<Arc<[u8]>, ImportError<T>> {
     if !self.asset_cache.contains_key(&asset) {
       let guard = self.enter_context(ImportContextEntry::ProvideAsset { asset });
-      guard.log(LogLevel::Status, format_args!("Gathering asset {asset}"));
+      {guard.log(LogLevel::Status, format_args!("Gathering asset {asset}"))}.await;
       let fetched = guard.asset_source.provide(asset).await.wrap(err!(guard, assetfetchfail))?;
       drop(guard);
       self.asset_cache.insert(asset, fetched);
@@ -152,5 +159,23 @@ impl<'ctx_deps, T: TPSEAccelerator> Deref for ContextGuard<'_, 'ctx_deps, T> {
 impl<T: TPSEAccelerator> DerefMut for ContextGuard<'_, '_, T> {
   fn deref_mut(&mut self) -> &mut Self::Target {
     self.context
+  }
+}
+
+
+/// A future that, on wasm, sets the task to pending once, wakes itself immediately, then resolves on the next poll.
+/// This gives control back to the javascript event loop - for logging, this ensures the DOM gets a chance to rerender.
+/// On other targets, resolves immediately.
+#[derive(Default)]
+struct LogFuture { done: bool }
+
+impl Future for LogFuture {
+  type Output = ();
+  fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+    #[cfg(not(target_arch = "wasm32"))] { return Poll::Ready(()) }
+    if self.done { return Poll::Ready(()) }
+    cx.waker().wake_by_ref();
+    self.done = true;
+    Poll::Pending
   }
 }

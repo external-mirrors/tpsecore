@@ -1,11 +1,35 @@
 const tpse_import_handlers = new Map();
 /**
+ * @typedef WasmDecisionTree
+ * @property {number} id
+ * @property {string} description
+ * @property {bool} required
+ * @property {WasmDecisionTreeOption[]} options
+ */
+/**
+ * @typedef WasmDecisionTreeOption
+ * @property {string} description
+ * @property {string[]} files
+ * @property {WasmDecisionTree[]} subtrees
+ */
+/**
+ * @typedef {{ [key]: number }} DecisionResponse
+ *   A flattened map of `WasmDecisionTree.id` to selection index of `WasmDecisionTree.options`.
+ *   All `required` trees should have an entry in this map.
+ */
+/**
+ * @typedef WasmLog
+ * @property {'error'|'warn'|'info'|'status'|'debug'|'trace'} level
+ * @property {object[]} context
+ * @property {string} message
+ */
+/**
  * Registers a handler for import-related events from a given tpse handle.
  * The handler lives for one import cycle and is automatically removed once finished.
  * @param {number} tpse_id the id of the tpse to register the handlers for
  * @param {function(number, object)} import_finished called with an exit code and the additional import result information when a queued import finishes 
- * @param {function(object)} decide called when the importer needs an external decision on how to proceed due to multiple import options
- * @param {function(object)} log_sink sink for recieving logs specific to this tpse
+ * @param {function(WasmDecisionTree[]): Promise<DecisionResponse>} decide called when the importer needs an external decision on how to proceed due to multiple import options
+ * @param {function(WasmLog)} log_sink sink for recieving logs specific to this tpse
  */
 export function registerTPSEImportEventHandler(tpse_id, import_finished, decide, log_sink) {
   tpse_import_handlers.set(tpse_id, { import_finished, decide, log_sink });
@@ -28,14 +52,15 @@ let externTPSEHandler = null;
  * Registers the extern TPSE handler.
  * 
  * For each callback, the first parameter is the extern tpse id as returned by `allocate_extern_tpse`
- * and the second is the key. The third parameter of `set` is the value to set as json (i.e. a string).
- * The return value of `get` is the retrieved value as json (i.e. a string).
+ *   and the second is the key.
+ * The third parameter of `set` is the value to set.
+ * The return value of `get` is the retrieved value.
  * 
  * Any of the callbacks may return a rejected promise to propagate an error back to tpsecore.
  * 
- * @param {function(number, number): Promise<String?>} get
- * @param {function(number, number, String): Promise} set
- * @param {function(number, number): Promise} remove
+ * @param {function(number, string): Promise<any?>} get
+ * @param {function(number, string, any): Promise} set
+ * @param {function(number, string): Promise} remove
  */
 export function setExternalTPSEHandler(get, set, remove) {
   externTPSEHandler = { get, set, remove };
@@ -199,15 +224,14 @@ const wasm = await WebAssembly.instantiateStreaming(fetch(tpsecore_url), {
         if (!externTPSEHandler) {
           throw new Error("no extern TPSE handler registered");
         }
-        /** @type {String?} */
         let result = await externTPSEHandler.get(extern_tpse_id, key);
         
-        if (!result) {
+        if (result === null || result === undefined) {
           tpsecore.provide_wakeable_two(wake_id, BigInt(1), BigInt(0));
           return;
         }
         
-        let encoded = new TextEncoder().encode(result);
+        let encoded = new TextEncoder().encode(JSON.stringify(result));
         let ptr = tpsecore.allocate_buffer(encoded.length);
         new Uint8Array(tpsecore.memory.buffer, ptr, encoded.length).set(encoded);
         
@@ -223,7 +247,7 @@ const wasm = await WebAssembly.instantiateStreaming(fetch(tpsecore_url), {
       // console.log(`tpse_set`, { extern_tpse_id, key_ptr, key_len, data_ptr, data_len });
       try {
         let key = new TextDecoder().decode(new Uint8Array(tpsecore.memory.buffer, key_ptr, key_len));
-        let data = new TextDecoder().decode(new Uint8Array(tpsecore.memory.buffer, data_ptr, data_len));
+        let data = JSON.parse(new TextDecoder().decode(new Uint8Array(tpsecore.memory.buffer, data_ptr, data_len)));
         if (!externTPSEHandler) {
           throw new Error("no extern TPSE handler registered");
         }

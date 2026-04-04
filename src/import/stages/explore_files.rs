@@ -62,17 +62,17 @@ async fn decide_specific_type<'c, T: TPSEAccelerator>
   (import_type: ImportType, path: &Path, bytes: &Arc<[u8]>, ctx: &mut ImportContext<'c, T>)
    -> Result<TypeStage1, ImportError<T>>
 {
-  ctx.log(LogLevel::Debug, format_args!("Deciding import type for {:?} {:?}", import_type, path));
+  {ctx.log(LogLevel::Debug, format_args!("Deciding import type for {:?} {:?}", import_type, path))}.await;
   
   match import_type {
     ImportType::Automatic => {
       if let Some(filekey) = TypeStage1::parse_filekey(path) {
-        ctx.log(LogLevel::Debug, format_args!("Filename has filekey for {filekey}"));
+        {ctx.log(LogLevel::Debug, format_args!("Filename has filekey for {filekey}"))}.await;
         return Ok(filekey);
       }
       
       let Some(file_type) = FileType::from_path(path) else {
-        ctx.log(LogLevel::Info, "No known general media type indication from filename, import type unknown at this point.");
+        ctx.log(LogLevel::Info, "No known general media type indication from filename, import type unknown at this point.").await;
         return Ok(TypeStage1::Unknown);
       };
       
@@ -86,29 +86,29 @@ async fn decide_specific_type<'c, T: TPSEAccelerator>
           let width = image.width().await.wrap(err!(ctx, tex))?;
           let height: u32 = image.height().await.wrap(err!(ctx, tex))?;
           let ctx = ctx.enter_context(ImportContextEntry::WithImageDimensions { width, height });
-          match &guess_texture_format(path, width, height, &ctx)[..] {
+          match &guess_texture_format(path, width, height, &ctx).await[..] {
             [] => {
-              ctx.log(LogLevel::Info, "No known texture determineable from image dimensions and extension, assuming texture is a custom background");
+              ctx.log(LogLevel::Info, "No known texture determineable from image dimensions and extension, assuming texture is a custom background").await;
               match path.extension().and_then(|ext| ext.to_str()) {
                 Some(str) if str == "gif" => TypeStage1::Background { subtype: BackgroundType::Video },
                 _ => TypeStage1::Background { subtype: BackgroundType::Image }
               }
             }
             [TextureGuess { kind: TextureGuessKind::Skin(single_format), .. }] => {
-              ctx.log(LogLevel::Info, format_args!("Guessed import type {single_format}"));
+              {ctx.log(LogLevel::Info, format_args!("Guessed import type {single_format}"))}.await;
               TypeStage1::Skin { subtype: *single_format }
             },
             [TextureGuess { kind: TextureGuessKind::Other(single_format), .. }] => {
-              ctx.log(LogLevel::Info, format_args!("Guessed import type {single_format}"));
+              {ctx.log(LogLevel::Info, format_args!("Guessed import type {single_format}"))}.await;
               TypeStage1::OtherSkin { subtype: *single_format }
             },
             [first_guess, other_guesses@..] => {
               // Messages later in the pipeline will alert about the actual inferred type or a failure to infer
               // No info level log needed here
-              ctx.log(LogLevel::Debug, format_args!(
+              {ctx.log(LogLevel::Debug, format_args!(
                 "Multiple possible formats based on image dimensions and extension; specific type will be inferred later during type reduction from possibilities: {}",
                 [*first_guess].iter().chain(other_guesses.iter()).map(|x| &x.kind).format(", ")
-              ));
+              ))}.await;
               TypeStage1::WeakTexture {
                 first_guess: *first_guess,
                 other_guesses: from_fn(|i| other_guesses.get(i).copied())
@@ -117,7 +117,7 @@ async fn decide_specific_type<'c, T: TPSEAccelerator>
           }
         },
         FileType::Video => {
-          ctx.log(LogLevel::Info, "Guessed import type video background");
+          ctx.log(LogLevel::Info, "Guessed import type video background").await;
           TypeStage1::Background { subtype: BackgroundType::Video }
         },
         FileType::Audio => {
@@ -128,12 +128,12 @@ async fn decide_specific_type<'c, T: TPSEAccelerator>
           match sfx {
             Some(_) => {
               // No info level log needed here, this is a strong indicator of type
-              ctx.log(LogLevel::Debug, "Audio filename corresponds to a known TETR.IO sound effect. Assuming audio file is a custom sound effect.");
+              ctx.log(LogLevel::Debug, "Audio filename corresponds to a known TETR.IO sound effect. Assuming audio file is a custom sound effect.").await;
               TypeStage1::SoundEffects
             },
             None => {
               // Same as above, messages later in the pipeline will notify specifics
-              ctx.log(LogLevel::Debug, "Audio filename corresponds to no known TETR.IO sound effect. Specific type will be inferred later during type reduction.");
+              ctx.log(LogLevel::Debug, "Audio filename corresponds to no known TETR.IO sound effect. Specific type will be inferred later during type reduction.").await;
               TypeStage1::WeakAudio
             }
           }

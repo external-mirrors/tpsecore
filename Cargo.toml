@@ -8,7 +8,7 @@ authors = ["UniQMG"]
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = ["software_texture", "software_audio", "extra_software_decoders"]
+default = ["dep:hound", "extra_software_decoders"]
 
 # Javascript implementations of image manipulation primitives
 # (wasm embedder dependent)

@@ -9,7 +9,7 @@ use crate::import::{ImportContext, ImportContextEntry, ImportError, ImportErrorT
 use crate::import::inter_stage_data::{DecisionTree, DecisionTreeOption, ImportFile};
 use crate::log::LogLevel;
 
-pub fn partition_import_groups<'a, T: TPSEAccelerator>
+pub async fn partition_import_groups<'a, T: TPSEAccelerator>
   (results: &[ImportFile<TypeStage2>], ctx: &mut ImportContext<'_, T>)
    -> Result<Vec<DecisionTree>, ImportError<T>>
 {
@@ -79,12 +79,12 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
       
     if atd_with_meta > 0 {
       if at_this_depth > 1 {
-        ctx.log(LogLevel::Warn, format_args!("Multiple pack.json files at the given minimum depth, unable to choose one for authoritative pack metadata"));
+        {ctx.log(LogLevel::Warn, format_args!("Multiple pack.json files at the given minimum depth, unable to choose one for authoritative pack metadata"))}.await;
       } else {
         // only one at the shallowest depth, assume it's canonical.
         // Because at_this_depth = 1 and atd_with_meta > 0 and this element is at this depth, we know it has metadata.
         ctx.flags.metadata = Some(shortest.pack_file.metadata.clone());
-        ctx.log(LogLevel::Info, format_args!("Content pack metadata: {}", shortest.pack_file.metadata));
+        {ctx.log(LogLevel::Info, format_args!("Content pack metadata: {}", shortest.pack_file.metadata))}.await;
         shortest_canonical = true;
       }
     }
@@ -92,7 +92,7 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
     for file in &pack_json_roots {
       if !file.pack_file.metadata.has_data() { continue }
       if shortest_canonical && file.pack_file_index == shortest.pack_file_index { continue }
-      ctx.log(LogLevel::Info, format_args!("A nested pack.json contains additional metadata: {}", file.pack_file.metadata));
+      {ctx.log(LogLevel::Info, format_args!("A nested pack.json contains additional metadata: {}", file.pack_file.metadata))}.await;
     }
   }
   
@@ -149,10 +149,10 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
   }
   
   if !loose_files.is_empty() {
-    ctx.log(LogLevel::Warn, &format_args!(
+    {ctx.log(LogLevel::Warn, format_args!(
       "{} loose files which will be imported unconditionally. Consider adding them to a pack.json. Files: {:?}",
       loose_files.len(), loose_files.iter().map(|f| &f.path).format(", ")
-    ));
+    ))}.await;
   }
   
   struct FlatDecisionTree {
@@ -198,10 +198,10 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
     // once groups are determined, begin actually inserting files into each group
     for child in &pack_json.children {
       if child.matched_filters.is_empty() {
-        ctx.log(LogLevel::Warn, &format_args!(
+        {ctx.log(LogLevel::Warn, format_args!(
           "File {:?} matched no filters in its nearest pack.json and will be considered loose",
           results[child.file_index].path
-        ));
+        ))}.await;
         let file = &results[child.file_index];
         loose_files.push(ImportFile {
           import_type: TypeStage3::try_from(ImportType::from(file.import_type))
@@ -211,13 +211,13 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
         });
       }
       if child.matched_filters.len() > 1 {
-        ctx.log(LogLevel::Warn, &format_args!(
+        {ctx.log(LogLevel::Warn, format_args!(
           "File {:?} matched multiple groups in its nearest pack.json. Consider adding a new group that uniquely matches this file and then add that group to each applicable import set. This may cause unexpected results if groups have overrides! Matched groups: {}.",
           results[child.file_index].path,
           child.matched_filters.iter().format_with(", ", |filter, f| {
             f(&format_args!("'{}' (pattern #{})", filter.group_name, filter.pattern_index))
           })
-        ));
+        ))}.await;
       }
       for filter in &child.matched_filters {
         group_files.get_mut(&filter.group_name).unwrap().push((child.file_index, filter.pattern_index));
@@ -226,10 +226,10 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
     
     for (group_id, group) in &group_files {
       if group.is_empty() {
-        ctx.log(LogLevel::Warn, &format_args!(
+        {ctx.log(LogLevel::Warn, format_args!(
           "group {group_id} from {:?}/pack.json matches no files",
           pack_json.pack_file_dir
-        ));
+        ))}.await;
       }
     }
     
@@ -277,11 +277,11 @@ pub fn partition_import_groups<'a, T: TPSEAccelerator>
                 let import_type = match other {
                   None => TypeStage3::try_from(ImportType::from(stage3)).expect("all stage 2 types should be handled"),
                   Some(other) if stage3 == TypeStage2::Unknown => {
-                    guard.log(LogLevel::Info, "unknown file type resolved by pack.json override");
+                    guard.log(LogLevel::Info, "unknown file type resolved by pack.json override").await;
                     other
                   }
                   Some(other) => {
-                    guard.log(LogLevel::Debug, &format_args!("file import type overriden by pack.json: {stage3} -> {other}"));
+                    {guard.log(LogLevel::Debug, format_args!("file import type overriden by pack.json: {stage3} -> {other}"))}.await;
                     other
                   }
                 };

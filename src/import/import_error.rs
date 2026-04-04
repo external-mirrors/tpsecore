@@ -79,7 +79,7 @@ pub enum TPSELoadError {
 }
 
 #[derive(Debug, thiserror::Error)]
-#[error("failed to {method} key {key} on {side}: {error}")]
+#[error("failed to {method} key '{key}' on {side}: {error}")]
 pub struct StorageError {
   pub method: StorageMethod,
   pub side: StorageSide,
