@@ -11,7 +11,7 @@ use crate::import::radiance::parse_radiance_sound_definition;
 use crate::import::skin_splicer::{SkinSplicer};
 use crate::log::LogLevel;
 use crate::tpse::tpse_key::merge;
-use crate::tpse::{AnimMeta, Background, File, MigrationOptions, MiscTPSEValue, Song, SongMetadata, TPSE, migrate};
+use crate::tpse::{AnimMeta, Background, File, MigrationOptions, MiscTPSEValue, Song, TPSE, migrate};
 use crate::util::sound_effects_sort_key;
 
 /// Executes an import task
@@ -282,18 +282,18 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut Import
           };
           tpse.backgrounds.get_or_insert_default().push(bg);
         },
-        TypeStage4::Music => {
+        TypeStage4::Music { mut metadata, song_override } => {
+          if metadata.name.is_empty() {
+            metadata.name = path.file_stem().unwrap_or(path.as_os_str()).to_string_lossy().into_owned();
+          }
           let mut hash = file.sha256_hex();
           hash.make_ascii_lowercase();
           tpse.other.insert(format!("song-{hash}"), MiscTPSEValue::File(file));
           let song = Song {
             id: hash,
             filename: path.file_name().unwrap_or(path.as_os_str()).to_string_lossy().into_owned(),
-            song_override: None,
-            metadata: SongMetadata {
-              name: path.file_stem().unwrap_or(path.as_os_str()).to_string_lossy().into_owned(),
-              ..Default::default()
-            }
+            song_override,
+            metadata
           };
           tpse.music.get_or_insert_default().push(song);
         },

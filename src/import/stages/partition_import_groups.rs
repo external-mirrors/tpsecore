@@ -44,7 +44,7 @@ pub async fn partition_import_groups<'a, T: TPSEAccelerator>
       
       let ctx = ctx.enter_context(ImportContextEntry::ImportFile {
         file: file.path.clone(),
-        as_type: file.import_type.into()
+        as_type: file.import_type.clone().into()
       });
       
       let pack_json: PackJSON = serde_json::from_slice(&file.binary)
@@ -98,7 +98,7 @@ pub async fn partition_import_groups<'a, T: TPSEAccelerator>
   
   // assign each file to its nearest pack.json
   for (file_index, file) in results.iter().enumerate() {
-    let effective_path = match file.import_type {
+    let effective_path = match &file.import_type {
       // pack.json files make all files under their influence (i.e. in their directory) look like a single file
       // named as that directory from the perspective of pack.json files higher in the hierarchy.
       TypeStage2::PackJson => file.path.parent().expect("pack.json files are always named pack.json and so must have a parent"),
@@ -125,7 +125,7 @@ pub async fn partition_import_groups<'a, T: TPSEAccelerator>
       // that actually determine which files to load.
       if file.import_type != TypeStage2::PackJson {
         loose_files.push(ImportFile {
-          import_type: TypeStage3::try_from(ImportType::from(file.import_type))
+          import_type: TypeStage3::try_from(ImportType::from(file.import_type.clone()))
             .expect("all stage 2 types should be handled"),
           path: file.path.clone(),
           binary: file.binary.clone()
@@ -204,7 +204,7 @@ pub async fn partition_import_groups<'a, T: TPSEAccelerator>
         ))}.await;
         let file = &results[child.file_index];
         loose_files.push(ImportFile {
-          import_type: TypeStage3::try_from(ImportType::from(file.import_type))
+          import_type: TypeStage3::try_from(ImportType::from(file.import_type.clone()))
             .expect("all stage 2 types should be handled"),
           path: file.path.clone(),
           binary: file.binary.clone()
@@ -264,7 +264,7 @@ pub async fn partition_import_groups<'a, T: TPSEAccelerator>
             let pattern = &pack_json.pack_file.import_groups[group_id][*pattern_index];
             
             let file = &results[*file_index];
-            match (file.import_type, pattern.override_type) {
+            match (file.import_type.clone(), pattern.override_type.clone()) {
               (TypeStage2::PackJson, Some(_other)) => {
                 return Err(ctx.wrap_error(ImportErrorType::CannotOverridePackJson(group_id.to_string())));
               },

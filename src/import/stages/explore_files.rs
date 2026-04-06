@@ -24,9 +24,9 @@ pub async fn explore_files<T: TPSEAccelerator>
   for file in queue {
     let mut guard = ctx.enter_context(ImportContextEntry::ImportFile {
       file: file.path.clone(),
-      as_type: file.import_type
+      as_type: file.import_type.clone()
     });
-    let kind = decide_specific_type::<T>(file.import_type, &file.path, &file.binary, &mut *guard).await?;
+    let kind = decide_specific_type::<T>(&file.import_type, &file.path, &file.binary, &mut *guard).await?;
     match kind {
       TypeStage1::Zip => {
         let mut zip = ZipArchive::new(Cursor::new(&file.binary)).wrap(err!(guard, zip))?;
@@ -59,7 +59,7 @@ pub async fn explore_files<T: TPSEAccelerator>
 }
 
 async fn decide_specific_type<'c, T: TPSEAccelerator>
-  (import_type: ImportType, path: &Path, bytes: &Arc<[u8]>, ctx: &mut ImportContext<'c, T>)
+  (import_type: &ImportType, path: &Path, bytes: &Arc<[u8]>, ctx: &mut ImportContext<'c, T>)
    -> Result<TypeStage1, ImportError<T>>
 {
   {ctx.log(LogLevel::Debug, format_args!("Deciding import type for {:?} {:?}", import_type, path))}.await;
@@ -142,6 +142,6 @@ async fn decide_specific_type<'c, T: TPSEAccelerator>
       ctx.flags.guessed_files.insert(path.to_path_buf(), guessed_type.clone());
       Ok(guessed_type)
     },
-    rest => Ok(TypeStage1::try_from(rest).expect("all stage 0 types should be handled"))
+    rest => Ok(TypeStage1::try_from(rest.clone()).expect("all stage 0 types should be handled"))
   }
 }

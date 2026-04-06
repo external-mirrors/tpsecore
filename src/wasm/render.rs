@@ -3,7 +3,6 @@
 use std::ptr::null;
 use std::sync::Arc;
 
-use crate::accel::traits::TextureHandle;
 use crate::accel::wasm_texture_handle::WasmTextureHandle;
 use crate::import::radiance::parse_radiance_sound_definition;
 use crate::import::skin_splicer::Piece;

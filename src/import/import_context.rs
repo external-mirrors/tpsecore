@@ -171,6 +171,7 @@ struct LogFuture { done: bool }
 
 impl Future for LogFuture {
   type Output = ();
+  #[allow(unused)] // silence cfg-induced warnings on non-wasm targets
   fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
     #[cfg(not(target_arch = "wasm32"))] { return Poll::Ready(()) }
     if self.done { return Poll::Ready(()) }

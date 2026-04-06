@@ -106,7 +106,7 @@ impl ImportTaskContextEntry {
         Self::SoundEffects { files }
       }
       ImportTask::Basic { import_type, path, .. } => {
-        Self::Basic { as_type: *import_type, file: path.clone() }
+        Self::Basic { as_type: import_type.clone(), file: path.clone() }
       }
     }
   }

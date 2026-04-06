@@ -35,7 +35,7 @@ pub async fn guess_texture_format<T: TPSEAccelerator>
   -> ArrayVec<TextureGuess, MAX_POSSIBLE_TEXTURE_GUESSES>
 {
   let ext = Path::new(&filename).extension().and_then(|x| x.to_str());
-  let opts = AnimatedOptions::from(filename);
+  let opts = AnimatedOptions::from(&filename.to_string_lossy()[..]);
   let likely_animated = ext == Some("gif") || opts.has_fields();
   
   let mut guesses: ArrayVec<_, MAX_POSSIBLE_TEXTURE_GUESSES> = Default::default();

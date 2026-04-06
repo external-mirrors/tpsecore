@@ -5,6 +5,7 @@ use crate::import::guess_texture_format::{MAX_POSSIBLE_TEXTURE_GUESSES, TextureG
 use crate::import::{AnimatedOptions, BackgroundType, SkinType, OtherSkinType};
 use crate::import::SkinType::*;
 use crate::import::OtherSkinType::*;
+use crate::tpse::SongMetadata;
 use subenum::subenum;
 
 /// An ImportType is metadata describing how a single file should be imported.
@@ -15,7 +16,7 @@ use subenum::subenum;
 /// - [TypeStage3]: returned from partition_import_groups, wrapped in DecisionTree (-PackJson)
 /// - [TypeStage4]: returned from reduce_types, wrapped in ImportTask (-Unknown -SoundEffects -WeakTexture)
 #[subenum(TypeStage1, TypeStage2, TypeStage3, TypeStage4)]
-#[derive(Debug, Hash, Eq, PartialEq, Copy, Clone, Ord, PartialOrd, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Hash, Eq, PartialEq, Clone, Ord, PartialOrd, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "type", rename_all="snake_case")]
 pub enum ImportType {
   Automatic,
@@ -59,7 +60,12 @@ pub enum ImportType {
     subtype: BackgroundType
   },
   #[subenum(TypeStage1, TypeStage2, TypeStage3, TypeStage4)]
-  Music
+  Music {
+    #[serde(flatten)]
+    metadata: SongMetadata,
+    #[serde(rename = "override")]
+    song_override: Option<String>,
+  }
 }
 
 // this display impl is used for serializing the import type as part of ImportContextEntry
@@ -82,34 +88,40 @@ impl Display for ImportType {
       Self::SoundEffects => write!(f, "sound effect"),
       Self::Background { subtype: BackgroundType::Video } => write!(f, "video background"),
       Self::Background { subtype: BackgroundType::Image } => write!(f, "background"),
-      Self::Music => write!(f, "music"),
+      Self::Music { song_override: Some(teto), .. } => write!(f, "music (overrides {teto})"),
+      Self::Music { song_override: None, .. } => write!(f, "music"),
     }
   }
 }
 impl Display for TypeStage1 {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(f, "{}", ImportType::from(*self))
+    write!(f, "{}", ImportType::from(self.clone()))
   }
 }
 impl Display for TypeStage2 {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(f, "{}", ImportType::from(*self))
+    write!(f, "{}", ImportType::from(self.clone()))
   }
 }
 impl Display for TypeStage3 {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(f, "{}", ImportType::from(*self))
+    write!(f, "{}", ImportType::from(self.clone()))
   }
 }
 impl Display for TypeStage4 {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(f, "{}", ImportType::from(*self))
+    write!(f, "{}", ImportType::from(self.clone()))
   }
 }
 
 
+struct PossibilityInitializer {
+  anim: AnimatedOptions,
+  song: SongMetadata,
+  song_override: Option<String>
+}
 // todo: maybe generate this with a macro from the below switch statement?
-const POSSIBILITIES: [fn(AnimatedOptions) -> TypeStage1; 54] = {
+const POSSIBILITIES: [fn(&PossibilityInitializer) -> TypeStage1; 54] = {
   use TypeStage1::*;
   [
     // |_opts| Unknown, // no parsing unknown keys, that would be weird
@@ -122,13 +134,13 @@ const POSSIBILITIES: [fn(AnimatedOptions) -> TypeStage1; 54] = {
     |_opts| Skin { subtype: Tetrio61Ghost },
     |_opts| Skin { subtype: Tetrio61Connected },
     |_opts| Skin { subtype: Tetrio61ConnectedGhost },
-    | opts| Skin { subtype: Tetrio61ConnectedAnimated { opts } },
-    | opts| Skin { subtype: Tetrio61ConnectedGhostAnimated { opts } },
+    | opts| Skin { subtype: Tetrio61ConnectedAnimated { opts: opts.anim } },
+    | opts| Skin { subtype: Tetrio61ConnectedGhostAnimated { opts: opts.anim } },
     |_opts| Skin { subtype: TetrioSVG },
     |_opts| Skin { subtype: TetrioRaster },
-    | opts| Skin { subtype: TetrioAnimated { opts } },
+    | opts| Skin { subtype: TetrioAnimated { opts: opts.anim } },
     |_opts| Skin { subtype: JstrisRaster },
-    | opts| Skin { subtype: JstrisAnimated { opts } },
+    | opts| Skin { subtype: JstrisAnimated { opts: opts.anim } },
     |_opts| Skin { subtype: JstrisConnected },
     |_opts| OtherSkin { subtype: Board },
     |_opts| OtherSkin { subtype: Queue },
@@ -165,7 +177,7 @@ const POSSIBILITIES: [fn(AnimatedOptions) -> TypeStage1; 54] = {
     |_opts| OtherSkin { subtype: RankX },
     |_opts| OtherSkin { subtype: RankZ },
     |_opts| SoundEffects,
-    |_opts| Music,
+    | opts| Music { song_override: opts.song_override.clone(), metadata: opts.song.clone() },
     |_opts| Background { subtype: BackgroundType::Image },
     |_opts| Background { subtype: BackgroundType::Video }
   ]
@@ -239,7 +251,7 @@ impl TypeStage1 {
       Self::OtherSkin { subtype: RankX } => "_rank_x",
       Self::OtherSkin { subtype: RankZ } => "_rank_z",
       Self::SoundEffects => "_sfx",
-      Self::Music => "_music",
+      Self::Music { .. } => "_music",
       Self::Background { subtype: BackgroundType::Image } => "_background",
       Self::Background { subtype: BackgroundType::Video } => "_video_background"
     }
@@ -249,9 +261,11 @@ impl TypeStage1 {
   /// Note that longer filekeys win - e.g. `_old_tetrio_svg` beats `_old_tetrio`.
   pub fn parse_filekey(filename: &Path) -> Option<Self> {
     let filename = filename.to_string_lossy(); // get that filekey no matter how mangled the filename is
-    let opts = AnimatedOptions::from(filename.as_ref());
+    let anim = AnimatedOptions::from(&filename[..]);
+    let (song, song_override) = SongMetadata::from_filename(&filename);
+    let opts = PossibilityInitializer { anim, song, song_override };
     POSSIBILITIES.iter()
-      .map(|el| (el)(opts))
+      .map(|el| (el)(&opts))
       .filter(|el| filename.contains(el.filekey()))
       .max_by_key(|el| el.filekey().len())
   }

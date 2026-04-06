@@ -6,6 +6,7 @@ use crate::accel::traits::{TPSEAccelerator, TextureHandle};
 use crate::import::inter_stage_data::{AnimatedSkinFrame, ImportFile, ImportTask, SoundEffect};
 use crate::import::{ImportContext, ImportContextEntry, ImportError, ImportErrorType, ImportErrorWrapHelper, ImportType, OtherSkinType, SkinType, TextureGuessKind, TypeStage3, TypeStage4, err};
 use crate::log::LogLevel;
+use crate::tpse::SongMetadata;
 
 /// Collates multiple import results into a list of import tasks
 pub async fn reduce_types<T: TPSEAccelerator>
@@ -193,7 +194,7 @@ pub async fn reduce_types<T: TPSEAccelerator>
   
   let mut by_type: HashMap<TypeStage3, Vec<ImportFile<TypeStage3>>> = HashMap::new();
   for res in by_dir.into_values().flatten() {
-    by_type.entry(res.import_type).or_default().push(res.clone());
+    by_type.entry(res.import_type.clone()).or_default().push(res.clone());
   }
 
   // The import tasks to be performed
@@ -236,7 +237,7 @@ pub async fn reduce_types<T: TPSEAccelerator>
     }
   }
   for res in additional.into_iter() {
-    by_type.entry(res.import_type).or_default().push(res.clone());
+    by_type.entry(res.import_type.clone()).or_default().push(res.clone());
   }
   
   for (key, mut files) in by_type {
@@ -265,7 +266,7 @@ pub async fn reduce_types<T: TPSEAccelerator>
         {ctx.log(LogLevel::Info, format_args!("{} remaining audio files of indeterminate type, assuming custom music.", files.len()))}.await;
         import_tasks.extend(files.into_iter().map(|import_result| {
           ImportTask::Basic {
-            import_type: TypeStage4::Music,
+            import_type: TypeStage4::Music { metadata: SongMetadata::default(), song_override: None },
             path: import_result.path,
             binary: import_result.binary.into()
           }
@@ -308,7 +309,7 @@ pub async fn reduce_types<T: TPSEAccelerator>
         let stage4 = TypeStage4::try_from(ImportType::from(stage4)).expect("all stage 3 types should be handled");
         import_tasks.extend(files.into_iter().map(|import_result| {
           ImportTask::Basic {
-            import_type: stage4,
+            import_type: stage4.clone(),
             path: import_result.path,
             binary: import_result.binary.into()
           }
