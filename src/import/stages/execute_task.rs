@@ -58,7 +58,7 @@ pub async fn execute_task<T: TPSEAccelerator>(task: ImportTask, ctx: &mut Import
         let groups = [
           (
             source.convert(SkinType::Tetrio61Connected, Some(block_size)).await.wrap(err!(ctx, tex))?,
-           &mut mino_canvas
+            &mut mino_canvas
           ),
           (
             source.convert(SkinType::Tetrio61ConnectedGhost, Some(block_size)).await.wrap(err!(ctx, tex))?, 

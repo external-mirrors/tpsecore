@@ -143,13 +143,20 @@ impl ImportLogger for LogLogger {
   }
 }
 
+macro_rules! standard_harness {
+  ($state:ident, $ctx:ident) => {
+    let $state = setup();
+    
+    let mut provider = CachedAssetProvider::default();
+    provider.cache.insert(Asset::TetrioJS, $state.get("tetrio.js").content.clone());
+    provider.cache.insert(Asset::TetrioRSD, $state.get("tetrio.opus.rsd").content.clone());
+    let mut $ctx = ImportContext::<TestAccelerator>::new(&provider, &DefaultDecisionMaker).with_logger(&LogLogger);
+  }
+}
+
 #[tokio::test]
 async fn metadata_json_test() {
-  let state = setup();
-  let mut provider = CachedAssetProvider::default();
-  provider.cache.insert(Asset::TetrioJS, state.get("tetrio.js").content.clone());
-  provider.cache.insert(Asset::TetrioRSD, state.get("tetrio.opus.rsd").content.clone());
-  let mut ctx = ImportContext::<TestAccelerator>::new(&provider, &DefaultDecisionMaker).with_logger(&LogLogger);
+  standard_harness!(state, ctx);
   let mut tpse = TPSE::default();
   let files = vec![
     ImportFile {
@@ -172,6 +179,7 @@ async fn metadata_json_test() {
       path: PathBuf::from("skins/pack.json"),
       binary: Arc::from(r#"
 {
+  "data_version": 0,
   "description": "a nested subpack offering two skin choices",
   "import_groups": {
     "alpha": [{ "pattern": "Concrete.png" }],
@@ -195,6 +203,7 @@ async fn metadata_json_test() {
       path: PathBuf::from("pack.json"),
       binary: Arc::from(r#"
 {
+  "data_version": 0,
   "description": "a content pack for testing",
   "import_groups": {
     "skins": [{ "pattern": "skins/pack.json" }],
@@ -222,7 +231,7 @@ async fn metadata_json_test() {
   ];
   
   let results = explore_files(files.clone(), &mut ctx).await.unwrap();
-  let results = partition_import_groups(&results, &mut ctx).unwrap();
+  let results = partition_import_groups(&results, &mut ctx).await.unwrap();
   
   println!("{results:#?}");
   
@@ -250,12 +259,7 @@ async fn metadata_json_test() {
 
 #[tokio::test]
 async fn sfx_ignore_heuristic() {
-  let state = setup();
-  
-  let mut provider = CachedAssetProvider::default();
-  provider.cache.insert(Asset::TetrioJS, state.get("tetrio.js").content.clone());
-  provider.cache.insert(Asset::TetrioRSD, state.get("tetrio.opus.rsd").content.clone());
-  let mut ctx = ImportContext::<TestAccelerator>::new(&provider, &DefaultDecisionMaker).with_logger(&LogLogger);
+  standard_harness!(state, ctx);
   let files = vec![ImportFile {
     import_type: ImportType::Automatic,
     path: PathBuf::from("sfx/BejeweledSR.zip"),
@@ -273,18 +277,39 @@ async fn sfx_ignore_heuristic() {
 }
 
 #[tokio::test]
+async fn animated_skin_test() {
+  standard_harness!(state, ctx);
+  let mut tpse = TPSE::default();
+  
+  let files = vec![ImportFile {
+    import_type: ImportType::Automatic,
+    path: PathBuf::from("yhf/rgb_gamer_minos.gif"),
+    binary: state.get("yhf/rgb_gamer_minos.gif").content.clone()
+  }];
+  import(&mut ctx, files, &mut tpse).await.unwrap();
+  std::fs::write("./testdata/result/rgb_gamer_minos_skin.png", &tpse.skin.as_ref().unwrap().binary).unwrap();
+  std::fs::write("./testdata/result/rgb_gamer_minos_skin_anim.png", &tpse.skin_anim.as_ref().unwrap().binary).unwrap();
+  std::fs::write("./testdata/result/rgb_gamer_minos_skin_anim_meta.json", serde_json::to_string(&tpse.skin_anim_meta.unwrap()).unwrap()).unwrap();
+  
+  // ensure a non-animated skin properly wipes out the animated keys
+  let files = vec![ImportFile {
+    import_type: ImportType::Automatic,
+    path: PathBuf::from("yhf/SHIMMERING_CYCLONE.zip"),
+    binary: state.get("yhf/SHIMMERING_CYCLONE.zip").content.clone()
+  }];
+  import(&mut ctx, files, &mut tpse).await.unwrap();
+  assert!(tpse.skin.is_some());
+  assert!(tpse.skin_anim.is_none());
+  assert!(tpse.skin_anim_meta.is_none());
+  assert!(tpse.ghost.is_some());
+  assert!(tpse.ghost_anim.is_none());
+  assert!(tpse.ghost_anim_meta.is_none());
+}
+
+#[tokio::test]
 async fn render_tests() {
-  let state = setup();
+  standard_harness!(state, ctx);
 
-  let start = Instant::now();
-  let mut provider = CachedAssetProvider::default();
-  provider.cache.insert(Asset::TetrioJS, state.get("tetrio.js").content.clone());
-  provider.cache.insert(Asset::TetrioRSD, state.get("tetrio.opus.rsd").content.clone());
-  log::info!("Preloaded assets ({:?})", start.elapsed());
-
-  let mut ctx = ImportContext::<TestAccelerator>::new(&provider, &DefaultDecisionMaker).with_logger(&LogLogger);
-
-  log::info!("--- Test: render --- ({:?})", start.elapsed());
   let files = vec![
     ImportFile {
       import_type: ImportType::Automatic,
@@ -401,26 +426,26 @@ async fn render_tests() {
   //   std::fs::write(filename, &bytes).unwrap();
   // }
 
-  log::info!("--- Test: sound effects --- ({:?})", start.elapsed());
-  #[derive(serde::Deserialize)]
-  struct Replay<'a> {
-    /// always "tetrio-plus-music-graph-replay"
-    __schema: Cow<'a, str>,
-    events: Vec<ReplayEvent<'a>>
-  }
-  #[derive(serde::Deserialize)]
-  struct ReplayEvent<'a> {
-    /// milliseconds since epoch
-    real_time: u64,
-    /// seconds since graph start
-    audio_time: f64,
-    event: Cow<'a, str>,
-    // we don't care about the actual value here right now
-    // value: HashMap<Cow<'a, str>, f64>
-  }
-  let raw = include_str!("../testdata/tetrio-plus-music-graph-replay_322-events_2024-11-12T02_06_14.023Z.json");
-  let replay: Replay = serde_json::from_str(raw).unwrap();
-  let min_time = replay.events.iter().map(|x| x.audio_time).reduce(f64::min).unwrap_or(0.0);
+  // log::info!("--- Test: sound effects --- ({:?})", start.elapsed());
+  // #[derive(serde::Deserialize)]
+  // struct Replay<'a> {
+  //   /// always "tetrio-plus-music-graph-replay"
+  //   __schema: Cow<'a, str>,
+  //   events: Vec<ReplayEvent<'a>>
+  // }
+  // #[derive(serde::Deserialize)]
+  // struct ReplayEvent<'a> {
+  //   /// milliseconds since epoch
+  //   real_time: u64,
+  //   /// seconds since graph start
+  //   audio_time: f64,
+  //   event: Cow<'a, str>,
+  //   // we don't care about the actual value here right now
+  //   // value: HashMap<Cow<'a, str>, f64>
+  // }
+  // let raw = include_str!("../testdata/tetrio-plus-music-graph-replay_322-events_2024-11-12T02_06_14.023Z.json");
+  // let replay: Replay = serde_json::from_str(raw).unwrap();
+  // let min_time = replay.events.iter().map(|x| x.audio_time).reduce(f64::min).unwrap_or(0.0);
   // let sounds = replay.events.iter()
   //   .filter(|event|event.event.starts_with("sfx-") && event.event.ends_with("-global"))
   //   .map(|event| {
@@ -438,21 +463,6 @@ async fn render_tests() {
   //   SoundEffectInfo { name: "allclear".into(), time: 0 }
   // ]).unwrap();
   // std::fs::write("./testdata/result/audio_sample.wav", audio.binary);
-
-  //
-  // log::info!("--- Test: animated skin --- ({:?})", start.elapsed());
-  // let tpse = import(vec![(
-  //     ImportType::Automatic,
-  //     "rgb_gamer_minos.gif",
-  //     include_bytes!("../testdata/rgb_gamer_minos.gif")
-  // )], opts).unwrap();
-  //
-  // std::fs::write(
-  //     "./rgb_game_minos.gif-output.tpse",
-  //     serde_json::to_string(&tpse).unwrap()
-  // ).unwrap();
-  //
-  // log::info!("Done! ({:?})", start.elapsed());
 
   // log::info!("--- Test: skin --- ({:?})", start.elapsed());
   // import(vec![(

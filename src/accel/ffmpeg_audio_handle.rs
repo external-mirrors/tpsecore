@@ -28,6 +28,8 @@ impl AudioHandle for FFmpegAudioHandle {
   async fn decode_audio(buffer: Arc<[u8]>, _extension: Option<&str>) -> Result<Self, Self::Error> {
     let mut ffmpeg = Command::new("ffmpeg")
       .args([
+        "-hide_banner",
+        "-loglevel", "error",
         "-i", "pipe:0",
         "-f", "f32le",
         "-acodec", "pcm_f32le",
@@ -81,6 +83,9 @@ impl AudioHandle for FFmpegAudioHandle {
   async fn encode_ogg(chunks: &[Self]) -> Result<Arc<[u8]>, Self::Error> {
     let mut ffmpeg = Command::new("ffmpeg")
       .args([
+        "-hide_banner",
+        "-loglevel", "error",
+        
         "-f", "f32le",
         "-ac", "2",
         "-ar", "48000",

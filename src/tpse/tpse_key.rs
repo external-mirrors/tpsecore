@@ -258,12 +258,16 @@ tpse_keys!([
   (rank_u, "rank_u", File),
   (rank_x, "rank_x", File),
   (rank_z, "rank_z", File),
-  (skin, "skin", File),
-  (ghost, "ghost", File),
-  (skin_anim, "skinAnim", File),
-  (ghost_anim, "ghostAnim", File),
-  (skin_anim_meta, "skinAnimMeta", AnimMeta),
-  (ghost_anim_meta, "ghostAnimMeta", AnimMeta),
+  // `skin/skin_anim/skin_anim_meta` and `ghost/ghost_anim/ghost_anim_meta` are merged as a single unit
+  // as a result of the `merge_minos_skin` and `merge_ghost_skin` methods. To avoid pointless extra work,
+  // the `_anim` and `_anim_meta` keys are given `no_merge`, as they'll already be merged by the base keys.
+  // The merge is done this way to ensure imports of non-animated skins properly wipe out animated skin metadata.
+  (skin, "skin", File, merge=merge_minos_skin),
+  (ghost, "ghost", File, merge=merge_ghost_skin),
+  (skin_anim, "skinAnim", File, merge=no_merge),
+  (ghost_anim, "ghostAnim", File, merge=no_merge),
+  (skin_anim_meta, "skinAnimMeta", AnimMeta, merge=no_merge),
+  (ghost_anim_meta, "ghostAnimMeta", AnimMeta, merge=no_merge),
   (custom_sound_atlas, "customSoundAtlas", CustomSoundAtlas),
   (custom_sounds, "customSounds", File),
   (backgrounds, "backgrounds", Vec<Background>, merge=merge_backgrounds),
@@ -283,6 +287,38 @@ tpse_keys!([
   },
   extra_merge_bounds={(TPSEProvider<IDFileEntry>)}
 });
+
+async fn merge_minos_skin<A, B>(base: &mut A, source: &B)
+  -> Result<(), StorageError> where
+  A: TPSEProvider<skin> + TPSEProvider<skin_anim> + TPSEProvider<skin_anim_meta>,
+  B: TPSEProvider<skin> + TPSEProvider<skin_anim> + TPSEProvider<skin_anim_meta>
+{
+  let mut provider = TPSEProviderWrapper::new(base, source);
+  let s1 = provider.source_get(&skin).await?.map(Cow::into_owned);
+  let s2 = provider.source_get(&skin_anim).await?.map(Cow::into_owned);
+  let s3 = provider.source_get(&skin_anim_meta).await?.map(Cow::into_owned);
+  if matches!((&s1, &s2, &s3), (None, None, None)) { return Ok(()) };
+  provider.base_set(&skin, s1).await?;
+  provider.base_set(&skin_anim, s2).await?;
+  provider.base_set(&skin_anim_meta, s3).await?;
+  Ok(())
+}
+async fn merge_ghost_skin<A, B>(base: &mut A, source: &B)
+  -> Result<(), StorageError> where
+  A: TPSEProvider<ghost> + TPSEProvider<ghost_anim> + TPSEProvider<ghost_anim_meta>,
+  B: TPSEProvider<ghost> + TPSEProvider<ghost_anim> + TPSEProvider<ghost_anim_meta>
+{
+  let mut provider = TPSEProviderWrapper::new(base, source);
+  let s1 = provider.source_get(&ghost).await?.map(Cow::into_owned);
+  let s2 = provider.source_get(&ghost_anim).await?.map(Cow::into_owned);
+  let s3 = provider.source_get(&ghost_anim_meta).await?.map(Cow::into_owned);
+  if matches!((&s1, &s2, &s3), (None, None, None)) { return Ok(()) };
+  provider.base_set(&ghost, s1).await?;
+  provider.base_set(&ghost_anim, s2).await?;
+  provider.base_set(&ghost_anim_meta, s3).await?;
+  Ok(())
+}
+async fn no_merge<A, B>(_: &mut A, _: &B) -> Result<(), StorageError> { Ok(()) }
 
 async fn merge_music<A, B>(base: &mut A, source: &B)
   -> Result<(), StorageError> where
